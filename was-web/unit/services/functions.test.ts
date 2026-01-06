@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { assert, vi } from 'vitest';
 import { createChangesConverter } from './converter';
 import { DataService } from './dataService';
 import { deleteAdventure, deleteCharacter, deleteMap, editAdventure, editCharacter, editMap, ensureProfile, getAllMapChanges, leaveAdventure, registerAdventureAsRecent, registerMapAsRecent, removeAdventureFromRecent, removeMapFromRecent, updateProfile, watchChangesAndConsolidate } from './extensions';
@@ -488,7 +488,7 @@ service firebase.storage {
     // If I try to fetch that map without being invited I should get an error
     try {
       await userDataService.get(userDataService.getMapRef(a1Id, m1Id));
-      fail("Fetched map in un-joined adventure");
+      assert.fail("Fetched map in un-joined adventure");
     } catch {}
 
     // Join the adventure.
@@ -549,7 +549,7 @@ service firebase.storage {
     try
     {
       await userDataService.get(userDataService.getMapRef(a1Id, m1Id));
-      fail("Fetched map in un-joined adventure");
+      assert.fail("Fetched map in un-joined adventure");
     }
     catch {}
   });
@@ -676,7 +676,7 @@ service firebase.storage {
     // If I try to fetch that map without being invited I should get an error
     try {
       await userDataService.get(userDataService.getMapRef(a1Id, m1Id));
-      fail("Fetched map in un-joined adventure");
+      assert.fail("Fetched map in un-joined adventure");
     } catch {}
 
     // Join the adventure.
@@ -695,21 +695,21 @@ service firebase.storage {
     // As the player, I can no longer see that map
     try {
       await userDataService.get(userDataService.getMapRef(a1Id, m1Id));
-      fail("Fetched map when blocked");
+      assert.fail("Fetched map when blocked");
     } catch {}
 
     // ...and I can't unblock myself...
     try {
       playerRef = userDataService.getPlayerRef(a1Id, user.uid);
       await userDataService.update(playerRef, { allowed: true });
-      fail("Unblocked myself");
+      assert.fail("Unblocked myself");
     } catch {}
 
     // As a blocked player, I can't leave an adventure, because that would delete
     // the record that I was blocked (and I could simply re-join)
     try {
       await leaveAdventure(userDataService, user.uid, a1Id);
-      fail("Left an adventure I was blocked in")
+      assert.fail("Left an adventure I was blocked in")
     } catch {}
 
     // The owner *can* unblock me, though, and then I see it again
@@ -780,7 +780,7 @@ service firebase.storage {
     await new Promise(r => setTimeout(r, 4000));
     try {
       await user2FunctionsService.joinAdventure(invite ?? "", testPolicy);
-      fail('Invite should have expired');
+      assert.fail('Invite should have expired');
     } catch (e: any) {
       expect(e?.toString()).toMatch(/expired/i);
     }
@@ -1099,7 +1099,7 @@ service firebase.storage {
     // They should appear in the player record
     let player = await dataService.get(dataService.getPlayerRef(adventureId, uid));
     if (player?.characters === undefined) {
-      fail('No character list');
+      assert.fail('No character list');
     }
 
     expect(player.characters.length).toBe(2);
@@ -1129,7 +1129,7 @@ service firebase.storage {
     // Fetch and observe changes
     player = await dataService.get(dataService.getPlayerRef(adventureId, uid));
     if (player?.characters === undefined) {
-      fail('No character list');
+      assert.fail('No character list');
     }
 
     expect(player.characters.length).toBe(2);
@@ -1154,7 +1154,7 @@ service firebase.storage {
     // Fetch and observe changes
     player = await dataService.get(dataService.getPlayerRef(adventureId, uid));
     if (player?.characters === undefined) {
-      fail('No character list');
+      assert.fail('No character list');
     }
 
     expect(player.characters.length).toBe(1);

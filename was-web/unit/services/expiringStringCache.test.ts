@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { assert, vi } from 'vitest';
 import { ExpiringStringCache } from './expiringStringCache';
 
 test('Entries are cached successfully', async () => {
@@ -56,7 +56,7 @@ test('Failed entries do not stay in the cache', async () => {
   // This should cause a fetch, and a failure
   try {
     await cache.resolve('one', failingFetch);
-    fail('Error did not propagate');
+    assert.fail('Error did not propagate');
   } catch {
     expect(failingFetch).toHaveBeenCalledTimes(1);
   }

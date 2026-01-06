@@ -14,9 +14,9 @@
     "dayjs": "^1.8.36",
     "firebase": "^11.0.0",
     "fluent-iterable": "^0.1.6",
-    "react": "^18.3.1",
-    "react-bootstrap": "^2.10.0",
-    "react-dom": "^18.3.1",
+    "react": "^19.0.0",
+    "react-bootstrap": "^2.10.10",
+    "react-dom": "^19.0.0",
     "react-router-bootstrap": "^0.26.3",
     "react-router-dom": "^6.28.0",
     "react-use-measure": "^2.1.1",
@@ -41,8 +41,8 @@
     "lint": "eslint src"
   },
   "resolutions": {
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "jws": "^4.0.1"
   },
   "devDependencies": {
@@ -55,9 +55,9 @@
     "@testing-library/user-event": "^14.0.0",
     "@types/blueimp-md5": "^2.18.2",
     "@types/chroma-js": "^2.0.0",
-    "@types/node": "^20.0.0",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@types/react-router-bootstrap": "^0.26.8",
     "@types/three": "^0.182.0",
     "@vitejs/plugin-react": "^5.1.2",

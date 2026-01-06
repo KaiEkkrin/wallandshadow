@@ -1,6 +1,6 @@
 # Wall & Shadow Dev Container
 
-Complete development environment for Wall & Shadow with Node.js 20, Firebase Emulator Suite, and optional GPU support for Playwright/WebGL tests.
+Complete development environment for Wall & Shadow with Node.js 22, Firebase Emulator Suite, and optional GPU support for Playwright/WebGL tests.
 
 ## Prerequisites
 
@@ -374,7 +374,7 @@ OR use the Remote Explorer:
 
 - [VS Code Dev Containers Documentation](https://code.visualstudio.com/docs/devcontainers/containers)
 - [Firebase Emulator Suite](https://firebase.google.com/docs/emulator-suite)
-- [Node.js 20 Documentation](https://nodejs.org/docs/latest-v20.x/api/)
+- [Node.js 22 Documentation](https://nodejs.org/docs/latest-v22.x/api/)
 - [Docker Compose Profiles](https://docs.docker.com/compose/how-tos/profiles/)
 - [WSL2 Setup Guide](https://learn.microsoft.com/en-us/windows/wsl/install)
 - [NVIDIA GPU on WSL2](https://docs.nvidia.com/cuda/wsl-user-guide/index.html)

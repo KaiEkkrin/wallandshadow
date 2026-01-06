@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { assert, vi } from 'vitest';
 import { ICacheLease } from './interfaces';
 import { ObjectCache } from './objectCache';
 import { Subject } from 'rxjs';
@@ -117,7 +117,7 @@ test('resolve one value with an error the first time', async () => {
 
   try {
     await p1;
-    fail('p1 did not throw');
+    assert.fail('p1 did not throw');
   } catch (e) {}
 
   expect(cache.get('1')).toBeUndefined();

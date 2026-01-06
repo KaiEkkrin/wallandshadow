@@ -4,72 +4,40 @@
 
 This document tracks dependency updates that should be addressed in the near term (Q1 2026).
 
-## Node.js 20 → 22
+## React 18 → 19 ✅ COMPLETED
 
-**Current:** Node 20 (in `functions/package.json`)
-**Target:** Node.js 22 LTS
-**Deadline:** Before April 30, 2026 (Node 20 EOL)
+**Previous:** React 18.3.1
+**Current:** React 19.0.0
+**Status:** Completed January 2026
 
-Node.js 20 is in maintenance mode and reaches end-of-life on April 30, 2026. Node.js 22 is the active LTS release with support until April 2027. Firebase Cloud Functions fully supports Node.js 20 and 22.
+### Changes Made
 
-### Steps
-
-1. Update `was-web/functions/package.json`:
-   ```json
-   "engines": {
-     "node": "22"
-   }
-   ```
-
-2. Update `.devcontainer/` to use Node.js 22 base image
-
-3. Test all Firebase Functions locally with emulators
-
-4. Test deployment to Firebase
-
-5. Update any CI/CD pipelines
-
-### References
-
-- [Node.js Releases](https://nodejs.org/en/about/previous-releases)
-- [Firebase Cloud Functions Node.js Support](https://firebase.google.com/docs/functions/get-started)
-
----
-
-## React 18 → 19
-
-**Current:** React 18.3.1
-**Target:** React 19.x
-**Status:** React 18 in security-only support since December 2024
-
-React 19 was released in December 2024. React 18 now receives security patches only.
-
-### Steps
-
-1. Update core React packages in `was-web/package.json`:
+1. Updated core React packages in `was-web/package.json`:
    ```json
    "react": "^19.0.0",
-   "react-dom": "^19.0.0"
+   "react-dom": "^19.0.0",
+   "react-bootstrap": "^2.10.10"
    ```
 
-2. Update type definitions:
+2. Updated type definitions:
    ```json
    "@types/react": "^19.0.0",
    "@types/react-dom": "^19.0.0"
    ```
 
-3. Update resolutions section to match
+3. Updated resolutions section to match
 
-4. Check `react-bootstrap` compatibility with React 19
-   - May need to update `react-bootstrap` to a compatible version
+4. Updated test files to use idiomatic `assert.fail()` from Vitest instead of Jest's `fail()` global
 
-5. Check `@testing-library/react` compatibility
-   - Version 14.x should work, but verify
+5. Kept `@testing-library/react` at v14.x for test stability
+   - v16.x caused significant test flakiness
+   - v14.x works with React 19 despite peer dependency warnings
 
-6. Review React 19 breaking changes:
-   - [React 19 Upgrade Guide](https://react.dev/blog/2024/04/25/react-19-upgrade-guide)
+### Notes
 
-7. Test thoroughly—component lifecycle and hooks may behave differently
+- No code changes required - codebase already used modern React patterns
+- `forwardRef` components in `MapAnnotations.tsx` work unchanged (deprecated but not removed in React 19)
+- All `useRef` calls already had initial arguments
 
 ### References
 
@@ -194,8 +162,7 @@ The functions package shares code with the web app via symlinks, so versions sho
 
 ## Update Checklist
 
-- [ ] Node.js 20 → 22
-- [ ] React 18 → 19
+- [x] React 18 → 19
 - [ ] Playwright 1.40 → 1.57+
 - [ ] Vitest 3.2 → 4.x
 - [ ] Three.js version synchronisation
