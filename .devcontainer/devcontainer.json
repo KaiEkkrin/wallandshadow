@@ -50,7 +50,6 @@
       "settings": {
         "editor.tabSize": 2,
         "editor.formatOnSave": true,
-        "editor.defaultFormatter": "esbenp.prettier-vscode",
         "typescript.tsdk": "was-web/node_modules/typescript/lib",
         "eslint.workingDirectories": ["was-web", "was-web/functions"],
         "files.exclude": {

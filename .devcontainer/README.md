@@ -1,6 +1,6 @@
 # Wall & Shadow Dev Container
 
-Complete development environment for Wall & Shadow with Node.js 20, Firebase Emulator Suite, and optional GPU support for Playwright/WebGL tests.
+Complete development environment for Wall & Shadow with Node.js 22, Firebase Emulator Suite, and optional GPU support for Playwright/WebGL tests.
 
 ## Prerequisites
 
@@ -389,6 +389,6 @@ OR use the Remote Explorer:
 - [Podman Documentation](https://docs.podman.io/)
 - [Podman Rootless Tutorial](https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md)
 - [Firebase Emulator Suite](https://firebase.google.com/docs/emulator-suite)
-- [Node.js 20 Documentation](https://nodejs.org/docs/latest-v20.x/api/)
+- [Node.js 22 Documentation](https://nodejs.org/docs/latest-v22.x/api/)
 - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 - [AMD ROCm on Linux](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/)

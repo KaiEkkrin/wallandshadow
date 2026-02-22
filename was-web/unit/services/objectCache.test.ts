@@ -11,7 +11,7 @@ function createFetch() {
   });
   return {
     cleanup: cleanup,
-    func: vi.fn(async (id: string) => ({
+    func: vi.fn(async (_id: string) => ({
       value: await promise, cleanup: () => cleanup()
     })),
     trigger: trigger,
@@ -114,11 +114,7 @@ test('resolve one value with an error the first time', async () => {
   const f1 = createFetch();
   const p1 = cache.resolve('1', f1.func);
   f1.trigger.error('failed');
-
-  try {
-    await p1;
-    fail('p1 did not throw');
-  } catch (e) {}
+  await expect(p1).rejects.toThrow();
 
   expect(cache.get('1')).toBeUndefined();
 
@@ -169,7 +165,7 @@ test('multiple values can be loaded independently', async () => {
   const cache = new ObjectCache<string>(logError);
 
   const expectedValues = ['a', 'b', 'c', 'd'];
-  const fetchers = expectedValues.map(v => createFetch());
+  const fetchers = expectedValues.map(_v => createFetch());
   const promises = fetchers.map((f, i) => cache.resolve(`${i}`, f.func));
 
   // Resolve them one at a time and check the status tracks correctly

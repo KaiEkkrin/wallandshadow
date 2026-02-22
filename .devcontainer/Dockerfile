@@ -1,7 +1,7 @@
 # Wall & Shadow Dev Container
-# Node 20 LTS with Firebase tools, Java for emulators, and development dependencies
+# Node 22 LTS with Firebase tools, Java for emulators, and development dependencies
 
-FROM mcr.microsoft.com/devcontainers/typescript-node:20-trixie
+FROM mcr.microsoft.com/devcontainers/typescript-node:22-trixie
 
 # Install system dependencies and Google Cloud SDK
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \

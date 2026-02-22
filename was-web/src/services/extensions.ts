@@ -397,7 +397,7 @@ async function registerAdventureAsRecentTransaction(
     imagePath: a.imagePath
   });
   if (updated !== undefined) {
-    view.update(profileRef, { adventures: updated });
+    await view.update(profileRef, { adventures: updated });
   }
 }
 
@@ -438,7 +438,7 @@ async function registerMapAsRecentTransaction(
     imagePath: m.imagePath
   });
   if (updated !== undefined) {
-    view.update(profileRef, { latestMaps: updated });
+    await view.update(profileRef, { latestMaps: updated });
   }
 }
 
@@ -475,7 +475,7 @@ async function removeAdventureFromRecentTransaction(
 
   const excepted = profile.adventures?.filter(a => a.id !== id);
   if (excepted.length !== profile.adventures.length) {
-    view.update(profileRef, { adventures: excepted });
+    await view.update(profileRef, { adventures: excepted });
   }
 }
 
@@ -510,7 +510,7 @@ async function removeMapFromRecentTransaction(
 
   const excepted = profile.latestMaps?.filter(a => a.id !== id);
   if (excepted.length !== profile.latestMaps.length) {
-    view.update(profileRef, { latestMaps: excepted });
+    await view.update(profileRef, { latestMaps: excepted });
   }
 }
 

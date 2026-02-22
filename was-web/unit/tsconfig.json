@@ -17,6 +17,6 @@
     "resolveJsonModule": true,
     "strict": true,
     "target": "es6",
-    "types": ["@types/node"]
+    "types": ["@types/node", "vitest/globals"]
   }
 }

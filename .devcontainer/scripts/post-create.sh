@@ -37,10 +37,13 @@ mkdir -p "$HOME/.cache"
 ln -sfn "$DEVCONTAINER_DIR/.cache/firebase" "$HOME/.cache/firebase"
 ln -sfn "$DEVCONTAINER_DIR/.config" "$HOME/.config"
 ln -sfn "$DEVCONTAINER_DIR/.claude" "$HOME/.claude"
+mkdir -p "$DEVCONTAINER_DIR/.cache/ms-playwright"
+ln -sfn "$DEVCONTAINER_DIR/.cache/ms-playwright" "$HOME/.cache/ms-playwright"
 
 echo "   ✅ \$HOME/.cache/firebase -> .devcontainer/.cache/firebase"
 echo "   ✅ \$HOME/.config -> .devcontainer/.config"
 echo "   ✅ \$HOME/.claude -> .devcontainer/.claude"
+echo "   ✅ \$HOME/.cache/ms-playwright -> .devcontainer/.cache/ms-playwright"
 echo ""
 
 # Check for Firebase admin credentials

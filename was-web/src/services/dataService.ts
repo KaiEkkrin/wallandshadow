@@ -10,7 +10,6 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  addDoc,
   getDocs,
   query,
   where,
@@ -18,8 +17,11 @@ import {
   limit as limitFn,
   collectionGroup,
   onSnapshot,
-  runTransaction
+  runTransaction,
+  waitForPendingWrites
 } from 'firebase/firestore';
+
+import { v7 as uuidv7 } from 'uuid';
 
 import * as Convert from './converter';
 import { IDataService, IDataReference, IDataView, IDataAndReference, IChildDataReference, IAppVersion } from './interfaces';
@@ -169,7 +171,7 @@ export class DataService implements IDataService {
 
   async addChanges(adventureId: string, uid: string, mapId: string, chs: Change[]): Promise<void> {
     const changesCol = collection(this._db, adventures, adventureId, maps, mapId, changes);
-    await addDoc(changesCol, {
+    await setDoc(doc(changesCol, uuidv7()), {
       chs: chs,
       timestamp: this._timestampProvider(),
       incremental: true,
@@ -280,6 +282,20 @@ export class DataService implements IDataService {
       const tdv = new TransactionalDataView(tr);
       return fn(tdv);
     });
+  }
+
+  /**
+   * Waits until all currently pending writes have been acknowledged by the backend.
+   * Use this before calling Cloud Functions that need to see recent writes.
+   *
+   * Firestore provides strong consistency guarantees: once this Promise resolves,
+   * all subsequent reads (including by Cloud Functions) will see the committed data.
+   *
+   * @returns Promise that resolves when all pending writes are acknowledged
+   * @throws Error if user signs out during wait
+   */
+  waitForPendingWrites(): Promise<void> {
+    return waitForPendingWrites(this._db);
   }
 
   watch<T>(
