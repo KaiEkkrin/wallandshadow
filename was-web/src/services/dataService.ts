@@ -10,7 +10,6 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  addDoc,
   getDocs,
   query,
   where,
@@ -21,6 +20,8 @@ import {
   runTransaction,
   waitForPendingWrites
 } from 'firebase/firestore';
+
+import { v7 as uuidv7 } from 'uuid';
 
 import * as Convert from './converter';
 import { IDataService, IDataReference, IDataView, IDataAndReference, IChildDataReference, IAppVersion } from './interfaces';
@@ -170,7 +171,7 @@ export class DataService implements IDataService {
 
   async addChanges(adventureId: string, uid: string, mapId: string, chs: Change[]): Promise<void> {
     const changesCol = collection(this._db, adventures, adventureId, maps, mapId, changes);
-    await addDoc(changesCol, {
+    await setDoc(doc(changesCol, uuidv7()), {
       chs: chs,
       timestamp: this._timestampProvider(),
       incremental: true,

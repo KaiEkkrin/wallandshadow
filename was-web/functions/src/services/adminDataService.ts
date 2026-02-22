@@ -1,5 +1,6 @@
 import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
+import { v7 as uuidv7 } from 'uuid';
 
 import * as Convert from './converter';
 import { IAdminDataService, IAdminDataView, ICollectionGroupQueryResult } from './extraInterfaces';
@@ -163,7 +164,7 @@ export class AdminDataService implements IAdminDataService {
   // IDataService implementation
 
   async addChanges(adventureId: string, uid: string, mapId: string, chs: Change[]): Promise<void> {
-    await this._db.collection(adventures).doc(adventureId).collection(maps).doc(mapId).collection(changes).add({
+    await this._db.collection(adventures).doc(adventureId).collection(maps).doc(mapId).collection(changes).doc(uuidv7()).set({
       chs: chs,
       timestamp: this._timestampProvider(),
       incremental: true,
