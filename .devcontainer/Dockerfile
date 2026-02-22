@@ -25,6 +25,10 @@ RUN npx playwright install-deps
 # Install global npm packages
 RUN npm install -g firebase-tools npm-run-all
 
+# Ensure GPU groups exist for AMD ROCm support
+# (harmless for non-AMD users; needed so --group-add=video/render work in Podman)
+RUN groupadd -f video && groupadd -f render
+
 # Switch to node user for subsequent operations
 # Note: Cache, config, and credential directories are created via symlinks
 # in postCreateCommand (see .devcontainer/scripts/post-create.sh)
