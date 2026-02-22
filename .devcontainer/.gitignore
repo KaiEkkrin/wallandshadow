@@ -8,5 +8,3 @@
 .config/
 .claude/
 
-# Ignore GPU configuration (user creates this from .env.sample)
-.env

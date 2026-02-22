@@ -4,38 +4,38 @@ Complete development environment for Wall & Shadow with Node.js 20, Firebase Emu
 
 ## Prerequisites
 
-1. **Docker Desktop** (or Docker Engine + Docker Compose on Linux)
+1. **Podman** (rootless, version 4.0+)
 
-   - [Download Docker Desktop](https://www.docker.com/products/docker-desktop)
+   - Fedora/RHEL: `sudo dnf install podman`
+   - Other Linux: see [Podman installation](https://podman.io/docs/installation)
+   - Verify rootless mode: `podman info | grep rootless` (should show `true`)
 
 2. **Visual Studio Code** with **Dev Containers** extension
 
    - Install VS Code: https://code.visualstudio.com/
    - Install extension: `ms-vscode-remote.remote-containers`
 
-3. **Windows Users: Use WSL2**
-   - ⚠️ **IMPORTANT**: On Windows, you MUST use WSL2 for good performance
-   - Clone and work with this repository inside WSL2, not directly on Windows (C: drive)
-   - Docker Desktop must be configured to use the WSL2 backend
-   - Setup guide: https://learn.microsoft.com/en-us/windows/wsl/install
+3. **Configure VS Code to use Podman**
+
+   Open VS Code settings (`Ctrl+,`) and add:
+
+   ```json
+   {
+     "dev.containers.dockerPath": "podman"
+   }
+   ```
+
+   Or set the Podman socket in your shell profile:
+
+   ```bash
+   export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+   ```
 
 ## Quick Start
 
 ### Initial Setup
 
 **Step 1: Clone the repository**
-
-**On Windows (WSL2):**
-
-```bash
-# Inside WSL2 (Ubuntu or other Linux distribution)
-cd ~
-git clone https://github.com/KaiEkkrin/wallandshadow.git
-cd wallandshadow
-code .
-```
-
-**On Linux:**
 
 ```bash
 cd ~
@@ -111,45 +111,39 @@ GPU support enables hardware-accelerated WebGL rendering for Playwright tests. *
 
 ### Quick Setup
 
-Copy the appropriate sample `.env` file for your system into `.devcontainer/.env`:
+The repository includes three dev container configurations. VS Code will present a picker when you have multiple configurations available. Press `F1` → **"Dev Containers: Open Folder in Container"** to choose:
 
-**For NVIDIA GPU (WSL2 + Docker Desktop):**
+| Configuration | File | When to use |
+| --- | --- | --- |
+| Wall & Shadow Development | `.devcontainer/devcontainer.json` | Default — no GPU |
+| Wall & Shadow Development (NVIDIA GPU) | `.devcontainer/nvidia/devcontainer.json` | NVIDIA GPU with ROCm CDI |
+| Wall & Shadow Development (AMD GPU) | `.devcontainer/amd/devcontainer.json` | AMD GPU with ROCm |
 
-```bash
-cd .devcontainer
-cp .env.nvidia .env
-```
-
-**For AMD GPU (Native Linux with ROCm):**
-
-```bash
-cd .devcontainer
-cp .env.amd .env
-```
-
-**For No GPU (default):**
-
-```bash
-# Don't create a .env file - default configuration is used automatically
-```
-
-After creating the `.env` file, rebuild the container: `F1` → **"Dev Containers: Rebuild Container"**
+After switching configuration, rebuild the container: `F1` → **"Dev Containers: Rebuild Container"**
 
 ### Requirements by GPU Type
 
-**NVIDIA (WSL2 + Docker Desktop):**
+**NVIDIA (Linux with Podman):**
 
 - NVIDIA GPU
-- NVIDIA driver installed on Windows host
-- Docker Desktop with WSL2 backend (includes NVIDIA Container Toolkit automatically)
-- **Important**: Do NOT install any NVIDIA driver inside WSL2 - the Windows driver is automatically made available
+- NVIDIA driver installed on the host
+- NVIDIA Container Toolkit installed: [installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+- CDI configured (run once after toolkit install):
+  ```bash
+  sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+  ```
+- Verify: `nvidia-ctk cdi list` should show `nvidia.com/gpu=0` (or similar)
 
-**AMD (Native Linux):**
+**AMD (Native Linux with ROCm):**
 
 - AMD GPU with ROCm support
 - ROCm drivers installed on Linux host ([installation guide](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/))
+- Host user in `video` and `render` groups:
+  ```bash
+  sudo usermod -aG video,render $USER
+  # Log out and back in for group membership to take effect
+  ```
 - Verify GPU access: `ls -la /dev/dri /dev/kfd`
-- Ensure your user is in `video` and `render` groups on the host
 
 ### Verifying GPU Access
 
@@ -167,6 +161,9 @@ nvidia-smi
 ```bash
 # Should list GPU devices
 ls -la /dev/dri /dev/kfd
+
+# Should include video and render
+groups
 ```
 
 ## Service Endpoints
@@ -228,23 +225,17 @@ Creates optimized production build in `was-web/build/` directory.
 
 ## Architecture
 
-### Services
+### Container
 
-The dev container runs a single Docker service:
+The dev container is a single Podman container built from `.devcontainer/Dockerfile`. It runs as the `node` user (rootless, with UID remapped to match the host user via `updateRemoteUserUID`).
 
-1. **hexland-dev** - Main development environment with Node.js, Firebase tools, and all dependencies
-
-The Firebase Storage emulator is included with the other Firebase emulators.
-
-### Storage
-
-The repository is mounted as a bind mount at `/workspaces/hexland`. Cache and config directories are stored within the repository via symlinks:
+The repository is mounted as a bind mount at `/workspaces/wallandshadow`. Cache and config directories are stored within the repository via symlinks:
 
 - `~/.cache/firebase` → `.devcontainer/.cache/firebase`
 - `~/.config` → `.devcontainer/.config`
 - `~/.claude` → `.devcontainer/.claude`
 
-This keeps cache/config persistent across container rebuilds while maintaining good performance on Linux/WSL2.
+This keeps cache/config persistent across container rebuilds while maintaining good performance on Linux.
 
 ### Environment Variables
 
@@ -295,16 +286,36 @@ If `firebase-admin-credentials.json` is missing, follow Step 2 in the Quick Star
 3. **Port conflicts**: Check if ports 3400, 4000, 5000, 5001, 8080, 9099 are already in use on your host
 4. **Missing credentials**: Ensure `was-web/firebase-admin-credentials.json` exists (see Quick Start Step 2)
 
-### Slow Performance on Windows
+### Bind Mount Permission Errors
 
-**Symptom**: Slow file operations, long build times
+**Symptom**: Cannot write to files in `/workspaces/wallandshadow` inside the container.
 
-**Solution**: Ensure you're working in WSL2, NOT directly on Windows:
+**Cause**: Podman rootless user namespace mismatch.
 
-- ✅ Repository should be in WSL2 filesystem: `/home/username/hexland`
-- ❌ NOT on Windows filesystem: `/mnt/c/Users/username/hexland`
+**Solution**: The `devcontainer.json` uses `--userns=keep-id` and `updateRemoteUserUID: true` to handle this automatically. If you still see issues:
 
-Verify Docker Desktop is using WSL2 backend: Settings → General → Use WSL 2 based engine
+```bash
+# On the host, check your UID
+id -u
+
+# Inside the container, verify the node user UID matches
+id
+```
+
+If they don't match, rebuild the container: `F1` → **"Dev Containers: Rebuild Container"**
+
+### SELinux Permission Errors
+
+**Symptom**: Permission denied errors accessing the workspace on Fedora/RHEL.
+
+**Cause**: SELinux label mismatch on the bind mount.
+
+**Solution**: The `devcontainer.json` uses the `,Z` mount option to relabel files automatically. If issues persist:
+
+```bash
+# Check SELinux denials
+sudo ausearch -m AVC -ts recent
+```
 
 ### Module Not Found
 
@@ -326,18 +337,19 @@ yarn install
 
 **NVIDIA**:
 
-- Verify NVIDIA driver on Windows: Open PowerShell, run `nvidia-smi`
-- Verify Docker Desktop has WSL2 backend enabled
-- Check `.devcontainer/.env` file exists and contains `COMPOSE_PROFILES=nvidia`
-- Rebuild the container after creating/modifying `.env` file
+- Verify NVIDIA driver on host: `nvidia-smi`
+- Verify CDI is configured: `nvidia-ctk cdi list`
+- If CDI not configured: `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`
+- Make sure you selected the **NVIDIA GPU** configuration when opening the container
+- Rebuild the container after switching configuration
 
 **AMD**:
 
 - Verify ROCm drivers: `rocm-smi` on host Linux
 - Verify devices exist: `ls -la /dev/dri /dev/kfd`
-- Check `.devcontainer/.env` file exists and contains `COMPOSE_PROFILES=amd`
-- Rebuild the container after creating/modifying `.env` file
-- Ensure your user is in `video` and `render` groups on the host
+- Ensure your user is in `video` and `render` groups on the host: `groups`
+- Make sure you selected the **AMD GPU** configuration when opening the container
+- Rebuild the container after switching configuration
 
 ### Changes Not Reflecting in Browser
 
@@ -352,9 +364,10 @@ yarn install
 
 **Common causes:**
 
-1. **Docker out of space**: Run `docker system prune -a`
+1. **Podman out of space**: Run `podman system prune -a`
 2. **Network issues**: Retry the build
-3. **Invalid configuration**: Check `.devcontainer/devcontainer.json` syntax
+3. **Invalid configuration**: Check `.devcontainer/devcontainer.json` syntax with `python3 -m json.tool .devcontainer/devcontainer.json`
+4. **Podman socket not running**: `systemctl --user start podman.socket`
 
 ## Reconnecting After Closing VS Code
 
@@ -373,9 +386,9 @@ OR use the Remote Explorer:
 ## Resources
 
 - [VS Code Dev Containers Documentation](https://code.visualstudio.com/docs/devcontainers/containers)
+- [Podman Documentation](https://docs.podman.io/)
+- [Podman Rootless Tutorial](https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md)
 - [Firebase Emulator Suite](https://firebase.google.com/docs/emulator-suite)
 - [Node.js 20 Documentation](https://nodejs.org/docs/latest-v20.x/api/)
-- [Docker Compose Profiles](https://docs.docker.com/compose/how-tos/profiles/)
-- [WSL2 Setup Guide](https://learn.microsoft.com/en-us/windows/wsl/install)
-- [NVIDIA GPU on WSL2](https://docs.nvidia.com/cuda/wsl-user-guide/index.html)
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 - [AMD ROCm on Linux](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/)
