@@ -46,39 +46,36 @@ This document tracks dependency updates that should be addressed in the near ter
 
 ---
 
-## Playwright 1.40 → 1.57+
+## Playwright 1.40 → 1.58.2 ✅ COMPLETED
 
-**Current:** @playwright/test ^1.40.1
-**Target:** ^1.57.0 (or latest)
-**Priority:** High (17 minor versions behind)
+**Previous:** @playwright/test ^1.40.1
+**Current:** @playwright/test ^1.58.2
+**Status:** Completed February 2026
 
-Playwright follows a rolling release model. Version 1.57 switches from Chromium to Chrome for Testing builds and has deprecated Node.js 18 support.
+### Changes Made
 
-### Steps
-
-1. Update `was-web/package.json`:
+1. Updated `was-web/package.json`:
    ```json
-   "@playwright/test": "^1.57.0"
+   "@playwright/test": "^1.58.2"
    ```
 
-2. Run `yarn install`
+2. Added Playwright browser cache symlink to `.devcontainer/scripts/post-create.sh`:
+   - `~/.cache/ms-playwright` → `.devcontainer/.cache/ms-playwright`
+   - Consistent with existing firebase/config/claude caching pattern
+   - Browsers persist across container rebuilds (no re-download on `devcontainer rebuild`)
 
-3. Update browsers:
-   ```bash
-   npx playwright install
-   ```
+3. Ran `yarn install` to update `yarn.lock`
 
-4. Run E2E tests and check for failures:
-   ```bash
-   yarn test:e2e
-   ```
+4. Ran `npx playwright install` — downloaded new browser versions:
+   - Chrome for Testing 145.0.7632.6 (switch from Chromium, new in 1.57)
+   - Firefox 146.0.1
+   - WebKit 26.0
 
-5. Update any snapshots if needed:
-   ```bash
-   yarn test:e2e --update-snapshots
-   ```
+### Notes
 
-6. Review Playwright changelog for breaking changes between 1.40 and 1.57
+- Targeted 1.58.2 (latest stable) rather than 1.57 as originally specified
+- Microsoft's Playwright Docker images (`mcr.microsoft.com/playwright`) were evaluated as a devcontainer base to avoid browser re-downloads, but are Node.js 20 only — incompatible with our Node.js 22 requirement for Firebase Functions. The symlink caching approach achieves the same goal.
+- All non-WebGL E2E tests pass; WebGL tests fail as expected in this dev container (no GPU)
 
 ### References
 
@@ -163,7 +160,7 @@ The functions package shares code with the web app via symlinks, so versions sho
 ## Update Checklist
 
 - [x] React 18 → 19
-- [ ] Playwright 1.40 → 1.57+
+- [x] Playwright 1.40 → 1.57+
 - [ ] Vitest 3.2 → 4.x
 - [ ] Three.js version synchronisation
 - [ ] Full test suite passes
