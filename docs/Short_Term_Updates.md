@@ -84,30 +84,27 @@ This document tracks dependency updates that should be addressed in the near ter
 
 ---
 
-## Vitest 3.2 → 4.x
+## Vitest 3.2 → 4.x ✅ COMPLETED
 
-**Current:** vitest ^3.2.0
-**Target:** ^4.0.0 (latest is 4.0.16)
+**Previous:** vitest ^3.2.0
+**Current:** vitest ^4.0.0
+**Status:** Completed February 2026
 
-Vitest 4 has breaking changes to the reporter API. IDE integrations have been updated for the new API.
+### Changes Made
 
-### Steps
-
-1. Update `was-web/package.json`:
+1. Updated `was-web/package.json`:
    ```json
    "vitest": "^4.0.0"
    ```
 
-2. Run `yarn install`
+2. Ran `yarn install` to update `yarn.lock`
 
-3. Run unit tests:
-   ```bash
-   yarn test:unit
-   ```
+3. Ran `yarn test` — all 97 unit tests pass with no changes required
 
-4. Check for any custom reporter configurations that may need updating
+### Notes
 
-5. Update VS Code Vitest extension if using one
+- No configuration changes were needed — `unit/vitest.config.ts` uses no custom reporters, so the breaking reporter API changes in Vitest 4 did not affect this project
+- The Firebase CJS/ESM alias workaround in `vitest.config.ts` continues to work unchanged
 
 ### References
 
@@ -161,7 +158,7 @@ The functions package shares code with the web app via symlinks, so versions sho
 
 - [x] React 18 → 19
 - [x] Playwright 1.40 → 1.57+
-- [ ] Vitest 3.2 → 4.x
+- [x] Vitest 3.2 → 4.x
 - [ ] Three.js version synchronisation
 - [ ] Full test suite passes
 - [ ] Deploy to test environment
