@@ -1,31 +1,31 @@
 {
-  "name": "Wall & Shadow Development",
+  "name": "Wall & Shadow Development (AMD GPU)",
   "build": {
-    "dockerfile": "Dockerfile",
-    "context": "."
+    "dockerfile": "../Dockerfile",
+    "context": ".."
   },
 
   "workspaceFolder": "/workspaces/wallandshadow",
-  // The ,Z suffix relabels the bind mount for SELinux (required on Fedora/RHEL with Podman)
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/wallandshadow,type=bind,Z",
 
-  // Podman rootless compatibility:
-  // --shm-size: 2GB shared memory for WebGL rendering in Playwright tests.
-  //   Replaces the old docker-compose `ipc: host` approach.
-  // --userns=keep-id: maps host user UID to same UID inside container (fixes bind mount permissions)
-  // --tmpfs=/tmp:rw,exec,mode=1777: works around a crun >= 1.11 regression (podman#20754) where
-  //   devcontainer feature installation (git:1, github-cli:1) runs as root via buildah and writes
-  //   a new overlay layer in which /tmp gets mode 0755 instead of the correct 1777.  The result is
-  //   that the node user cannot create files in /tmp (e.g. /tmp/.X11-unix).  Mounting a fresh tmpfs
-  //   at container start bypasses the corrupted image layer entirely.
+  // AMD ROCm GPU access via direct device mounts.
+  // Requires on host:
+  //   1. ROCm drivers installed (https://rocm.docs.amd.com/projects/install-on-linux/)
+  //   2. Host user in 'video' and 'render' groups: sudo usermod -aG video,render $USER
+  //   3. Verify devices exist: ls -la /dev/dri /dev/kfd
+  // --tmpfs=/tmp: workaround for crun >= 1.11 regression (podman#20754) that corrupts /tmp
+  // permissions during devcontainer feature builds. See .devcontainer/X11_PERMISSION_RESEARCH.md.
   "runArgs": [
     "--shm-size=2g",
     "--userns=keep-id",
-    "--tmpfs=/tmp:rw,exec,mode=1777"
+    "--tmpfs=/tmp:rw,exec,mode=1777",
+    "--device=/dev/kfd",
+    "--device=/dev/dri",
+    "--security-opt=seccomp=unconfined",
+    "--group-add=video",
+    "--group-add=render"
   ],
 
-  // With --userns=keep-id the host UID is already mapped to the same UID inside the
-  // container, so VS Code must NOT also try to remap it via usermod (updateRemoteUserUID).
   "updateRemoteUserUID": false,
 
   "containerEnv": {

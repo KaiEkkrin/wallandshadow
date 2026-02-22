@@ -28,17 +28,19 @@ mkdir -p "$DEVCONTAINER_DIR/.config"
 mkdir -p "$DEVCONTAINER_DIR/.claude"
 
 # Create parent directories in home if they don't exist
-mkdir -p /home/node/.cache
+mkdir -p "$HOME/.cache"
 
 # Create symlinks from home directory to workspace
 # Use -f to force in case they already exist from a rebuild
-ln -sfn "$DEVCONTAINER_DIR/.cache/firebase" /home/node/.cache/firebase
-ln -sfn "$DEVCONTAINER_DIR/.config" /home/node/.config
-ln -sfn "$DEVCONTAINER_DIR/.claude" /home/node/.claude
+# Use $HOME instead of /home/node for Podman rootless compatibility
+# (updateRemoteUserUID may remap the node user's UID, but HOME stays /home/node)
+ln -sfn "$DEVCONTAINER_DIR/.cache/firebase" "$HOME/.cache/firebase"
+ln -sfn "$DEVCONTAINER_DIR/.config" "$HOME/.config"
+ln -sfn "$DEVCONTAINER_DIR/.claude" "$HOME/.claude"
 
-echo "   ✅ ~/.cache/firebase -> .devcontainer/.cache/firebase"
-echo "   ✅ ~/.config -> .devcontainer/.config"
-echo "   ✅ ~/.claude -> .devcontainer/.claude"
+echo "   ✅ \$HOME/.cache/firebase -> .devcontainer/.cache/firebase"
+echo "   ✅ \$HOME/.config -> .devcontainer/.config"
+echo "   ✅ \$HOME/.claude -> .devcontainer/.claude"
 echo ""
 
 # Check for Firebase admin credentials

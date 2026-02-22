@@ -18,7 +18,7 @@
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.0.0",
     "react-router-bootstrap": "^0.26.3",
-    "react-router-dom": "^6.28.0",
+    "react-router-dom": "^6.30.3",
     "react-use-measure": "^2.1.1",
     "rxjs": "^7.8.0",
     "three": "^0.182.0",
@@ -43,7 +43,8 @@
   "resolutions": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "jws": "^4.0.1"
+    "jws": "^4.0.1",
+    "fast-xml-parser": "^5.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
