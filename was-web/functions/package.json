@@ -35,6 +35,7 @@
   },
   "private": true,
   "resolutions": {
-    "jws": "^4.0.1"
+    "jws": "^4.0.1",
+    "fast-xml-parser": "^5.3.6"
   }
 }
