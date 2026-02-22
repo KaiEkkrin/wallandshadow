@@ -14,7 +14,7 @@ import { getTokenGeometry } from '../data/tokenGeometry';
 import { Tokens, SimpleTokenDrawing } from '../data/tokens';
 
 import * as Convert from './converter';
-import { IAdminDataService } from './extraInterfaces';
+import { IAdminDataService, IAdminDataView } from './extraInterfaces';
 import { updateProfileAdventures, updateProfileMaps, updateAdventureMaps } from './helpers';
 import { IDataService, IDataView, IDataReference, IDataAndReference, ILogger } from './interfaces';
 
@@ -25,9 +25,8 @@ import { v7 as uuidv7 } from 'uuid';
 import * as functions from 'firebase-functions/v1';
 
 async function createAdventureTransaction(
-  view: IDataView,
+  view: IAdminDataView,
   profileRef: IDataReference<IProfile>,
-  currentAdventures: IDataAndReference<IAdventure>[],
   name: string,
   description: string,
   newAdventureRef: IDataReference<IAdventure>,
@@ -39,6 +38,9 @@ async function createAdventureTransaction(
     throw new functions.https.HttpsError('permission-denied', 'No profile available');
   }
 
+  // Fetch the current adventure count inside the transaction so the policy check
+  // is atomic with the creation write (prevents concurrent calls bypassing the cap).
+  const currentAdventures = await view.getMyAdventures(profileRef.id);
   const policy = getUserPolicy(profile.level);
   if (currentAdventures.length >= policy.adventures) {
     throw new functions.https.HttpsError('permission-denied', 'You already have the maximum number of adventures.');
@@ -71,17 +73,15 @@ async function createAdventureTransaction(
   }
 }
 
-export async function createAdventure(dataService: IDataService, uid: string, name: string, description: string): Promise<string> {
-  // I'm going to need this user's profile and all their current adventures:
+export async function createAdventure(dataService: IAdminDataService, uid: string, name: string, description: string): Promise<string> {
+  // Refs for the new adventure and the owner's player record.
+  // The adventure count check and creation happen atomically inside the transaction.
   const profileRef = dataService.getProfileRef(uid);
-  const currentAdventures = await dataService.getMyAdventures(uid);
-
-  // ...and a ref for the new one, along with the new owner's player record
   const id = uuidv7();
   const newAdventureRef = dataService.getAdventureRef(id);
   const newPlayerRef = dataService.getPlayerRef(id, uid);
-  await dataService.runTransaction(tr => createAdventureTransaction(
-    tr, profileRef, currentAdventures, name, description, newAdventureRef, newPlayerRef
+  await dataService.runAdminTransaction(tr => createAdventureTransaction(
+    tr, profileRef, name, description, newAdventureRef, newPlayerRef
   ));
 
   return id;
@@ -359,8 +359,10 @@ export async function consolidateMapChanges(
   syncChanges?: (tokenDict: ITokenDictionary) => void
 ): Promise<Changes | undefined> {
   // Because we can consolidate at most 499 changes in one go due to the write limit,
-  // we do this in a loop until we can't find any more:
-  while (true) {
+  // we do this in a loop until we can't find any more.
+  // The guard prevents an infinite loop if the transaction never converges.
+  const maxIterations = 20;
+  for (let i = 0; i < maxIterations; ++i) {
     const result = await tryConsolidateMapChanges(
       dataService, logger, timestampProvider, adventureId, mapId, m, resync, syncChanges
     );
@@ -368,6 +370,10 @@ export async function consolidateMapChanges(
       return result.baseChange;
     }
   }
+  throw new functions.https.HttpsError(
+    'resource-exhausted',
+    `Map ${mapId} consolidation did not converge after ${maxIterations} iterations`
+  );
 }
 
 // Checks whether this invite is still in date; deletes super-out-of-date ones.
@@ -426,10 +432,9 @@ export async function inviteToAdventure(
 }
 
 async function joinAdventureTransaction(
-  view: IDataView,
+  view: IAdminDataView,
   adventureRef: IDataReference<IAdventure>,
   playerRef: IDataReference<IPlayer>,
-  otherPlayers: IDataAndReference<IPlayer>[],
   profileRef: IDataReference<IProfile>,
   ownerProfileRef: IDataReference<IProfile>
 ): Promise<string> {
@@ -437,6 +442,10 @@ async function joinAdventureTransaction(
   if (ownerProfile === undefined) {
     throw new functions.https.HttpsError('not-found', 'No profile for the adventure owner');
   }
+
+  // Fetch current players inside the transaction so the cap check is atomic with
+  // the player creation write (prevents concurrent joins from bypassing the limit).
+  const otherPlayers = await view.getPlayerRefs(adventureRef.id);
 
   // When counting joined players, blocked ones don't count.
   const ownerPolicy = getUserPolicy(ownerProfile.level);
@@ -500,7 +509,7 @@ async function joinAdventureTransaction(
 }
 
 export async function joinAdventure(
-  dataService: IDataService,
+  dataService: IAdminDataService,
   uid: string,
   inviteId: string,
   policy: IInviteExpiryPolicy
@@ -508,7 +517,9 @@ export async function joinAdventure(
   const inviteRef = dataService.getInviteRef(inviteId);
   const profileRef = dataService.getProfileRef(uid);
 
-  // We need to fetch and verify the invite so that we can get the adventure id
+  // We need to fetch and verify the invite so that we can get the adventure id.
+  // These reads are outside the transaction because they don't conflict with any
+  // writes (the invite is not modified by joining) and their freshness is not critical.
   const invite = await dataService.get(inviteRef);
   if (invite === undefined) {
     throw new functions.https.HttpsError('not-found', 'No such invite');
@@ -525,22 +536,16 @@ export async function joinAdventure(
   const adventureRef = dataService.getAdventureRef(invite.adventureId);
   const playerRef = dataService.getPlayerRef(invite.adventureId, uid);
 
-  // Before going any further we need to fish up what players are currently
-  // joined to that adventure, so that we can make the policy decision of
-  // whether to allow another.
-  // We can't do this in the transaction as it stands: I think it's okay
-  // to have a small window for a race condition here for now.  In future I
-  // can sync this with the adventures record or even merge the player list
-  // into the adventures record entirely, instead.
-  const otherPlayers = await dataService.getPlayerRefs(invite.adventureId);
-
   const adventure = await dataService.get(adventureRef);
   if (adventure === undefined) {
     throw new functions.https.HttpsError('not-found', 'No such adventure');
   }
 
-  const ownerProfileRef = dataService.getProfileRef(adventure?.owner)
-  return await dataService.runTransaction(tr => joinAdventureTransaction(
-    tr, adventureRef, playerRef, otherPlayers, profileRef, ownerProfileRef
+  const ownerProfileRef = dataService.getProfileRef(adventure.owner);
+
+  // The player count check and the player creation write both happen inside the
+  // transaction, so the cap cannot be bypassed by concurrent joins.
+  return await dataService.runAdminTransaction(tr => joinAdventureTransaction(
+    tr, adventureRef, playerRef, profileRef, ownerProfileRef
   ));
 }

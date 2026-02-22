@@ -1,8 +1,8 @@
-import { IAdventure } from '../data/adventure';
+import { IAdventure, IPlayer } from '../data/adventure';
 import { IInvite } from '../data/invite';
 import { IMap } from '../data/map';
 import { ISpritesheet } from '../data/sprite';
-import { IDataAndReference, IDataReference, IDataService } from './interfaces';
+import { IDataAndReference, IDataReference, IDataService, IDataView } from './interfaces';
 
 // We extend the data service with a few things that we're only going to need
 // from the Functions
@@ -11,7 +11,17 @@ export interface ICollectionGroupQueryResult<T, U> extends IDataAndReference<T> 
   getParent(): IDataReference<U> | undefined;
 }
 
+// An extension of IDataView that supports collection reads within a transaction.
+// Only available when using the Admin SDK (server-side), which supports transactional
+// collection queries via transaction.get(query). The web SDK does not support this.
+export interface IAdminDataView extends IDataView {
+  getMyAdventures(uid: string): Promise<IDataAndReference<IAdventure>[]>;
+  getPlayerRefs(adventureId: string): Promise<IDataAndReference<IPlayer>[]>;
+}
+
 export interface IAdminDataService extends IDataService {
+  // Runs a transaction where the view also supports collection reads (admin SDK only).
+  runAdminTransaction<T>(fn: (dataView: IAdminDataView) => Promise<T>): Promise<T>;
   // Gets all the adventures with a particular image path.
   getAdventureRefsByImagePath(path: string): Promise<IDataAndReference<IAdventure>[]>;
 

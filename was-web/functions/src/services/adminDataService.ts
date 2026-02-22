@@ -2,7 +2,7 @@ import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
 
 import * as Convert from './converter';
-import { IAdminDataService, ICollectionGroupQueryResult } from './extraInterfaces';
+import { IAdminDataService, IAdminDataView, ICollectionGroupQueryResult } from './extraInterfaces';
 import { IChildDataReference, IDataReference, IDataView, IDataAndReference, IAppVersion } from './interfaces';
 import { IAdventure, IPlayer } from '../data/adventure';
 import { Change, Changes } from '../data/change';
@@ -314,7 +314,14 @@ export class AdminDataService implements IAdminDataService {
 
   runTransaction<T>(fn: (dataView: IDataView) => Promise<T>): Promise<T> {
     return this._db.runTransaction(tr => {
-      const tdv = new TransactionalDataView(tr);
+      const tdv = new TransactionalDataView(tr, this._db);
+      return fn(tdv);
+    });
+  }
+
+  runAdminTransaction<T>(fn: (dataView: IAdminDataView) => Promise<T>): Promise<T> {
+    return this._db.runTransaction(tr => {
+      const tdv = new TransactionalDataView(tr, this._db);
       return fn(tdv);
     });
   }
@@ -421,11 +428,13 @@ export class AdminDataService implements IAdminDataService {
   }
 }
 
-class TransactionalDataView implements IDataView {
+class TransactionalDataView implements IAdminDataView {
   private _tr: FirebaseFirestore.Transaction;
+  private readonly _db: FirebaseFirestore.Firestore;
 
-  constructor(tr: FirebaseFirestore.Transaction) {
+  constructor(tr: FirebaseFirestore.Transaction, db: FirebaseFirestore.Firestore) {
     this._tr = tr;
+    this._db = db;
   }
 
   async delete<T>(r: IDataReference<T>): Promise<void> {
@@ -447,5 +456,24 @@ class TransactionalDataView implements IDataView {
   async update<T>(r: IDataReference<T>, chs: any): Promise<void> {
     const dref = (r as DataReference<T>).dref;
     this._tr = this._tr.update(dref, chs);
+  }
+
+  // IAdminDataView: collection reads that participate in the transaction.
+  // The Admin SDK supports transaction.get(query), unlike the web SDK.
+
+  async getMyAdventures(uid: string): Promise<IDataAndReference<IAdventure>[]> {
+    const q = this._db.collection(adventures).where("owner", "==", uid);
+    const s = await this._tr.get(q);
+    return s.docs.map(d => new DataAndReference(
+      d.ref, Convert.adventureConverter.convert(d.data()), Convert.adventureConverter
+    ));
+  }
+
+  async getPlayerRefs(adventureId: string): Promise<IDataAndReference<IPlayer>[]> {
+    const col = this._db.collection(adventures).doc(adventureId).collection(players);
+    const s = await this._tr.get(col);
+    return s.docs.map(d => new DataAndReference(
+      d.ref, Convert.playerConverter.convert(d.data()), Convert.playerConverter
+    ));
   }
 }

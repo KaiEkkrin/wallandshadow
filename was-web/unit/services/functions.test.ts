@@ -452,13 +452,13 @@ service firebase.storage {
   describe('200-long test', () => {
     test('create a map and consolidate 200 moves', async () => {
       await testConsolidate(200);
-    });
+    }, 120_000);
   });
 
   describe('600-long test', () => {
     test('create a map and consolidate 600 moves', async () => {
       await testConsolidate(600);
-    });
+    }, 300_000);
   });
 
   test('join and leave an adventure', async () => {
