@@ -113,19 +113,18 @@ This document tracks dependency updates that should be addressed in the near ter
 
 ---
 
-## Synchronise Three.js Versions
+## Synchronise Three.js Versions ✅ COMPLETED
 
-**Current:**
+**Previous:**
 - `was-web/package.json`: three ^0.182.0, @types/three ^0.182.0
 - `was-web/functions/package.json`: three ^0.163.0, @types/three ^0.163.0
 
-**Target:** Align both to ^0.182.0
+**Current:** Both aligned to ^0.182.0
+**Status:** Completed February 2026
 
-The functions package shares code with the web app via symlinks, so versions should be aligned.
+### Changes Made
 
-### Steps
-
-1. Update `was-web/functions/package.json`:
+1. Updated `was-web/functions/package.json`:
    ```json
    "dependencies": {
      "three": "^0.182.0"
@@ -135,17 +134,14 @@ The functions package shares code with the web app via symlinks, so versions sho
    }
    ```
 
-2. Run `yarn install` in functions directory
+2. Ran `yarn install` in `was-web/functions/` to update `yarn.lock`
 
-3. Rebuild functions:
-   ```bash
-   cd was-web/functions
-   yarn build
-   ```
+3. Rebuilt functions (`yarn build`) and linted (`yarn lint`) — both pass with no errors
 
-4. Test with emulators to verify no regressions
+### Notes
 
-5. Review [Three.js Migration Guide](https://github.com/mrdoob/three.js/wiki/Migration-Guide) for changes between r163 and r182
+- No code changes required — the Three.js APIs used in shared symlinked files (Vector2, Vector3, Matrix4, IUniform, WebGLRenderTarget) have no breaking changes between r163 and r182
+- All 97 unit tests pass
 
 ### References
 
@@ -159,7 +155,7 @@ The functions package shares code with the web app via symlinks, so versions sho
 - [x] React 18 → 19
 - [x] Playwright 1.40 → 1.57+
 - [x] Vitest 3.2 → 4.x
-- [ ] Three.js version synchronisation
+- [x] Three.js version synchronisation
 - [ ] Full test suite passes
 - [ ] Deploy to test environment
 - [ ] Deploy to production
