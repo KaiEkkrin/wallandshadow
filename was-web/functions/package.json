@@ -33,9 +33,5 @@
     "eslint-plugin-import": "^2.32.0",
     "typescript": "^5.7.0"
   },
-  "private": true,
-  "resolutions": {
-    "jws": "^4.0.1",
-    "fast-xml-parser": "^5.3.6"
-  }
+  "private": true
 }
