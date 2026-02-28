@@ -72,11 +72,11 @@
     },
     "4000": {
       "label": "Firebase Emulator UI",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "notify"
     },
     "5000": {
       "label": "React Dev Server",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "notify"
     },
     "5001": {
       "label": "Firebase Functions",
