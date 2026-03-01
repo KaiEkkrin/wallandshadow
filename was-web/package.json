@@ -42,7 +42,7 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report --host 0.0.0.0 e2e/test-results/html",
-    "lint": "eslint src"
+    "lint": "eslint src packages/shared/src"
   },
   "resolutions": {
     "@types/react": "^19.0.0",
