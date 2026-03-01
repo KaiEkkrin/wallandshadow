@@ -105,6 +105,21 @@ async function consolidateMapChanges(uid: string, request: Req.ConsolidateMapCha
     throw new functions.https.HttpsError('not-found', 'No such map');
   }
 
+  // Verify the caller is the adventure owner or an active (non-blocked) player.
+  // The Admin SDK bypasses Firestore security rules, so we enforce authorization here.
+  const adventureRef = dataService.getAdventureRef(request.adventureId);
+  const adventure = await dataService.get(adventureRef);
+  if (adventure === undefined) {
+    throw new functions.https.HttpsError('not-found', 'No such adventure');
+  }
+  if (adventure.owner !== uid) {
+    const players = await dataService.getPlayerRefs(request.adventureId);
+    const isActivePlayer = players.some(p => p.data.playerId === uid && p.data.allowed !== false);
+    if (!isActivePlayer) {
+      throw new functions.https.HttpsError('permission-denied', 'You are not in this adventure');
+    }
+  }
+
   await Extensions.consolidateMapChanges(
     dataService,
     functionLogger,
@@ -185,6 +200,26 @@ async function deleteImage(uid: string, request: Req.DeleteImageRequest) {
   await ImageExtensions.deleteImage(dataService, storage, functionLogger, uid, request.path);
 }
 
+// Deletes a map and all its sub-resources (changes subcollection).
+
+async function deleteMap(uid: string, request: Req.DeleteMapRequest) {
+  if (!request.adventureId || !request.mapId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Adventure id and map id required');
+  }
+
+  await Extensions.deleteMap(dataService, uid, request.adventureId, request.mapId);
+}
+
+// Deletes an adventure and all its sub-resources (maps, changes, players, spritesheets).
+
+async function deleteAdventure(uid: string, request: Req.DeleteAdventureRequest) {
+  if (!request.adventureId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Adventure id required');
+  }
+
+  await Extensions.deleteAdventure(dataService, uid, request.adventureId);
+}
+
 // Handles most calls. Allocated a small amount of memory.
 // (Using a single Function rather than multiple reduces deployment time and hopefully,
 // also reduces the number of cold spin-up delays, without having significant other penalty
@@ -203,7 +238,9 @@ export const interact = getFunctionBuilder().https.onCall(async (data, context) 
     case 'consolidateMapChanges': await consolidateMapChanges(uid, request); return true;
     case 'createAdventure': return await createAdventure(uid, request);
     case 'createMap': return await createMap(uid, request);
+    case 'deleteAdventure': await deleteAdventure(uid, request); return true;
     case 'deleteImage': await deleteImage(uid, request); return true;
+    case 'deleteMap': await deleteMap(uid, request); return true;
     case 'inviteToAdventure': return await inviteToAdventure(uid, request);
     case 'joinAdventure': return await joinAdventure(uid, request);
     default: throw new functions.https.HttpsError('invalid-argument', 'Unrecognised verb');

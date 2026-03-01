@@ -74,6 +74,22 @@ export class FunctionsService implements IFunctionsService {
     await this.interactCallable(request);
   }
 
+  async deleteMap(adventureId: string, mapId: string): Promise<void> {
+    const request: Req.DeleteMapRequest = {
+      verb: 'deleteMap',
+      adventureId, mapId
+    };
+    await this.interactCallable(request);
+  }
+
+  async deleteAdventure(adventureId: string): Promise<void> {
+    const request: Req.DeleteAdventureRequest = {
+      verb: 'deleteAdventure',
+      adventureId
+    };
+    await this.interactCallable(request);
+  }
+
   async deleteImage(path: string): Promise<void> {
     const request: Req.DeleteImageRequest = {
       verb: 'deleteImage', path

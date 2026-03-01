@@ -9,7 +9,9 @@ export type FunctionRequest =
   ConsolidateMapChangesRequest |
   InviteToAdventureRequest |
   JoinAdventureRequest |
-  DeleteImageRequest;
+  DeleteImageRequest |
+  DeleteMapRequest |
+  DeleteAdventureRequest;
 
 export type CreateAdventureRequest = {
   verb?: 'createAdventure';
@@ -63,6 +65,17 @@ export type InviteExpiry = {
 export type DeleteImageRequest = {
   verb?: 'deleteImage';
   path?: string;
+};
+
+export type DeleteMapRequest = {
+  verb?: 'deleteMap';
+  adventureId?: string;
+  mapId?: string;
+};
+
+export type DeleteAdventureRequest = {
+  verb?: 'deleteAdventure';
+  adventureId?: string;
 };
 
 export type AddSpritesRequest = {

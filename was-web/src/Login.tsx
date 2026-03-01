@@ -17,7 +17,8 @@ import Modal from 'react-bootstrap/Modal';
 import Tab from 'react-bootstrap/Tab';
 import Tabs from 'react-bootstrap/Tabs';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { getPostLoginPath } from './utils/loginRedirect';
 import { v7 as uuidv7 } from 'uuid';
 
 interface ILoginMessageProps {
@@ -246,7 +247,7 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
 
 function Login() {
   const { auth, googleAuthProvider } = useContext(FirebaseContext);
-  const { profile, expectNewUser } = useContext(ProfileContext);
+  const { profile, expectNewUser, expectGoogleSignup } = useContext(ProfileContext);
   const { logError } = useContext(AnalyticsContext);
   const { toasts } = useContext(StatusContext);
   const navigate = useNavigate();
@@ -288,11 +289,12 @@ function Login() {
     return true;
   }, [setLoginFailedVisible, toasts]);
 
+  const location = useLocation();
   const finishLogin = useCallback((success: boolean) => {
     if (success) {
-      navigate('/app');
+      navigate(getPostLoginPath(location.state?.from), { replace: true });
     }
-  }, [navigate]);
+  }, [navigate, location.state?.from]);
 
   const handleLoginError = useCallback((e: unknown) => {
     setLoginFailedVisible(true);
@@ -327,9 +329,13 @@ function Login() {
     setShowEmailForm(false);
     setLoginFailedVisible(false);
     if (googleAuthProvider !== undefined) {
+      // Register the display name before the popup opens so that the profile context
+      // can apply it when the auth state change fires (which happens before our .then()
+      // callback runs, so we can't rely on calling expectNewUser inside .then()).
+      expectGoogleSignup?.(displayName);
       auth?.signInWithPopup(googleAuthProvider)
         .then(async (user) => {
-          // Update the user's display name if they're a new user
+          // Also update the Firebase Auth profile so the display name is consistent
           if (user && displayName) {
             await user.updateProfile({ displayName });
           }
@@ -339,7 +345,7 @@ function Login() {
         .then(finishLogin)
         .catch(handleLoginError);
     }
-  }, [auth, googleAuthProvider, finishLogin, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
+  }, [auth, expectGoogleSignup, googleAuthProvider, finishLogin, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
 
   const handleGoogleSignIn = useCallback(() => {
     setShowEmailForm(false);

@@ -313,6 +313,16 @@ export class AdminDataService implements IAdminDataService {
     return new DataReference<ISpritesheet>(d, Convert.spritesheetConverter);
   }
 
+  async recursiveDeleteMap(adventureId: string, mapId: string): Promise<void> {
+    const ref = this._db.collection(adventures).doc(adventureId).collection(maps).doc(mapId);
+    await this._db.recursiveDelete(ref);
+  }
+
+  async recursiveDeleteAdventure(adventureId: string): Promise<void> {
+    const ref = this._db.collection(adventures).doc(adventureId);
+    await this._db.recursiveDelete(ref);
+  }
+
   runTransaction<T>(fn: (dataView: IDataView) => Promise<T>): Promise<T> {
     return this._db.runTransaction(tr => {
       const tdv = new TransactionalDataView(tr, this._db);

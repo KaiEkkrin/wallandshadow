@@ -81,4 +81,45 @@ describe('test extensions', () => {
     const profile2 = await ensureProfile(dataService, { ...user, displayName: 'fish' }, undefined);
     expect(profile2?.name).toBe('Owner');
   });
+
+  test('create a new profile entry using user-entered display name instead of Google display name', async () => {
+    // This simulates the Google OAuth signup flow: the user object has Google's display
+    // name, but we pass the user-entered displayName to ensureProfile so the profile is
+    // created with the right name.
+    const user = createTestUser('John Smith (Google)', 'john@example.com', 'google.com');
+
+    const context = testEnv.authenticatedContext(user.uid, {
+      email: user.email ?? undefined,
+      email_verified: user.emailVerified,
+    });
+    const db = context.firestore() as unknown as Firestore;
+    const dataService = new DataService(db, serverTimestamp);
+
+    // Pass the user-entered display name explicitly (as ProfileContextProvider does
+    // via popNewUser when expectGoogleSignup was called before the popup)
+    const profile = await ensureProfile(dataService, user, undefined, 'My Custom Name');
+
+    expect(profile?.name).toBe('My Custom Name');
+  });
+
+  test('user-entered display name does not overwrite an existing non-default profile name', async () => {
+    // Verifies that passing a displayName to ensureProfile only affects NEW profiles
+    // (or profiles with empty/default names), not existing ones with real names.
+    const user = createTestUser('Original Name', 'user2@example.com', 'google.com');
+
+    const context = testEnv.authenticatedContext(user.uid, {
+      email: user.email ?? undefined,
+      email_verified: user.emailVerified,
+    });
+    const db = context.firestore() as unknown as Firestore;
+    const dataService = new DataService(db, serverTimestamp);
+
+    // First login: profile created with the user's displayName
+    await ensureProfile(dataService, user, undefined);
+
+    // Second login (e.g. returning user): passing a displayName should NOT overwrite
+    // the existing profile name
+    const profile2 = await ensureProfile(dataService, user, undefined, 'Should Not Apply');
+    expect(profile2?.name).toBe('Original Name');
+  });
 });

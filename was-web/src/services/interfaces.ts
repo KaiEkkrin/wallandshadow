@@ -201,6 +201,12 @@ export interface IFunctionsService {
   // Consolidates changes in the given map.
   consolidateMapChanges(adventureId: string, mapId: string, resync: boolean): Promise<void>;
 
+  // Deletes a map and all its sub-resources (changes subcollection).
+  deleteMap(adventureId: string, mapId: string): Promise<void>;
+
+  // Deletes an adventure and all its sub-resources (maps, changes, players, spritesheets).
+  deleteAdventure(adventureId: string): Promise<void>;
+
   // Deletes an image.
   deleteImage(path: string): Promise<void>;
 

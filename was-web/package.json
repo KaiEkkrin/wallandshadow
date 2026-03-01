@@ -1,6 +1,6 @@
 {
   "name": "was-web",
-  "version": "1.4",
+  "version": "1.4.1",
   "private": true,
   "type": "module",
   "dependencies": {
@@ -45,7 +45,8 @@
     "@types/react-dom": "^19.0.0",
     "eslint/**/minimatch": "3.1.5",
     "@eslint/config-array/minimatch": "3.1.5",
-    "@eslint/eslintrc/minimatch": "3.1.5"
+    "@eslint/eslintrc/minimatch": "3.1.5",
+    "minimatch": "9.0.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

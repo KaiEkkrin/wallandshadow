@@ -508,6 +508,109 @@ async function joinAdventureTransaction(
   return adventureRef.id;
 }
 
+async function deleteMapTransaction(
+  view: IAdminDataView,
+  profileRef: IDataReference<IProfile>,
+  adventureRef: IDataReference<IAdventure>,
+  mapRef: IDataReference<IMap>,
+  mapId: string
+): Promise<void> {
+  const adventure = await view.get(adventureRef);
+  if (adventure === undefined) {
+    throw new functions.https.HttpsError('not-found', 'Adventure not found');
+  }
+
+  if (adventure.owner !== profileRef.id) {
+    throw new functions.https.HttpsError('permission-denied', 'Only the adventure owner can delete maps');
+  }
+
+  const profile = await view.get(profileRef);
+
+  // Update the profile to omit this map
+  if (profile?.latestMaps?.find(m => m.id === mapId) !== undefined) {
+    await view.update(profileRef, { latestMaps: profile.latestMaps.filter(m => m.id !== mapId) });
+  }
+
+  // Update the adventure record to omit this map
+  await view.update(adventureRef, { maps: adventure.maps.filter(m => m.id !== mapId) });
+
+  // Delete the map document itself
+  await view.delete(mapRef);
+}
+
+export async function deleteMap(
+  dataService: IAdminDataService,
+  uid: string,
+  adventureId: string,
+  mapId: string
+): Promise<void> {
+  const profileRef = dataService.getProfileRef(uid);
+  const adventureRef = dataService.getAdventureRef(adventureId);
+  const mapRef = dataService.getMapRef(adventureId, mapId);
+
+  // Atomically remove from profile/adventure and delete the map document
+  await dataService.runAdminTransaction(view =>
+    deleteMapTransaction(view, profileRef, adventureRef, mapRef, mapId)
+  );
+
+  // Clean up the changes subcollection (cannot be done in a transaction)
+  await dataService.recursiveDeleteMap(adventureId, mapId);
+}
+
+async function deleteAdventureTransaction(
+  view: IAdminDataView,
+  profileRef: IDataReference<IProfile>,
+  adventureRef: IDataReference<IAdventure>,
+  mapIds: string[]
+): Promise<void> {
+  const adventure = await view.get(adventureRef);
+  if (adventure === undefined) {
+    // Already deleted — nothing to do
+    return;
+  }
+
+  if (adventure.owner !== profileRef.id) {
+    throw new functions.https.HttpsError('permission-denied', 'Only the owner can delete this adventure');
+  }
+
+  const profile = await view.get(profileRef);
+  if (profile !== undefined) {
+    const mapIdSet = new Set(mapIds);
+    const updatedAdventures = (profile.adventures ?? []).filter(a => a.id !== adventureRef.id);
+    const updatedMaps = (profile.latestMaps ?? []).filter(m => !mapIdSet.has(m.id));
+    await view.update(profileRef, { adventures: updatedAdventures, latestMaps: updatedMaps });
+  }
+}
+
+export async function deleteAdventure(
+  dataService: IAdminDataService,
+  uid: string,
+  adventureId: string
+): Promise<void> {
+  const adventureRef = dataService.getAdventureRef(adventureId);
+
+  // Read adventure outside transaction to get map IDs and verify ownership
+  const adventure = await dataService.get(adventureRef);
+  if (adventure === undefined) {
+    throw new functions.https.HttpsError('not-found', 'Adventure not found');
+  }
+
+  if (adventure.owner !== uid) {
+    throw new functions.https.HttpsError('permission-denied', 'Only the owner can delete this adventure');
+  }
+
+  const mapIds = adventure.maps.map(m => m.id);
+  const profileRef = dataService.getProfileRef(uid);
+
+  // Atomically remove adventure and all its maps from the owner's profile
+  await dataService.runAdminTransaction(view =>
+    deleteAdventureTransaction(view, profileRef, adventureRef, mapIds)
+  );
+
+  // Delete the adventure document and all subcollections (maps, changes, players, spritesheets)
+  await dataService.recursiveDeleteAdventure(adventureId);
+}
+
 export async function joinAdventure(
   dataService: IAdminDataService,
   uid: string,

@@ -1556,4 +1556,292 @@ service firebase.storage {
     expect(tokenChange).not.toBeUndefined();
     expect(wallChange).not.toBeUndefined();
   });
+
+  describe('cascade deletion', () => {
+    test('deleteMap purges the changes subcollection', async () => {
+      const user = createTestUser('Owner', 'owner@example.com', 'google.com');
+      const emul = await initializeEmul(user);
+      const dataService = new DataService(emul.db, serverTimestamp);
+      const functionsService = new FunctionsService(emul.functions);
+      await ensureProfile(dataService, user, undefined);
+
+      const a1Id = await functionsService.createAdventure('Adventure One', 'First adventure');
+      const m1Id = await functionsService.createMap(a1Id, 'Map One', 'First map', MapType.Square, false);
+
+      // Add changes and consolidate so there is a base change + some incrementals
+      await dataService.addChanges(a1Id, user.uid, m1Id, [createAddToken1(user.uid)]);
+      for (let i = 0; i < 3; ++i) {
+        await dataService.addChanges(a1Id, user.uid, m1Id, [createMoveToken1(i)]);
+      }
+      await dataService.addChanges(a1Id, user.uid, m1Id, [createAddWall1()]);
+      await dataService.waitForPendingWrites();
+
+      await functionsService.consolidateMapChanges(a1Id, m1Id, false);
+
+      // Verify we have exactly 1 consolidated change
+      const changesBefore = await getAllMapChanges(dataService, a1Id, m1Id, 100);
+      expect(changesBefore).toHaveLength(1);
+
+      // Delete the map via the server function
+      await functionsService.deleteMap(a1Id, m1Id);
+
+      // Map document should be gone
+      const mapRecord = await dataService.get(dataService.getMapRef(a1Id, m1Id));
+      expect(mapRecord).toBeUndefined();
+
+      // Adventure should no longer list this map
+      const a1Record = await dataService.get(dataService.getAdventureRef(a1Id));
+      expect(a1Record?.maps).toHaveLength(0);
+
+      // Owner's profile should no longer list this map
+      const profile = await dataService.get(dataService.getProfileRef(user.uid));
+      expect(profile?.latestMaps?.find(m => m.id === m1Id)).toBeUndefined();
+
+      // Changes subcollection should be gone
+      const converter = createChangesConverter();
+      const baseChange = await dataService.get(dataService.getMapBaseChangeRef(a1Id, m1Id, converter));
+      expect(baseChange).toBeUndefined();
+
+      const incrementalChanges = await dataService.getMapIncrementalChangesRefs(a1Id, m1Id, 100, converter);
+      expect(incrementalChanges).toBeUndefined();
+    });
+
+    test('deleteMap leaves other maps in the same adventure untouched', async () => {
+      const user = createTestUser('Owner', 'owner@example.com', 'google.com');
+      const emul = await initializeEmul(user);
+      const dataService = new DataService(emul.db, serverTimestamp);
+      const functionsService = new FunctionsService(emul.functions);
+      await ensureProfile(dataService, user, undefined);
+
+      const a1Id = await functionsService.createAdventure('Adventure One', 'First adventure');
+      const m1Id = await functionsService.createMap(a1Id, 'Map One', 'First map', MapType.Square, false);
+      const m2Id = await functionsService.createMap(a1Id, 'Map Two', 'Second map', MapType.Hex, false);
+
+      // Add changes to both maps and consolidate
+      await dataService.addChanges(a1Id, user.uid, m1Id, [createAddToken1(user.uid), createAddWall1()]);
+      await dataService.addChanges(a1Id, user.uid, m2Id, [createAddToken1(user.uid), createAddWall1()]);
+      await dataService.waitForPendingWrites();
+
+      await functionsService.consolidateMapChanges(a1Id, m1Id, false);
+      await functionsService.consolidateMapChanges(a1Id, m2Id, false);
+
+      // Delete map 1 only
+      await functionsService.deleteMap(a1Id, m1Id);
+
+      // Map 1 should be gone
+      const m1Record = await dataService.get(dataService.getMapRef(a1Id, m1Id));
+      expect(m1Record).toBeUndefined();
+
+      // Map 1's changes should be gone
+      const converter = createChangesConverter();
+      const m1BaseChange = await dataService.get(dataService.getMapBaseChangeRef(a1Id, m1Id, converter));
+      expect(m1BaseChange).toBeUndefined();
+
+      // Map 2 should still exist with its changes intact
+      const m2Record = await dataService.get(dataService.getMapRef(a1Id, m2Id));
+      expect(m2Record).not.toBeUndefined();
+      expect(m2Record?.name).toBe('Map Two');
+
+      const m2BaseChange = await dataService.get(dataService.getMapBaseChangeRef(a1Id, m2Id, converter));
+      expect(m2BaseChange).not.toBeUndefined();
+      expect(m2BaseChange?.chs).toHaveLength(2); // token + wall
+
+      // Adventure should only list map 2
+      const a1Record = await dataService.get(dataService.getAdventureRef(a1Id));
+      expect(a1Record?.maps).toHaveLength(1);
+      expect(a1Record?.maps[0].id).toBe(m2Id);
+    });
+
+    test('deleting the original map leaves its clone intact with the same state', async () => {
+      const moveCount = 5;
+      const user = createTestUser('Owner', 'owner@example.com', 'google.com');
+      const emul = await initializeEmul(user);
+      const dataService = new DataService(emul.db, serverTimestamp);
+      const functionsService = new FunctionsService(emul.functions);
+      await ensureProfile(dataService, user, undefined);
+
+      const a1Id = await functionsService.createAdventure('Adventure One', 'First adventure');
+      const m1Id = await functionsService.createMap(a1Id, 'Map One', 'First map', MapType.Hex, false);
+
+      // Add changes to the original
+      await dataService.addChanges(a1Id, user.uid, m1Id, [createAddToken1(user.uid)]);
+      for (let i = 0; i < moveCount; ++i) {
+        await dataService.addChanges(a1Id, user.uid, m1Id, [createMoveToken1(i)]);
+      }
+      await dataService.addChanges(a1Id, user.uid, m1Id, [createAddWall1()]);
+      await dataService.waitForPendingWrites();
+
+      // Clone it (cloneMap consolidates then copies the base change)
+      const m2Id = await functionsService.cloneMap(a1Id, m1Id, 'Clone of Map One', 'First map cloned');
+
+      // Verify clone has the same consolidated state as the original
+      await verifyBaseChangesRecord(dataService, user.uid, a1Id, m1Id, moveCount);
+      await verifyBaseChangesRecord(dataService, user.uid, a1Id, m2Id, moveCount);
+
+      // Delete the original
+      await functionsService.deleteMap(a1Id, m1Id);
+
+      // Original should be gone
+      const m1Record = await dataService.get(dataService.getMapRef(a1Id, m1Id));
+      expect(m1Record).toBeUndefined();
+
+      const converter = createChangesConverter();
+      const m1BaseChange = await dataService.get(dataService.getMapBaseChangeRef(a1Id, m1Id, converter));
+      expect(m1BaseChange).toBeUndefined();
+
+      // Clone should still exist with the same state
+      const m2Record = await dataService.get(dataService.getMapRef(a1Id, m2Id));
+      expect(m2Record).not.toBeUndefined();
+      expect(m2Record?.name).toBe('Clone of Map One');
+
+      // Clone's changes should still reflect the original state at clone time
+      await verifyBaseChangesRecord(dataService, user.uid, a1Id, m2Id, moveCount);
+
+      // Adventure should list only the clone
+      const a1Record = await dataService.get(dataService.getAdventureRef(a1Id));
+      expect(a1Record?.maps).toHaveLength(1);
+      expect(a1Record?.maps[0].id).toBe(m2Id);
+    });
+
+    test('deleteAdventure cascades to all maps and their changes', async () => {
+      const user = createTestUser('Owner', 'owner@example.com', 'google.com');
+      const emul = await initializeEmul(user);
+      const dataService = new DataService(emul.db, serverTimestamp);
+      const functionsService = new FunctionsService(emul.functions);
+      await ensureProfile(dataService, user, undefined);
+
+      const a1Id = await functionsService.createAdventure('Adventure One', 'First adventure');
+      const m1Id = await functionsService.createMap(a1Id, 'Map One', 'First map', MapType.Square, false);
+      const m2Id = await functionsService.createMap(a1Id, 'Map Two', 'Second map', MapType.Hex, false);
+
+      // Add changes to both maps and consolidate
+      await dataService.addChanges(a1Id, user.uid, m1Id, [createAddToken1(user.uid), createAddWall1()]);
+      await dataService.addChanges(a1Id, user.uid, m2Id, [createAddToken1(user.uid)]);
+      await dataService.waitForPendingWrites();
+
+      await functionsService.consolidateMapChanges(a1Id, m1Id, false);
+      await functionsService.consolidateMapChanges(a1Id, m2Id, false);
+
+      // Delete the entire adventure
+      await functionsService.deleteAdventure(a1Id);
+
+      // Adventure should be gone
+      const a1Record = await dataService.get(dataService.getAdventureRef(a1Id));
+      expect(a1Record).toBeUndefined();
+
+      // Both map documents and all changes should be gone. After recursiveDelete removes the
+      // adventure (including its players/ subcollection), isPlayerOrOwner() returns false so
+      // client reads throw permission-denied rather than returning undefined.
+      const converter = createChangesConverter();
+      await expect(dataService.get(dataService.getMapRef(a1Id, m1Id))).rejects.toThrow();
+      await expect(dataService.get(dataService.getMapRef(a1Id, m2Id))).rejects.toThrow();
+      await expect(dataService.get(dataService.getMapBaseChangeRef(a1Id, m1Id, converter))).rejects.toThrow();
+      await expect(dataService.get(dataService.getMapBaseChangeRef(a1Id, m2Id, converter))).rejects.toThrow();
+
+      // Adventure should be removed from profile
+      const profile = await dataService.get(dataService.getProfileRef(user.uid));
+      expect(profile?.adventures?.find(a => a.id === a1Id)).toBeUndefined();
+      expect(profile?.latestMaps?.find(m => m.id === m1Id)).toBeUndefined();
+      expect(profile?.latestMaps?.find(m => m.id === m2Id)).toBeUndefined();
+    });
+
+    test('non-member cannot consolidate map changes; owner and player can', async () => {
+      const owner = createTestUser('Owner', 'owner@example.com', 'google.com');
+      const ownerEmul = await initializeEmul(owner);
+      const ownerDataService = new DataService(ownerEmul.db, serverTimestamp);
+      const ownerFunctionsService = new FunctionsService(ownerEmul.functions);
+      await ensureProfile(ownerDataService, owner, undefined);
+
+      const a1Id = await ownerFunctionsService.createAdventure('Adventure One', 'First adventure');
+      const m1Id = await ownerFunctionsService.createMap(a1Id, 'Map One', 'First map', MapType.Square, false);
+      await ownerDataService.addChanges(a1Id, owner.uid, m1Id, [createAddToken1(owner.uid), createAddWall1()]);
+      await ownerDataService.waitForPendingWrites();
+
+      // A completely unrelated user should be denied
+      const stranger = createTestUser('Stranger', 'stranger@example.com', 'google.com');
+      const strangerEmul = await initializeEmul(stranger);
+      await ensureProfile(new DataService(strangerEmul.db, serverTimestamp), stranger, undefined);
+      const strangerFunctionsService = new FunctionsService(strangerEmul.functions);
+
+      await expect(
+        strangerFunctionsService.consolidateMapChanges(a1Id, m1Id, false)
+      ).rejects.toThrow(/not in this adventure/i);
+
+      // The owner should be able to consolidate
+      await ownerFunctionsService.consolidateMapChanges(a1Id, m1Id, false);
+      const converter = createChangesConverter();
+      const base = await ownerDataService.get(ownerDataService.getMapBaseChangeRef(a1Id, m1Id, converter));
+      expect(base).not.toBeUndefined();
+
+      // A joined player should also be able to consolidate
+      const player = createTestUser('Player', 'player@example.com', 'google.com');
+      const playerEmul = await initializeEmul(player);
+      await ensureProfile(new DataService(playerEmul.db, serverTimestamp), player, undefined);
+      const playerFunctionsService = new FunctionsService(playerEmul.functions);
+
+      const invite = await ownerFunctionsService.inviteToAdventure(a1Id);
+      await playerFunctionsService.joinAdventure(invite ?? '');
+
+      // Add a change so there's something to consolidate
+      await ownerDataService.addChanges(a1Id, owner.uid, m1Id, [createMoveToken1(0)]);
+      await ownerDataService.waitForPendingWrites();
+
+      await playerFunctionsService.consolidateMapChanges(a1Id, m1Id, false);
+    });
+
+    test('deleteAdventure leaves other adventures untouched', async () => {
+      const user = createTestUser('Owner', 'owner@example.com', 'google.com');
+      const emul = await initializeEmul(user);
+      const dataService = new DataService(emul.db, serverTimestamp);
+      const functionsService = new FunctionsService(emul.functions);
+      await ensureProfile(dataService, user, undefined);
+
+      // Create two adventures, each with a map and changes
+      const a1Id = await functionsService.createAdventure('Adventure One', 'First adventure');
+      const a2Id = await functionsService.createAdventure('Adventure Two', 'Second adventure');
+
+      const m1Id = await functionsService.createMap(a1Id, 'Map One', 'First map', MapType.Square, false);
+      const m2Id = await functionsService.createMap(a2Id, 'Map Two', 'Second map', MapType.Hex, false);
+
+      await dataService.addChanges(a1Id, user.uid, m1Id, [createAddToken1(user.uid), createAddWall1()]);
+      await dataService.addChanges(a2Id, user.uid, m2Id, [createAddToken1(user.uid)]);
+      await dataService.waitForPendingWrites();
+
+      await functionsService.consolidateMapChanges(a1Id, m1Id, false);
+      await functionsService.consolidateMapChanges(a2Id, m2Id, false);
+
+      // Delete adventure 1 only
+      await functionsService.deleteAdventure(a1Id);
+
+      // Adventure 1 and its map should be gone
+      const a1Record = await dataService.get(dataService.getAdventureRef(a1Id));
+      expect(a1Record).toBeUndefined();
+
+      // Map and changes for deleted adventure throw permission-denied (player records
+      // are also removed by recursiveDelete, so isPlayerOrOwner() returns false).
+      const converter = createChangesConverter();
+      await expect(dataService.get(dataService.getMapRef(a1Id, m1Id))).rejects.toThrow();
+      await expect(dataService.get(dataService.getMapBaseChangeRef(a1Id, m1Id, converter))).rejects.toThrow();
+
+      // Adventure 2, its map and its changes should all be intact
+      const a2Record = await dataService.get(dataService.getAdventureRef(a2Id));
+      expect(a2Record).not.toBeUndefined();
+      expect(a2Record?.name).toBe('Adventure Two');
+
+      const m2Record = await dataService.get(dataService.getMapRef(a2Id, m2Id));
+      expect(m2Record).not.toBeUndefined();
+      expect(m2Record?.name).toBe('Map Two');
+
+      const m2BaseChange = await dataService.get(dataService.getMapBaseChangeRef(a2Id, m2Id, converter));
+      expect(m2BaseChange).not.toBeUndefined();
+      expect(m2BaseChange?.chs).toHaveLength(1); // token only
+
+      // Profile should still include adventure 2
+      const profile = await dataService.get(dataService.getProfileRef(user.uid));
+      expect(profile?.adventures?.find(a => a.id === a1Id)).toBeUndefined();
+      expect(profile?.adventures?.find(a => a.id === a2Id)).not.toBeUndefined();
+      expect(profile?.latestMaps?.find(m => m.id === m1Id)).toBeUndefined();
+      expect(profile?.latestMaps?.find(m => m.id === m2Id)).not.toBeUndefined();
+    });
+  });
 });
