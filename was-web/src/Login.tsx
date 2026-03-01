@@ -17,7 +17,8 @@ import Modal from 'react-bootstrap/Modal';
 import Tab from 'react-bootstrap/Tab';
 import Tabs from 'react-bootstrap/Tabs';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { getPostLoginPath } from './utils/loginRedirect';
 import { v7 as uuidv7 } from 'uuid';
 
 interface ILoginMessageProps {
@@ -288,11 +289,12 @@ function Login() {
     return true;
   }, [setLoginFailedVisible, toasts]);
 
+  const location = useLocation();
   const finishLogin = useCallback((success: boolean) => {
     if (success) {
-      navigate('/app');
+      navigate(getPostLoginPath(location.state?.from), { replace: true });
     }
-  }, [navigate]);
+  }, [navigate, location.state?.from]);
 
   const handleLoginError = useCallback((e: unknown) => {
     setLoginFailedVisible(true);
