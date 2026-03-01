@@ -1,1 +1,1 @@
-../../src/data/tokens.ts
+export * from '@wallandshadow/shared';

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as React from 'react';
 
-import { IPlayer } from '../data/adventure';
-import { ITokenProperties, TokenSize } from '../data/feature';
+import { IPlayer, ITokenProperties, TokenSize } from '@wallandshadow/shared';
 
 import CharacterList from './CharacterList';
 import ColourSelection from './ColourSelection';

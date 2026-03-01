@@ -1,1 +1,1 @@
-../../src/data/extraMath.ts
+export * from '@wallandshadow/shared';

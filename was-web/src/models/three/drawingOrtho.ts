@@ -1,13 +1,8 @@
-import { GridCoord, GridVertex } from '../../data/coord';
-import { LoSPosition } from '../../data/losPosition';
-import { ITokenGeometry } from '../../data/tokenGeometry';
-import { ITokenDrawing } from '../../data/tokens';
+import { GridCoord, GridVertex, LoSPosition, ITokenGeometry, ITokenDrawing, ISpriteManager, IGridGeometry } from '@wallandshadow/shared';
 import { MapColouring } from '../colouring';
 import { FeatureColour } from '../featureColour';
-import { IGridGeometry } from '../gridGeometry';
 import { IDrawing } from '../interfaces';
 import { RedrawFlag } from '../redrawFlag';
-import { ISpriteManager } from '../../services/interfaces';
 
 import { Areas, createPaletteColouredAreaObject, createAreas, createSelectionColouredAreaObject } from './areas';
 import { Grid } from './grid';

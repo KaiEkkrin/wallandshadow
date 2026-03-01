@@ -3,8 +3,7 @@ import '../App.css';
 
 import ExpansionToggle from './ExpansionToggle';
 import { UserContext } from './UserContext';
-import { IMapSummary } from '../data/adventure';
-import { IAdventureSummary } from '../data/profile';
+import { IMapSummary, IAdventureSummary } from '@wallandshadow/shared';
 
 import Accordion from 'react-bootstrap/Accordion';
 import Button from 'react-bootstrap/Button';

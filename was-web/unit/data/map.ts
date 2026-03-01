@@ -1,1 +1,1 @@
-../../src/data/map.ts
+export * from '@wallandshadow/shared';

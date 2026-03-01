@@ -1,1 +1,1 @@
-../../src/data/adventure.ts
+export * from '@wallandshadow/shared';

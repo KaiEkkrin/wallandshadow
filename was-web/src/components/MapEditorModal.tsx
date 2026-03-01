@@ -4,9 +4,7 @@ import * as React from 'react';
 import BusyElement from './BusyElement';
 import { UserContext } from './UserContext';
 
-import { IAdventureIdentified } from '../data/identified';
-import { IMap, MapType } from '../data/map';
-import { IAdventureSummary } from '../data/profile';
+import { IAdventureIdentified, IMap, MapType, IAdventureSummary } from '@wallandshadow/shared';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';

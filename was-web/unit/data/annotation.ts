@@ -1,1 +1,1 @@
-../../src/data/annotation.ts
+export * from '@wallandshadow/shared';

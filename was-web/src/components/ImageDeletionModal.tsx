@@ -1,6 +1,6 @@
 import { Fragment, useMemo } from 'react';
 
-import { IImage } from '../data/image';
+import { IImage } from '@wallandshadow/shared';
 
 import Button from 'react-bootstrap/Button';
 import Modal from 'react-bootstrap/Modal';

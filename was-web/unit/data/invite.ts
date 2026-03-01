@@ -1,1 +1,1 @@
-../../src/data/invite.ts
+export * from '@wallandshadow/shared';
