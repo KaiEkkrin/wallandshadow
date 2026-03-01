@@ -113,34 +113,14 @@ Before ESLint 10:
 
 ---
 
-## Firebase SDK 11 → 12
+## Firebase SDK (No Action Required)
 
-**Current:** firebase ^11.0.0
-**Target:** firebase ^12.0.0
-**Timeline:** When convenient, no urgency
+**Current:** firebase ^12.0.0, firebase-admin ^13.7.0, firebase-functions ^7.0.6
+**Status:** Up to date as of 2026-03-01
 
-Firebase 12 is available. Firebase provides at least 12 months notice before deprecating features.
+Firebase 12 upgrade was completed (from v11). Breaking changes were minimal — `isEqual()` removal was already addressed in v11, `firebase/vertexai` module (not used) was removed. Functions stay on v1 API (`firebase-functions/v1` import). `@firebase/rules-unit-testing` upgraded from v4 to v5.
 
-### Steps
-
-1. Review [Firebase JavaScript SDK Release Notes](https://firebase.google.com/support/release-notes/js) for breaking changes
-
-2. Update `was-web/package.json`:
-   ```json
-   "firebase": "^12.0.0"
-   ```
-
-3. Update `@firebase/rules-unit-testing` if needed
-
-4. Test authentication flows
-
-5. Test Firestore operations
-
-6. Test Storage operations
-
-7. Test Cloud Functions calls
-
-8. Run full E2E test suite
+Next review: when Firebase 13 is available.
 
 ### References
 
@@ -248,7 +228,7 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 |----------|---------|--------|----------|
 | 1 | React Router | 7.x | Q2 2026 |
 | 2 | ESLint | 10.x | When stable (mid-2026) |
-| 3 | Firebase SDK | 12.x | When convenient |
+| 3 | Firebase SDK | 12.x | ✅ Done (2026-03-01) |
 | 4 | Three.js | Latest | Ongoing (every 3-6 months) |
 | 5 | TypeScript | Latest 5.x/6.x | Ongoing |
 
