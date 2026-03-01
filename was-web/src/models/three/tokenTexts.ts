@@ -1,8 +1,6 @@
-import { GridVertex, vertexString } from '../../data/coord';
-import { FeatureDictionary, IFeatureDictionary, ITokenText } from '../../data/feature';
+import { GridVertex, vertexString, FeatureDictionary, IFeatureDictionary, ITokenText, IGridGeometry } from '@wallandshadow/shared';
 
 import { Drawn } from '../drawn';
-import { IGridGeometry } from '../gridGeometry';
 import { RedrawFlag } from '../redrawFlag';
 import textCreator from './textCreator';
 

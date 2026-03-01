@@ -1,22 +1,44 @@
-import { IAdventure, IPlayer, summariseAdventure } from '../data/adventure';
-import { IAnnotation } from '../data/annotation';
-import { Change, Changes } from '../data/change';
-import { SimpleChangeTracker, trackChanges } from '../data/changeTracking';
-import { GridCoord, GridEdge, coordString, edgeString } from '../data/coord';
-import { FeatureDictionary, IFeature, ITokenDictionary, StripedArea } from '../data/feature';
-import { IdDictionary } from '../data/identified';
-import { IMapImage } from '../data/image';
-import { IInvite } from '../data/invite';
-import { IMap, MapType, summariseMap } from '../data/map';
-import { getUserPolicy, IInviteExpiryPolicy } from '../data/policy';
-import { IAdventureSummary, IProfile } from '../data/profile';
-import { getTokenGeometry } from '../data/tokenGeometry';
-import { Tokens, SimpleTokenDrawing } from '../data/tokens';
-
-import * as Convert from './converter';
+import {
+  IAdventure,
+  IPlayer,
+  summariseAdventure,
+  IAnnotation,
+  Change,
+  Changes,
+  SimpleChangeTracker,
+  trackChanges,
+  GridCoord,
+  GridEdge,
+  coordString,
+  edgeString,
+  FeatureDictionary,
+  IFeature,
+  ITokenDictionary,
+  StripedArea,
+  IdDictionary,
+  IMapImage,
+  IInvite,
+  IMap,
+  MapType,
+  summariseMap,
+  getUserPolicy,
+  IInviteExpiryPolicy,
+  IAdventureSummary,
+  IProfile,
+  getTokenGeometry,
+  Tokens,
+  SimpleTokenDrawing,
+  IDataService,
+  IDataView,
+  IDataReference,
+  IDataAndReference,
+  ILogger,
+  createChangesConverter,
+  updateProfileAdventures,
+  updateProfileMaps,
+  updateAdventureMaps
+} from '@wallandshadow/shared';
 import { IAdminDataService, IAdminDataView } from './extraInterfaces';
-import { updateProfileAdventures, updateProfileMaps, updateAdventureMaps } from './helpers';
-import { IDataService, IDataView, IDataReference, IDataAndReference, ILogger } from './interfaces';
 
 import * as dayjs from 'dayjs';
 import { v7 as uuidv7 } from 'uuid';
@@ -205,7 +227,7 @@ export async function cloneMap(
   );
 
   // Now we can create the new map:
-  const converter = Convert.createChangesConverter();
+  const converter = createChangesConverter();
   const baseChangeRef = dataService.getMapBaseChangeRef(adventureId, id, converter);
   await dataService.runTransaction(
     tr => createMapTransaction(tr, profileRef, adventureRef, newMapRef, {
@@ -289,7 +311,7 @@ async function tryConsolidateMapChanges(
   // It's important to use the same converter for the base and incremental changes so that any
   // legacy maps with the same kinds of context-dependent things needing converting in both get
   // rolled through properly.
-  const converter = Convert.createChangesConverter();
+  const converter = createChangesConverter();
   const baseChangeRef = await dataService.getMapBaseChangeRef(adventureId, mapId, converter);
   const baseChange = await dataService.get(baseChangeRef); // undefined in case of the first consolidate
   const incrementalChanges = await dataService.getMapIncrementalChangesRefs(adventureId, mapId, 499, converter);

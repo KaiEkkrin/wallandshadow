@@ -2,6 +2,10 @@
   "name": "was-web",
   "version": "1.4.1",
   "private": true,
+  "workspaces": [
+    "packages/shared",
+    "functions"
+  ],
   "type": "module",
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.1.0",

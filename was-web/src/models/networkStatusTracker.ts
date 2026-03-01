@@ -1,4 +1,4 @@
-import { Changes } from '../data/change';
+import { Changes } from '@wallandshadow/shared';
 
 import dayjs from 'dayjs';
 import { Observable, Subject } from 'rxjs';

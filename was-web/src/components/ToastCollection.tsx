@@ -2,7 +2,7 @@ import { useContext, useReducer, useEffect } from 'react';
 import '../App.css';
 import { StatusContext } from './StatusContext';
 import { IToast } from './interfaces';
-import { IIdentified } from '../data/identified';
+import { IIdentified } from '@wallandshadow/shared';
 
 import Toast from 'react-bootstrap/Toast';
 

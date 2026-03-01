@@ -1,1 +1,1 @@
-../../src/data/coord.ts
+export * from '@wallandshadow/shared';

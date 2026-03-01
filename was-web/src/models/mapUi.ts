@@ -1,16 +1,10 @@
 import { IToast } from "../components/interfaces";
 import { EditMode } from "../components/MapControls.types";
-import { IAnnotation } from "../data/annotation";
-import { Change, ChangeCategory, ChangeType } from "../data/change";
-import { ITokenProperties } from "../data/feature";
-import { IAdventureIdentified, IIdentified } from "../data/identified";
-import { IImage, IMapImageProperties } from "../data/image";
-import { IMap } from "../data/map";
+import { IAnnotation, Change, ChangeCategory, ChangeType, ITokenProperties, IAdventureIdentified, IIdentified, IImage, IMapImageProperties, IMap, IDataService, IFunctionsService } from '@wallandshadow/shared';
 import { Layer } from './interfaces';
 import { isAMovementKeyDown, KeysDown, keysDownReducer } from "./keys";
 import { MapStateMachine } from "./mapStateMachine";
 import { editMap } from "../services/extensions";
-import { IDataService, IFunctionsService } from "../services/interfaces";
 
 import { Subject } from 'rxjs';
 import * as THREE from 'three';

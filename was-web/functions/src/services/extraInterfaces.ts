@@ -1,8 +1,14 @@
-import { IAdventure, IPlayer } from '../data/adventure';
-import { IInvite } from '../data/invite';
-import { IMap } from '../data/map';
-import { ISpritesheet } from '../data/sprite';
-import { IDataAndReference, IDataReference, IDataService, IDataView } from './interfaces';
+import {
+  IAdventure,
+  IPlayer,
+  IInvite,
+  IMap,
+  ISpritesheet,
+  IDataAndReference,
+  IDataReference,
+  IDataService,
+  IDataView
+} from '@wallandshadow/shared';
 
 // We extend the data service with a few things that we're only going to need
 // from the Functions

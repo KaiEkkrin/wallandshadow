@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as React from 'react';
 
-import { IAnnotation } from '../data/annotation';
+import { IAnnotation } from '@wallandshadow/shared';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';

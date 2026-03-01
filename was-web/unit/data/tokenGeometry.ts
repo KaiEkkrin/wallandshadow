@@ -1,1 +1,1 @@
-../../src/data/tokenGeometry.ts
+export * from '@wallandshadow/shared';

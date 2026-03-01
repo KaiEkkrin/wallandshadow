@@ -22,9 +22,14 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2022",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "paths": {
+      "@wallandshadow/shared": ["./packages/shared/src/index.ts"],
+      "@wallandshadow/shared/*": ["./packages/shared/src/*"]
+    }
   },
   "include": [
-    "src"
+    "src",
+    "packages/shared/src"
   ]
 }

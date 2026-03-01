@@ -7,7 +7,7 @@ import AdventureModal from './AdventureModal';
 import { StatusContext } from './StatusContext';
 import { UserContext } from './UserContext';
 
-import { IAdventureSummary } from '../data/profile';
+import { IAdventureSummary } from '@wallandshadow/shared';
 
 import { useNavigate } from 'react-router-dom';
 import { v7 as uuidv7 } from 'uuid';

@@ -1,1 +1,1 @@
-../../src/services/converter.ts
+export * from '@wallandshadow/shared';

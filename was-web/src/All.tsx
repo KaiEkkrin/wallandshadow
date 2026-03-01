@@ -9,9 +9,7 @@ import { RequireLoggedIn } from './components/RequireLoggedIn';
 import { UserContext } from './components/UserContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 
-import { IAdventure, summariseAdventure } from './data/adventure';
-import { IIdentified } from './data/identified';
-import { getUserPolicy } from './data/policy';
+import { IAdventure, summariseAdventure, IIdentified, getUserPolicy } from '@wallandshadow/shared';
 
 import Col from 'react-bootstrap/Col';
 import Container from 'react-bootstrap/Container';

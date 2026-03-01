@@ -1,1 +1,1 @@
-../../src/data/image.ts
+export * from '@wallandshadow/shared';

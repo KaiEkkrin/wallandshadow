@@ -1,4 +1,4 @@
-import { IStorage, IStorageReference } from './interfaces';
+import { IStorage, IStorageReference } from '@wallandshadow/shared';
 
 import {
   FirebaseStorage,

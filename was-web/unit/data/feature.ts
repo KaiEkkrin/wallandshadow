@@ -1,1 +1,1 @@
-../../src/data/feature.ts
+export * from '@wallandshadow/shared';
