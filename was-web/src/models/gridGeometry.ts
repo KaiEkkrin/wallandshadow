@@ -325,25 +325,61 @@ export abstract class BaseGeometry {
   }
 
   *createLoSVertices(z: number, q: number) {
+    // 10 vertices for soft shadow LoS geometry:
+    // 0: P   (outer tangent from T, projected to bounds)
+    // 1: R   (inner tangent from T, projected to bounds)
+    // 2: T   (wall endpoint 1)
+    // 3: Q   (inner tangent from U, projected to bounds)
+    // 4: S   (outer tangent from U, projected to bounds)
+    // 5: U   (wall endpoint 2)
+    // 6: A   (umbra quad vertex, maps to T)
+    // 7: B   (umbra quad vertex, maps to X or R)
+    // 8: C   (umbra quad vertex, maps to U)
+    // 9: D   (umbra quad vertex, maps to U or Q)
+    //
+    // All positions are placeholders; actual positions computed in shader.
     const edgeA = new THREE.Vector3();
     const edgeB = new THREE.Vector3();
 
+    // Canonical wall at (0,0) edge 0 - instanceMatrix transforms to actual position
     const centre = this.createCentre(new THREE.Vector3(), 0, 0, z);
     this.createEdgeVertices(edgeA, edgeB, centre, 0);
-    yield edgeA.clone();
-    yield edgeB.clone();
 
-    this.createCentre(centre, 0, 0, q);
-    this.createEdgeVertices(edgeA, edgeB, centre, 0);
-    yield edgeA;
-    yield edgeB;
+    // Use q-level for placeholder positions of projected points
+    const centreQ = this.createCentre(new THREE.Vector3(), 0, 0, q);
+    const edgeAQ = new THREE.Vector3();
+    const edgeBQ = new THREE.Vector3();
+    this.createEdgeVertices(edgeAQ, edgeBQ, centreQ, 0);
+
+    // Penumbra triangle PRT (indices 0, 1, 2)
+    yield edgeAQ.clone();  // 0: P (placeholder - outer tangent from T)
+    yield edgeAQ.clone();  // 1: R (placeholder - inner tangent from T)
+    yield edgeA.clone();   // 2: T (wall endpoint)
+
+    // Penumbra triangle QSU (indices 3, 4, 5)
+    yield edgeBQ.clone();  // 3: Q (placeholder - inner tangent from U)
+    yield edgeBQ.clone();  // 4: S (placeholder - outer tangent from U)
+    yield edgeB.clone();   // 5: U (wall endpoint)
+
+    // Umbra quad ABCD (indices 6, 7, 8, 9)
+    yield edgeA.clone();   // 6: A (maps to T)
+    yield edgeAQ.clone().lerp(edgeBQ, 0.5);  // 7: B (placeholder - maps to X or R)
+    yield edgeB.clone();   // 8: C (maps to U)
+    yield edgeBQ.clone();  // 9: D (placeholder - maps to U or Q)
   }
 
   createLoSIndices() {
-    // You need to disable back-face culling to use these :)
+    // 4 triangles for soft shadow geometry:
+    // - PRT (penumbra around T): indices 0, 1, 2
+    // - QSU (penumbra around U): indices 3, 4, 5
+    // - ABC (umbra triangle 1): indices 6, 7, 8
+    // - BCD (umbra triangle 2): indices 7, 8, 9
+    // (Back-face culling should be disabled)
     return [
-      0, 1, 2,
-      1, 2, 3
+      0, 1, 2,   // PRT
+      3, 4, 5,   // QSU
+      6, 7, 8,   // ABC
+      7, 8, 9    // BCD
     ];
   }
   
