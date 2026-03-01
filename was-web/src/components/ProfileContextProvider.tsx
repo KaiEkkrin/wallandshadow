@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useContext } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useContext } from 'react';
 
 import { IProfile } from '../data/profile';
 
@@ -28,20 +28,37 @@ function ProfileContextProvider(props: IContextProviderProps) {
     newUserDisplayNames.set(email, displayName);
   }, [newUserDisplayNames]);
 
+  // For Google OAuth new users: we don't know the email before the popup opens, so we
+  // store the display name separately and consume it on the next auth state change.
+  const pendingGoogleDisplayName = useRef<string | undefined>(undefined);
+  const expectGoogleSignup = useCallback((displayName: string) => {
+    pendingGoogleDisplayName.current = displayName;
+  }, []);
+
   const popNewUser = useCallback((email: string | null) => {
+    // Always consume (and clear) the pending Google display name on any auth event,
+    // so it doesn't linger and affect unrelated future logins.
+    const googleDisplayName = pendingGoogleDisplayName.current;
+    pendingGoogleDisplayName.current = undefined;
+
     if (!email) {
-      return undefined;
+      return googleDisplayName;
     }
 
     const newDisplayName = newUserDisplayNames.get(email);
-    if (newDisplayName === undefined) {
-      console.debug(`ensuring profile of ${email}`);
-      return undefined;
+    if (newDisplayName !== undefined) {
+      console.debug(`ensuring profile of ${email} setting display name ${newDisplayName}`);
+      newUserDisplayNames.delete(email);
+      return newDisplayName;
     }
 
-    console.debug(`ensuring profile of ${email} setting display name ${newDisplayName}`);
-    newUserDisplayNames.delete(email);
-    return newDisplayName;
+    if (googleDisplayName !== undefined) {
+      console.debug(`ensuring profile of ${email} setting Google signup display name ${googleDisplayName}`);
+      return googleDisplayName;
+    }
+
+    console.debug(`ensuring profile of ${email}`);
+    return undefined;
   }, [newUserDisplayNames]);
 
   // Upon start, make sure the user has an up-to-date profile, then set this:
@@ -76,8 +93,8 @@ function ProfileContextProvider(props: IContextProviderProps) {
   }, [logError, profileRef, setProfile, dataService]);
 
   const profileContext = useMemo(
-    () => ({ profile: profile, expectNewUser: expectNewUser }),
-    [profile, expectNewUser]
+    () => ({ profile: profile, expectNewUser: expectNewUser, expectGoogleSignup: expectGoogleSignup }),
+    [profile, expectNewUser, expectGoogleSignup]
   );
 
   return (

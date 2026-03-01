@@ -46,6 +46,10 @@ export interface IProfileContext {
   // specified display name.  The profile context, which is responsible for ensuring
   // the user's profile, will pop the new email and set the display name accordingly.
   expectNewUser?: (email: string, displayName: string) => void;
+
+  // For Google OAuth new users: call this *before* opening the sign-in popup so the
+  // display name is captured before auth state fires (we don't know the email yet).
+  expectGoogleSignup?: (displayName: string) => void;
 }
 
 export interface ISignInMethodsContext {
