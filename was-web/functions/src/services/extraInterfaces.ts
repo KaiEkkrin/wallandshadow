@@ -39,4 +39,10 @@ export interface IAdminDataService extends IDataService {
 
   // Gets a spritesheet reference.
   getSpritesheetRef(adventureId: string, id: string): IDataReference<ISpritesheet>;
+
+  // Recursively deletes a map document and all its subcollections (e.g. changes/).
+  recursiveDeleteMap(adventureId: string, mapId: string): Promise<void>;
+
+  // Recursively deletes an adventure document and all its subcollections (maps, changes, players, spritesheets).
+  recursiveDeleteAdventure(adventureId: string): Promise<void>;
 }

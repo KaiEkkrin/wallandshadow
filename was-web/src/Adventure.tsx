@@ -24,7 +24,7 @@ import { ICharacter, maxCharacters } from './data/character';
 import { IImage } from './data/image';
 import { IMap } from './data/map';
 import { getUserPolicy } from './data/policy';
-import { deleteMap, editAdventure, deleteAdventure, leaveAdventure, editMap, editCharacter, deleteCharacter } from './services/extensions';
+import { editAdventure, leaveAdventure, editMap, editCharacter, deleteCharacter } from './services/extensions';
 
 import Button from 'react-bootstrap/Button';
 import ButtonGroup from 'react-bootstrap/ButtonGroup';
@@ -310,13 +310,16 @@ function Adventure({ adventureId }: IAdventureProps) {
 
   const handleDeleteAdventureSave = useCallback(() => {
     handleModalClose();
-    deleteAdventure(dataService, user?.uid, adventureId)
+    if (functionsService === undefined) {
+      return;
+    }
+    functionsService.deleteAdventure(adventureId)
       .then(() => {
         console.debug("Adventure " + adventureId + " successfully deleted");
         navigate("/app", { replace: true });
       })
       .catch(e => logError("Error deleting adventure " + adventureId, e));
-  }, [dataService, user, adventureId, navigate, handleModalClose, logError]);
+  }, [functionsService, adventureId, navigate, handleModalClose, logError]);
 
   const handleLeaveAdventureSave = useCallback(() => {
     handleModalClose();
@@ -384,10 +387,13 @@ function Adventure({ adventureId }: IAdventureProps) {
   // Maps
   const maps = useMemo(() => adventure?.record.maps ?? [], [adventure]);
   const mapDelete = useCallback((id: string) => {
-    deleteMap(dataService, user?.uid, adventureId, id)
+    if (functionsService === undefined) {
+      return;
+    }
+    functionsService.deleteMap(adventureId, id)
       .then(() => console.debug("Map " + id + " successfully deleted"))
       .catch(e => logError("Error deleting map " + id, e));
-  }, [dataService, user, adventureId, logError]);
+  }, [functionsService, adventureId, logError]);
 
   const mapsTitle = useMemo(
     () => `Maps (${maps.length}/${userPolicy?.maps})`,
