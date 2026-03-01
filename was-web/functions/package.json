@@ -1,6 +1,6 @@
 {
   "name": "functions",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "scripts": {
     "lint": "eslint --ext .ts src",
     "build": "tsup",
