@@ -6,25 +6,29 @@ This document tracks dependency updates to plan for 2026 and beyond. These are n
 
 ## React Router 6 → 7
 
-**Current:** react-router-dom ^6.28.0
+**Current:** react-router-dom ^6.30.3
 **Target:** react-router ^7.x
-**Timeline:** Plan for Q2 2026
+**Timeline:** Blocked — see below
 
-React Router 7 consolidates packages—`react-router-dom` is replaced by `react-router` with subpath imports for DOM-specific features.
+React Router 7 is stable (7.13.1 as of March 2026). React Router 7 consolidates packages—`react-router-dom` is replaced by `react-router` with subpath imports for DOM-specific features.
 
-### Key Changes
+**⛔ Blocker:** `react-router-bootstrap ^0.26.3` has no React Router 7 compatible release and the package appears unmaintained (last published 2 years ago, open issue #326). This package is used throughout the app for Bootstrap-styled navigation links. Options:
+1. Wait for `react-router-bootstrap` to release v7 support (uncertain timeline)
+2. Remove `react-router-bootstrap` dependency and implement Bootstrap link styling directly using standard React Router `Link` + Bootstrap CSS classes
+
+### Key Changes (when unblocked)
 
 - Uninstall `react-router-dom`, install `react-router`
 - Update imports from `"react-router-dom"` to `"react-router"`
 - DOM-specific imports (like `RouterProvider`) use `"react-router/dom"`
-- `react-router-bootstrap` will need updating or replacement
+- Replace all `react-router-bootstrap` usage with plain Bootstrap + React Router `Link`
 
-### Steps
+### Steps (when unblocked)
 
 1. Update `was-web/package.json`:
    ```json
    // Remove:
-   "react-router-dom": "^6.28.0",
+   "react-router-dom": "^6.30.3",
    "react-router-bootstrap": "^0.26.3",
    "@types/react-router-bootstrap": "^0.26.8",
 
@@ -47,9 +51,7 @@ React Router 7 consolidates packages—`react-router-dom` is replaced by `react-
    import { RouterProvider } from "react-router/dom";
    ```
 
-4. Address `react-router-bootstrap` usage:
-   - Check if v7-compatible version exists
-   - Or migrate to standard React Router `Link` components with Bootstrap classes
+4. Replace all `react-router-bootstrap` `<LinkContainer>` components with plain Bootstrap `<Nav.Link as={Link}>` etc.
 
 5. Test all routing thoroughly
 
@@ -64,45 +66,46 @@ React Router 7 consolidates packages—`react-router-dom` is replaced by `react-
 
 **Current:** eslint ^9.39.2
 **Target:** eslint ^10.0.0
-**Timeline:** When ESLint 10 stabilises (expected early 2026)
+**Timeline:** Blocked — see below
 
-ESLint 10 removes eslintrc completely. You're already on ESLint 9, which uses flat config by default.
+ESLint 10.0.2 is stable as of February 2026. Both ESLint configs already use flat config format (no legacy `.eslintrc`). However:
 
-### Key Changes
+**⛔ Blocker:** `eslint-plugin-import ^2.32.0` (used in `was-web/functions`) is **not compatible** with ESLint 10 — it throws `TypeError: Cannot use 'in' operator to search for 'sourceType' in undefined` due to context API changes. See [import-js/eslint-plugin-import#3227](https://github.com/import-js/eslint-plugin-import/issues/3227). Wait until this plugin releases ESLint 10 support.
 
-- `.eslintrc.*` files no longer supported
-- `.eslintignore` no longer supported
-- `ESLINT_USE_FLAT_CONFIG` env var no longer honoured
-- Deprecated context members removed from rule API
+**Also needed when unblocked:**
+- Functions lint script uses `--ext .ts` which is removed in ESLint 10; change to `eslint 'src/**/*.ts'`
+- Verify `eslint-plugin-react-hooks` compatibility (currently doesn't declare ESLint 10 peer dep)
+- `typescript-eslint ^8.x` already supports ESLint 10 — no upgrade needed
 
-### Pre-Migration Checklist
+### Pre-Migration Checklist (for when unblocked)
 
-Before ESLint 10:
+1. ✅ Already using flat config in both `was-web/eslint.config.js` and `was-web/functions/eslint.config.js`
+2. ✅ No `.eslintrc.*` files present
+3. ✅ No custom rules using deprecated context members
+4. ⬜ Wait for `eslint-plugin-import` to support ESLint 10
+5. ⬜ Fix functions lint script: `"lint": "eslint 'src/**/*.ts'"` (remove `--ext`)
 
-1. Ensure you're using flat config (`eslint.config.js` or `eslint.config.mjs`)
-2. Remove any `.eslintrc.*` files
-3. Remove `.eslintignore` (use `ignores` in flat config instead)
-4. Update any custom rules that use deprecated context members
+### Steps (when unblocked)
 
-### Steps
-
-1. Verify current config is flat config format
-
-2. Update `was-web/package.json`:
+1. Update `was-web/package.json`:
    ```json
    "eslint": "^10.0.0"
    ```
 
-3. Update ESLint plugins to v10-compatible versions:
+2. Update `was-web/functions/package.json`:
    ```json
-   "typescript-eslint": "^9.0.0",  // Check for v10 compatibility
-   "eslint-plugin-react-hooks": "^6.0.0",  // Check version
-   "eslint-plugin-react-refresh": "^1.0.0"  // Check version
+   "eslint": "^10.0.0"
    ```
 
-4. Run linting and fix any new errors:
+3. Fix functions lint script in `was-web/functions/package.json`:
+   ```json
+   "lint": "eslint 'src/**/*.ts'"
+   ```
+
+4. Run linting in both locations and fix any new errors:
    ```bash
    yarn lint
+   cd functions && yarn lint
    ```
 
 ### References
@@ -132,7 +135,7 @@ Next review: when Firebase 13 is available.
 
 ## Three.js Continuous Updates
 
-**Current:** ^0.182.0
+**Current:** ^0.183.0 (updated 2026-03-01 from 0.182)
 **Approach:** Incremental updates every 3-6 months
 
 Three.js has no formal deprecation schedule but follows a pattern of deprecating in version X and removing in X+10. Regular updates prevent large migration efforts.
@@ -158,11 +161,13 @@ Three.js has no formal deprecation schedule but follows a pattern of deprecating
 
 6. Run visual regression tests (E2E snapshots)
 
-### Known Deprecations to Watch
+### Known Deprecations to Watch (0.183)
 
+- `Clock` deprecated (use `Timer` instead)
+- `PostProcessing` renamed to `RenderPipeline` (backwards-compatible for now)
+- WebGPU now production-ready on all major browsers including Safari iOS
 - `PCFSoftShadowMap` deprecated (use `PCFShadowMap`)
 - Various loaders deprecated (USDZLoader, LottieLoader)
-- WebGPU becoming primary focus—consider future WebGPU migration
 
 ### References
 
@@ -180,9 +185,11 @@ TypeScript has no formal EOL policy. Keep reasonably current to benefit from typ
 
 ### Upcoming Changes
 
+- TypeScript 6.0 Beta announced February 11, 2026 — stable expected imminently
 - TypeScript 6.0 will be a "bridge" release to TypeScript 7.0
 - TypeScript 6.0 will deprecate features that 7.0 removes
 - Plan to be on TypeScript 6.x when it releases, then migrate to 7.0
+- Note: TypeScript 7 will use a Go-based compiler ("Project Corsa")
 
 ### Update Process
 
@@ -226,11 +233,11 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 
 | Priority | Package | Target | Timeline |
 |----------|---------|--------|----------|
-| 1 | React Router | 7.x | Q2 2026 |
-| 2 | ESLint | 10.x | When stable (mid-2026) |
+| 1 | React Router | 7.x | ⛔ Blocked by react-router-bootstrap (no v7 support) |
+| 2 | ESLint | 10.x | ⛔ Blocked by eslint-plugin-import (no ESLint 10 support) |
 | 3 | Firebase SDK | 12.x | ✅ Done (2026-03-01) |
-| 4 | Three.js | Latest | Ongoing (every 3-6 months) |
-| 5 | TypeScript | Latest 5.x/6.x | Ongoing |
+| 4 | Three.js | Latest | ✅ Done to 0.183 (2026-03-01); check again in ~3 months |
+| 5 | TypeScript | 6.x | Wait for stable release (beta as of 2026-03-01) |
 
 ---
 
