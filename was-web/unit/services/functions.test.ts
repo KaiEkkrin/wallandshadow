@@ -1745,6 +1745,50 @@ service firebase.storage {
       expect(profile?.latestMaps?.find(m => m.id === m2Id)).toBeUndefined();
     });
 
+    test('non-member cannot consolidate map changes; owner and player can', async () => {
+      const owner = createTestUser('Owner', 'owner@example.com', 'google.com');
+      const ownerEmul = await initializeEmul(owner);
+      const ownerDataService = new DataService(ownerEmul.db, serverTimestamp);
+      const ownerFunctionsService = new FunctionsService(ownerEmul.functions);
+      await ensureProfile(ownerDataService, owner, undefined);
+
+      const a1Id = await ownerFunctionsService.createAdventure('Adventure One', 'First adventure');
+      const m1Id = await ownerFunctionsService.createMap(a1Id, 'Map One', 'First map', MapType.Square, false);
+      await ownerDataService.addChanges(a1Id, owner.uid, m1Id, [createAddToken1(owner.uid), createAddWall1()]);
+      await ownerDataService.waitForPendingWrites();
+
+      // A completely unrelated user should be denied
+      const stranger = createTestUser('Stranger', 'stranger@example.com', 'google.com');
+      const strangerEmul = await initializeEmul(stranger);
+      await ensureProfile(new DataService(strangerEmul.db, serverTimestamp), stranger, undefined);
+      const strangerFunctionsService = new FunctionsService(strangerEmul.functions);
+
+      await expect(
+        strangerFunctionsService.consolidateMapChanges(a1Id, m1Id, false)
+      ).rejects.toThrow(/not in this adventure/i);
+
+      // The owner should be able to consolidate
+      await ownerFunctionsService.consolidateMapChanges(a1Id, m1Id, false);
+      const converter = createChangesConverter();
+      const base = await ownerDataService.get(ownerDataService.getMapBaseChangeRef(a1Id, m1Id, converter));
+      expect(base).not.toBeUndefined();
+
+      // A joined player should also be able to consolidate
+      const player = createTestUser('Player', 'player@example.com', 'google.com');
+      const playerEmul = await initializeEmul(player);
+      await ensureProfile(new DataService(playerEmul.db, serverTimestamp), player, undefined);
+      const playerFunctionsService = new FunctionsService(playerEmul.functions);
+
+      const invite = await ownerFunctionsService.inviteToAdventure(a1Id);
+      await playerFunctionsService.joinAdventure(invite ?? '');
+
+      // Add a change so there's something to consolidate
+      await ownerDataService.addChanges(a1Id, owner.uid, m1Id, [createMoveToken1(0)]);
+      await ownerDataService.waitForPendingWrites();
+
+      await playerFunctionsService.consolidateMapChanges(a1Id, m1Id, false);
+    });
+
     test('deleteAdventure leaves other adventures untouched', async () => {
       const user = createTestUser('Owner', 'owner@example.com', 'google.com');
       const emul = await initializeEmul(user);

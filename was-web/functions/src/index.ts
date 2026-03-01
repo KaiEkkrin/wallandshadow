@@ -105,6 +105,21 @@ async function consolidateMapChanges(uid: string, request: Req.ConsolidateMapCha
     throw new functions.https.HttpsError('not-found', 'No such map');
   }
 
+  // Verify the caller is the adventure owner or an active (non-blocked) player.
+  // The Admin SDK bypasses Firestore security rules, so we enforce authorization here.
+  const adventureRef = dataService.getAdventureRef(request.adventureId);
+  const adventure = await dataService.get(adventureRef);
+  if (adventure === undefined) {
+    throw new functions.https.HttpsError('not-found', 'No such adventure');
+  }
+  if (adventure.owner !== uid) {
+    const players = await dataService.getPlayerRefs(request.adventureId);
+    const isActivePlayer = players.some(p => p.data.playerId === uid && p.data.allowed !== false);
+    if (!isActivePlayer) {
+      throw new functions.https.HttpsError('permission-denied', 'You are not in this adventure');
+    }
+  }
+
   await Extensions.consolidateMapChanges(
     dataService,
     functionLogger,
