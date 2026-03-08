@@ -31,7 +31,13 @@
   "containerEnv": {
     "IS_LOCAL_DEV": "true",
     "FORCE_COLOR": "true",
-    "GOOGLE_APPLICATION_CREDENTIALS": "/workspaces/wallandshadow/was-web/firebase-admin-credentials.json"
+    "GOOGLE_APPLICATION_CREDENTIALS": "/workspaces/wallandshadow/was-web/firebase-admin-credentials.json",
+    "PGDATA": "/workspaces/wallandshadow/.devcontainer/.pgdata",
+    "DATABASE_URL": "postgresql://was:wasdev@localhost:5432/wallandshadow",
+    "S3_ENDPOINT": "http://localhost:9000",
+    "S3_BUCKET": "wallandshadow",
+    "S3_ACCESS_KEY": "wasdev",
+    "S3_SECRET_KEY": "wasdevpass"
   },
 
   "customizations": {
@@ -64,9 +70,13 @@
     }
   },
 
-  "forwardPorts": [3400, 4000, 5000, 5001, 7000, 8080, 9005, 9099, 9199, 9229, 9323],
+  "forwardPorts": [3000, 3400, 4000, 5000, 5001, 7000, 8080, 9005, 9099, 9199, 9229, 9323, 5432, 9000, 9001],
 
   "portsAttributes": {
+    "3000": {
+      "label": "Hono API Server",
+      "onAutoForward": "notify"
+    },
     "3400": {
       "label": "Firebase Hosting",
       "onAutoForward": "notify"
@@ -106,6 +116,18 @@
     "9323": {
       "label": "Playwright Report",
       "onAutoForward": "notify"
+    },
+    "5432": {
+      "label": "PostgreSQL",
+      "onAutoForward": "silent"
+    },
+    "9000": {
+      "label": "MinIO API",
+      "onAutoForward": "silent"
+    },
+    "9001": {
+      "label": "MinIO Console",
+      "onAutoForward": "openBrowser"
     }
   },
 

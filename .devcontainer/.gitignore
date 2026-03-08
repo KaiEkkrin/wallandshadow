@@ -7,4 +7,6 @@
 .cache/
 .config/
 .claude/
+.pgdata/
+.minio-data/
 

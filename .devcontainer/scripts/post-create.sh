@@ -95,6 +95,39 @@ cd /workspaces/wallandshadow/was-web
 npx playwright install || echo "   Note: Playwright browser installation failed (non-critical)"
 echo ""
 
+# Initialise PostgreSQL (runs once; data persists in .devcontainer/.pgdata/)
+echo "🐘 Setting up PostgreSQL..."
+if [ ! -f "$PGDATA/PG_VERSION" ]; then
+    echo "   Initialising database cluster..."
+    initdb -D "$PGDATA" --auth=trust --username=postgres --encoding=UTF8 --locale=C.UTF-8
+
+    # Use TCP only (no Unix socket needed); keeps the setup simple.
+    # Disable Unix socket entirely so pg_ctl doesn't try to create a lock file
+    # in /var/run/postgresql (which the node user cannot write to).
+    echo "listen_addresses = 'localhost'" >> "$PGDATA/postgresql.conf"
+    echo "port = 5432" >> "$PGDATA/postgresql.conf"
+    echo "unix_socket_directories = ''" >> "$PGDATA/postgresql.conf"
+
+    # Start temporarily to create the app user and database
+    pg_ctl -D "$PGDATA" -l "$PGDATA/postgresql.log" -w start
+
+    psql -h localhost -U postgres -c "CREATE USER was WITH PASSWORD 'wasdev';"
+    createdb -h localhost -U postgres --owner=was wallandshadow
+
+    pg_ctl -D "$PGDATA" -w stop
+    echo "   ✅ PostgreSQL cluster created (user: was, database: wallandshadow)"
+else
+    echo "   ✅ PostgreSQL cluster already initialised"
+fi
+echo ""
+
+# Create MinIO data directory (runs once; data persists across rebuilds)
+echo "🪣 Setting up MinIO..."
+MINIO_DATA="/workspaces/wallandshadow/.devcontainer/.minio-data"
+mkdir -p "$MINIO_DATA"
+echo "   ✅ MinIO data directory ready"
+echo ""
+
 # Firebase setup
 echo "🔥 Setting up Firebase..."
 cd /workspaces/wallandshadow/was-web
@@ -119,8 +152,13 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "📚 Quick Start Guide"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  Start development server:"
+echo "  Start Firebase dev server (existing stack):"
 echo "    cd was-web && yarn start"
+echo ""
+echo "  Connect to PostgreSQL:"
+echo "    psql -h localhost -U was wallandshadow"
+echo ""
+echo "  MinIO console: http://localhost:9001 (wasdev / wasdevpass)"
 echo ""
 echo "  Run unit tests:"
 echo "    cd was-web && yarn test:unit"
