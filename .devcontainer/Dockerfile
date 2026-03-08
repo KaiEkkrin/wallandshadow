@@ -13,11 +13,21 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     ca-certificates \
     gnupg \
     curl \
+    postgresql-17 \
     && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list \
     && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
     && apt-get update \
     && apt-get -y install google-cloud-cli \
     && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+
+# Add PostgreSQL binaries to PATH so pg_ctl, psql, initdb etc. work in all shell sessions
+ENV PATH="/usr/lib/postgresql/17/bin:${PATH}"
+
+# Install MinIO server and client (static binaries, no dependencies)
+RUN curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio \
+    && chmod +x /usr/local/bin/minio \
+    && curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc \
+    && chmod +x /usr/local/bin/mc
 
 # Install Playwright system dependencies
 RUN npx playwright install-deps
