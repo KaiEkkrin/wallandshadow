@@ -5,8 +5,7 @@
 # - Claude Code CLI credentials and settings
 
 .cache/
-.config/
 .claude/
-.pgdata/
+.config/
 .minio-data/
-
+.pgdata/
