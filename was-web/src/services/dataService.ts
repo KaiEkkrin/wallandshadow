@@ -23,8 +23,16 @@ import {
 
 import { v7 as uuidv7 } from 'uuid';
 
-import * as Convert from '@wallandshadow/shared';
-import { IDataService, IDataReference, IDataView, IDataAndReference, IChildDataReference, IAppVersion, IAdventure, IPlayer, Change, Changes, IIdentified, IImages, IInvite, IMap, IProfile, ISpritesheet } from '@wallandshadow/shared';
+import * as Convert from './converter';
+import { IDataService, IDataReference, IDataView, IDataAndReference, IChildDataReference, IAppVersion } from './interfaces';
+import { IAdventure, IPlayer } from '../data/adventure';
+import { Change, Changes } from '../data/change';
+import { IIdentified } from '../data/identified';
+import { IImages } from '../data/image';
+import { IInvite } from '../data/invite';
+import { IMap } from '../data/map';
+import { IProfile } from '../data/profile';
+import { ISpritesheet } from '../data/sprite';
 
 // Well-known collection names.
 const profiles = "profiles";

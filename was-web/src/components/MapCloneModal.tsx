@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState, useContext, useMemo } from 'react';
 import { AnalyticsContext } from './AnalyticsContext';
 import { UserContext } from './UserContext';
 
-import { IMapSummary, IAdventureSummary } from '@wallandshadow/shared';
+import { IMapSummary } from '../data/adventure';
+import { IAdventureSummary } from '../data/profile';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';

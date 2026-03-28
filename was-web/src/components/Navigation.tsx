@@ -6,12 +6,12 @@ import './Navigation.css';
 import { AnalyticsContext } from './AnalyticsContext';
 import { FirebaseContext } from './FirebaseContext';
 import { ProfileContext } from './ProfileContext';
-import * as Policy from '@wallandshadow/shared';
+import * as Policy from '../data/policy';
 import { StatusContext } from './StatusContext';
 import { SignInMethodsContext } from './SignInMethodsContext';
 import { UserContext } from './UserContext';
 import { updateProfile } from '../services/extensions';
-import { IUser } from '@wallandshadow/shared';
+import { IUser } from '../services/interfaces';
 
 import Button from 'react-bootstrap/Button';
 import ButtonGroup from 'react-bootstrap/ButtonGroup';

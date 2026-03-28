@@ -1,4 +1,6 @@
-import { GridCoord, GridEdge, GridVertex, coordAdd, EdgeOcclusion, BaseGeometry, IGridGeometry, EdgeGeometry } from '@wallandshadow/shared';
+import { GridCoord, GridEdge, GridVertex, coordAdd } from '../data/coord';
+import { EdgeOcclusion } from './occlusion';
+import { BaseGeometry, IGridGeometry, EdgeGeometry } from './gridGeometry';
 import * as THREE from 'three';
 
 // A tile of hexes.

@@ -28,7 +28,9 @@ jobs:
         with:
           node-version: 22
           cache: "yarn"
-          cache-dependency-path: was-web/yarn.lock
+          cache-dependency-path: |
+            was-web/yarn.lock
+            was-web/functions/yarn.lock
 
       - name: Setup Java (for Firebase emulators)
         uses: actions/setup-java@v4
@@ -51,8 +53,12 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools@${{ env.FIREBASE_TOOLS_VERSION }}
 
-      - name: Install dependencies
+      - name: Install dependencies (web)
         working-directory: was-web
+        run: yarn install --frozen-lockfile
+
+      - name: Install dependencies (functions)
+        working-directory: was-web/functions
         run: yarn install --frozen-lockfile
 
       - name: Build functions

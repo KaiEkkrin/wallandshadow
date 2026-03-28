@@ -8,7 +8,9 @@ import MapEditorModal from './MapEditorModal';
 import { StatusContext } from './StatusContext';
 import { UserContext } from './UserContext';
 
-import { IMapSummary, IMap, IAdventureSummary } from '@wallandshadow/shared';
+import { IMapSummary } from '../data/adventure';
+import { IMap } from '../data/map';
+import { IAdventureSummary } from '../data/profile';
 
 import Button from 'react-bootstrap/Button';
 import Modal from 'react-bootstrap/Modal';

@@ -231,13 +231,19 @@ jobs:
         with:
           node-version: 22
           cache: "yarn"
-          cache-dependency-path: was-web/yarn.lock
+          cache-dependency-path: |
+            was-web/yarn.lock
+            was-web/functions/yarn.lock
 
       # -----------------------------------------------------------------------
       # Install dependencies
       # -----------------------------------------------------------------------
-      - name: Install dependencies
+      - name: Install dependencies (web)
         working-directory: was-web
+        run: yarn install --frozen-lockfile
+
+      - name: Install dependencies (functions)
+        working-directory: was-web/functions
         run: yarn install --frozen-lockfile
 
       # -----------------------------------------------------------------------

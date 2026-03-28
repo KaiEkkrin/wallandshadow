@@ -14,11 +14,7 @@
     "target": "ES2022",
     "typeRoots": [
       "node_modules/@types"
-    ],
-    "paths": {
-      "@wallandshadow/shared": ["../../packages/shared/src/index.ts"],
-      "@wallandshadow/shared/*": ["../../packages/shared/src/*"]
-    }
+    ]
   },
   "compileOnSave": true,
   "include": [

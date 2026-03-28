@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import * as React from 'react';
 
-import { ICharacter, IPlayer } from '@wallandshadow/shared';
+import { ICharacter } from '../data/character';
+import { IPlayer } from '../data/adventure';
 
 import Button from 'react-bootstrap/Button';
 import ButtonGroup from 'react-bootstrap/ButtonGroup';

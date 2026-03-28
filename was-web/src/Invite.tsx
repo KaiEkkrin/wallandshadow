@@ -10,7 +10,7 @@ import { StatusContext } from './components/StatusContext';
 import { UserContext } from './components/UserContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 
-import { IInvite } from '@wallandshadow/shared';
+import { IInvite } from './data/invite';
 
 import Button from 'react-bootstrap/Button';
 

@@ -1,4 +1,6 @@
-import { GridCoord, GridEdge, coordAdd, GridVertex, EdgeOcclusion, BaseGeometry, IGridGeometry, EdgeGeometry } from '@wallandshadow/shared';
+import { GridCoord, GridEdge, coordAdd, GridVertex } from '../data/coord';
+import { EdgeOcclusion } from './occlusion';
+import { BaseGeometry, IGridGeometry, EdgeGeometry } from './gridGeometry';
 import * as THREE from 'three';
 
 export class SquareGridGeometry extends BaseGeometry implements IGridGeometry {

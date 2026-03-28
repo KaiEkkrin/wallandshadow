@@ -17,10 +17,6 @@
     "resolveJsonModule": true,
     "strict": true,
     "target": "es6",
-    "types": ["@types/node", "vitest/globals"],
-    "paths": {
-      "@wallandshadow/shared": ["../packages/shared/src/index.ts"],
-      "@wallandshadow/shared/*": ["../packages/shared/src/*"]
-    }
+    "types": ["@types/node", "vitest/globals"]
   }
 }

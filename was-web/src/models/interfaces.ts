@@ -1,8 +1,14 @@
 import * as THREE from 'three';
 
 import { MapColouring } from "./colouring";
-import { GridCoord, GridEdge, GridVertex, IFeature, IFeatureDictionary, IAreaDictionary, IIdDictionary, IMapControlPointDictionary, IMapImage, LoSPosition, ITokenDrawing, ISpriteManager } from '@wallandshadow/shared';
-import { ITokenTextDrawing } from '../data/tokenTexts';
+import { GridCoord, GridEdge, GridVertex } from "../data/coord";
+import { IFeature, IFeatureDictionary, IAreaDictionary } from "../data/feature";
+import { IIdDictionary } from "../data/identified";
+import { IMapControlPointDictionary, IMapImage } from "../data/image";
+import { LoSPosition } from "../data/losPosition";
+import { ITokenDrawing } from "../data/tokens";
+import { ITokenTextDrawing } from "../data/tokenTexts";
+import { ISpriteManager } from "../services/interfaces";
 
 // Describes the interface to our drawing subsystem,
 // which could be substituted out, won't exist in auto tests, etc.

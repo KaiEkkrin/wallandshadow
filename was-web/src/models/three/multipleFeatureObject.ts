@@ -1,4 +1,5 @@
-import { GridCoord, IFeature } from '@wallandshadow/shared';
+import { GridCoord } from '../../data/coord';
+import { IFeature } from '../../data/feature';
 import { IInstancedFeatureObject } from './instancedFeatureObject';
 
 import * as THREE from 'three';

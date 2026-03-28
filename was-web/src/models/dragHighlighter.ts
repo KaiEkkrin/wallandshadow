@@ -1,4 +1,6 @@
-import { Change, WallAdd, WallRemove, createAreaAdd, createWallAdd, createWallRemove, createAreaRemove, createPlayerAreaAdd, createPlayerAreaRemove, GridCoord, GridEdge, edgesEqual, coordsEqual, edgeString, coordString, GridVertex, verticesEqual, vertexString, IFeature, IFeatureDictionary, StripedArea } from '@wallandshadow/shared';
+import { Change, WallAdd, WallRemove, createAreaAdd, createWallAdd, createWallRemove, createAreaRemove, createPlayerAreaAdd, createPlayerAreaRemove } from "../data/change";
+import { GridCoord, GridEdge, edgesEqual, coordsEqual, edgeString, coordString, GridVertex, verticesEqual, vertexString } from "../data/coord";
+import { IFeature, IFeatureDictionary, StripedArea } from '../data/feature';
 import { IDragRectangle } from "./interfaces";
 
 import fluent from "fluent-iterable";

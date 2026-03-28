@@ -1,4 +1,6 @@
-import { ITokenProperties, IImage, ICacheLease, ISpriteManager, ISpritesheetEntry } from '@wallandshadow/shared';
+import { ITokenProperties } from '../../data/feature';
+import { IImage } from '../../data/image';
+import { ICacheLease, ISpriteManager, ISpritesheetEntry } from '../../services/interfaces';
 import { ICacheItem, ObjectCache } from '../../services/objectCache';
 
 import { from, Observable } from 'rxjs';

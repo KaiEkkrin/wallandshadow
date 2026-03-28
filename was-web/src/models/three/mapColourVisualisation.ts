@@ -1,7 +1,9 @@
-import { GridCoord, coordString, IFeature, IGridGeometry } from '@wallandshadow/shared';
+import { GridCoord, coordString } from '../../data/coord';
+import { IFeature } from '../../data/feature';
 import { createPaletteColouredAreaObject } from './areas';
 import { MapColouring } from '../colouring';
 import { FeatureColour } from '../featureColour';
+import { IGridGeometry } from '../gridGeometry';
 import { InstancedFeatures } from './instancedFeatures';
 import { PaletteColouredFeatureObject } from './paletteColouredFeatureObject';
 import { RedrawFlag } from '../redrawFlag';

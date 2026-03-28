@@ -1,10 +1,14 @@
-import { IAdventure, IPlayer, IAdventureIdentified, IIdentified, IMap, IDataService, IUser, IAuth, IAuthProvider, IAnalytics, IFunctionsService, IStorage, ISpriteManager, IProfile } from '@wallandshadow/shared';
+import { IAdventure, IPlayer } from '../data/adventure';
+import { IAdventureIdentified, IIdentified } from '../data/identified';
+import { IMap } from '../data/map';
 import { MapState, MapStateMachine } from '../models/mapStateMachine';
+import { IDataService, IUser, IAuth, IAuthProvider, IAnalytics, IFunctionsService, IStorage, ISpriteManager } from '../services/interfaces';
 
 import { Firestore, FieldValue } from 'firebase/firestore';
 import { Functions } from 'firebase/functions';
 import { FirebaseStorage } from 'firebase/storage';
 import { Subject } from 'rxjs';
+import { IProfile } from '../data/profile';
 
 export interface IContextProviderProps {
   children?: React.ReactNode;

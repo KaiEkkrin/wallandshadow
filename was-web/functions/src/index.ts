@@ -1,23 +1,11 @@
-import {
-  MapType,
-  IStorage,
-  IInviteExpiryPolicy,
-  defaultInviteExpiryPolicy,
-  CreateAdventureRequest,
-  CreateMapRequest,
-  CloneMapRequest,
-  ConsolidateMapChangesRequest,
-  InviteToAdventureRequest,
-  JoinAdventureRequest,
-  DeleteImageRequest,
-  DeleteMapRequest,
-  DeleteAdventureRequest,
-  FunctionRequest
-} from '@wallandshadow/shared';
+import { MapType } from './data/map';
+import * as Policy from './data/policy';
 import { AdminDataService } from './services/adminDataService';
 import * as Extensions from './services/extensions';
 import functionLogger from './services/functionLogger';
 import * as ImageExtensions from './services/imageExtensions';
+import { IStorage } from './services/interfaces';
+import * as Req from './services/request';
 import * as SpriteExtensions from './services/spriteExtensions';
 import { Storage } from './services/storage';
 
@@ -69,7 +57,7 @@ function getFunctionBuilder() {
 
 // Creates an adventure, checking for cap.
 
-async function createAdventure(uid: string, request: CreateAdventureRequest) {
+async function createAdventure(uid: string, request: Req.CreateAdventureRequest) {
   if (!request.name || !request.description) {
     throw new functions.https.HttpsError('invalid-argument', 'Name and description required');
   }
@@ -79,7 +67,7 @@ async function createAdventure(uid: string, request: CreateAdventureRequest) {
 
 // Creates a map, checking for cap.
 
-async function createMap(uid: string, request: CreateMapRequest) {
+async function createMap(uid: string, request: Req.CreateMapRequest) {
   if (!request.adventureId || !request.name || !request.description || !request.ty) {
     throw new functions.https.HttpsError('invalid-argument', 'Not all required parameters supplied');
   }
@@ -93,7 +81,7 @@ async function createMap(uid: string, request: CreateMapRequest) {
 
 // Clones a map into a new one in the same adventure.
 
-async function cloneMap(uid: string, request: CloneMapRequest) {
+async function cloneMap(uid: string, request: Req.CloneMapRequest) {
   if (!request.adventureId || !request.mapId || !request.name || !request.description) {
     throw new functions.https.HttpsError('invalid-argument', 'Not all required parameters supplied');
   }
@@ -106,7 +94,7 @@ async function cloneMap(uid: string, request: CloneMapRequest) {
 
 // Consolidates map changes.
 
-async function consolidateMapChanges(uid: string, request: ConsolidateMapChangesRequest) {
+async function consolidateMapChanges(uid: string, request: Req.ConsolidateMapChangesRequest) {
   if (!request.adventureId || !request.mapId) {
     throw new functions.https.HttpsError('invalid-argument', 'No adventure or map id supplied');
   }
@@ -145,12 +133,12 @@ async function consolidateMapChanges(uid: string, request: ConsolidateMapChanges
 
   // For testing purposes, the next functions accept alternative policy parameters.
   // It will only let you shorten the policy, however, not lengthen it!
-function getInviteExpiryPolicy(request?: IInviteExpiryPolicy): IInviteExpiryPolicy {
+function getInviteExpiryPolicy(request?: Policy.IInviteExpiryPolicy): Policy.IInviteExpiryPolicy {
   if (!request?.timeUnit || String(request.timeUnit) !== 'second') {
-    return defaultInviteExpiryPolicy;
+    return Policy.defaultInviteExpiryPolicy;
   }
 
-  const policy: IInviteExpiryPolicy = { ...defaultInviteExpiryPolicy, timeUnit: "second" };
+  const policy: Policy.IInviteExpiryPolicy = { ...Policy.defaultInviteExpiryPolicy, timeUnit: "second" };
   parseAndApply(request?.recreate, v => policy.recreate = v);
   parseAndApply(request?.expiry, v => policy.expiry = v);
   parseAndApply(request?.deletion, v => policy.deletion = v);
@@ -167,7 +155,7 @@ function parseAndApply(rawValue: any, apply: (value: number) => void) {
 
 // Creates an adventure invite or returns an existing one.
 
-async function inviteToAdventure(uid: string, request: InviteToAdventureRequest) {
+async function inviteToAdventure(uid: string, request: Req.InviteToAdventureRequest) {
   if (!request.adventureId) {
     throw new functions.https.HttpsError('invalid-argument', 'No adventure id supplied');
   }
@@ -189,7 +177,7 @@ async function inviteToAdventure(uid: string, request: InviteToAdventureRequest)
 // Joins an adventure (with invite validation.)
 // Returns the id of the adventure you joined.
 
-async function joinAdventure(uid: string, request: JoinAdventureRequest) {
+async function joinAdventure(uid: string, request: Req.JoinAdventureRequest) {
   if (!request.inviteId) {
     throw new functions.https.HttpsError('invalid-argument', 'No adventure or map id supplied');
   }
@@ -204,7 +192,7 @@ async function joinAdventure(uid: string, request: JoinAdventureRequest) {
 
 // Deletes an image.
 
-async function deleteImage(uid: string, request: DeleteImageRequest) {
+async function deleteImage(uid: string, request: Req.DeleteImageRequest) {
   if (!request.path) {
     throw new functions.https.HttpsError('invalid-argument', 'No path supplied');
   }
@@ -214,7 +202,7 @@ async function deleteImage(uid: string, request: DeleteImageRequest) {
 
 // Deletes a map and all its sub-resources (changes subcollection).
 
-async function deleteMap(uid: string, request: DeleteMapRequest) {
+async function deleteMap(uid: string, request: Req.DeleteMapRequest) {
   if (!request.adventureId || !request.mapId) {
     throw new functions.https.HttpsError('invalid-argument', 'Adventure id and map id required');
   }
@@ -224,7 +212,7 @@ async function deleteMap(uid: string, request: DeleteMapRequest) {
 
 // Deletes an adventure and all its sub-resources (maps, changes, players, spritesheets).
 
-async function deleteAdventure(uid: string, request: DeleteAdventureRequest) {
+async function deleteAdventure(uid: string, request: Req.DeleteAdventureRequest) {
   if (!request.adventureId) {
     throw new functions.https.HttpsError('invalid-argument', 'Adventure id required');
   }
@@ -243,7 +231,7 @@ export const interact = getFunctionBuilder().https.onCall(async (data, context) 
     throw new functions.https.HttpsError('unauthenticated', 'No uid found');
   }
 
-  const request = data as FunctionRequest;
+  const request = data as Req.FunctionRequest;
   switch (request.verb)
   {
     case 'cloneMap': return await cloneMap(uid, request);
