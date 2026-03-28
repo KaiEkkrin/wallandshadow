@@ -50,7 +50,8 @@
     "eslint/**/minimatch": "3.1.5",
     "@eslint/config-array/minimatch": "3.1.5",
     "@eslint/eslintrc/minimatch": "3.1.5",
-    "minimatch": "9.0.7"
+    "minimatch": "9.0.7",
+    "path-to-regexp": "0.1.13"
   },
   "devDependencies": {
     "@wallandshadow/shared": "*",
