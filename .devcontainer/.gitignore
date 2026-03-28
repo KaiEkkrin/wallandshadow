@@ -1,10 +1,3 @@
-# Ignore cache, config, and credential directories
-# These are created via symlinks in post-create.sh and contain:
-# - Firebase emulator cache files
-# - Firebase CLI credentials and config
-# - Claude Code CLI credentials and settings
-
-.cache/
-.config/
-.claude/
-
+.cache
+.minio-data
+.pgdata
