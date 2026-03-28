@@ -1,9 +1,5 @@
-import { MapType } from "../data/map";
-import { IInviteExpiryPolicy } from "../data/policy";
-import { ISprite } from "../data/sprite";
-import { spriteConverter } from "./converter";
-import { IFunctionsService } from "./interfaces";
-import * as Req from './request';
+import { MapType, IInviteExpiryPolicy, ISprite, IFunctionsService, spriteConverter } from '@wallandshadow/shared';
+import * as Req from '@wallandshadow/shared';
 
 import { Functions, httpsCallable } from 'firebase/functions';
 

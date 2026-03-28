@@ -28,10 +28,7 @@ import TokenDeletionModal from './components/TokenDeletionModal';
 import TokenEditorModal from './components/TokenEditorModal';
 import { UserContext } from './components/UserContext';
 
-import { ITokenProperties } from './data/feature';
-import { IImage, IMapImageProperties } from './data/image';
-import { createTokenSizes, IMap, MAP_CONTAINER_CLASS } from './data/map';
-import { getUserPolicy } from './data/policy';
+import { ITokenProperties, IImage, IMapImageProperties, createTokenSizes, IMap, MAP_CONTAINER_CLASS, getUserPolicy } from '@wallandshadow/shared';
 
 import { zoomMax, zoomMin } from './models/mapStateMachine';
 import { createDefaultUiState, isAnEditorOpen, MapUi } from './models/mapUi';

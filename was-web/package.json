@@ -1,7 +1,12 @@
 {
   "name": "was-web",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
+  "workspaces": [
+    "packages/shared",
+    "functions",
+    "server"
+  ],
   "type": "module",
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.1.0",
@@ -12,7 +17,7 @@
     "bootstrap": "^5.3.0",
     "chroma-js": "^3.2.0",
     "dayjs": "^1.8.36",
-    "firebase": "^11.0.0",
+    "firebase": "^12.0.0",
     "fluent-iterable": "^0.1.6",
     "react": "^19.0.0",
     "react-bootstrap": "^2.10.10",
@@ -21,7 +26,7 @@
     "react-router-dom": "^6.30.3",
     "react-use-measure": "^2.1.1",
     "rxjs": "^7.8.0",
-    "three": "^0.182.0",
+    "three": "^0.183.0",
     "uuid": "^11.0.0"
   },
   "scripts": {
@@ -38,7 +43,7 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report --host 0.0.0.0 e2e/test-results/html",
-    "lint": "eslint src"
+    "lint": "eslint src packages/shared/src"
   },
   "resolutions": {
     "@types/react": "^19.0.0",
@@ -46,11 +51,13 @@
     "eslint/**/minimatch": "3.1.5",
     "@eslint/config-array/minimatch": "3.1.5",
     "@eslint/eslintrc/minimatch": "3.1.5",
-    "minimatch": "9.0.7"
+    "minimatch": "9.0.7",
+    "path-to-regexp": "0.1.13"
   },
   "devDependencies": {
+    "@wallandshadow/shared": "*",
     "@eslint/js": "^9.39.2",
-    "@firebase/rules-unit-testing": "^4.0.1",
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@playwright/test": "^1.58.2",
     "@testing-library/dom": "^9.3.0",
     "@testing-library/jest-dom": "^6.0.0",
@@ -62,12 +69,12 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/react-router-bootstrap": "^0.26.8",
-    "@types/three": "^0.182.0",
+    "@types/three": "^0.183.0",
     "@vitejs/plugin-react": "^5.1.2",
     "eslint": "^9.39.2",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.26",
-    "firebase-admin": "^13.6.0",
+    "firebase-admin": "^13.7.0",
     "globals": "^16.2.0",
     "npm-run-all2": "^7.0.0",
     "typescript": "^5.7.0",

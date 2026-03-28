@@ -1,8 +1,4 @@
-import { IPlayer } from "../data/adventure";
-import { ICharacter } from "../data/character";
-import { ITokenProperties } from "../data/feature";
-import { getSpritePathFromId, ISprite, ISpritesheet } from "../data/sprite";
-import { IDataAndReference, IDataService, ISpriteManager, ISpritesheetEntry } from "./interfaces";
+import { IPlayer, ICharacter, ITokenProperties, getSpritePathFromId, ISprite, ISpritesheet, IDataAndReference, IDataService, ISpriteManager, ISpritesheetEntry } from '@wallandshadow/shared';
 
 import { combineLatest, from, Observable } from 'rxjs';
 import { concatMap, map, shareReplay, switchMap } from 'rxjs/operators';

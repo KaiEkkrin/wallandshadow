@@ -1,8 +1,4 @@
-import { ICharacter } from "./character";
-import { coordString, edgeString, GridCoord, GridEdge, GridVertex, vertexString } from "./coord";
-import { FeatureDictionary, IFeature, IFeatureDictionary, IToken, ITokenProperties, ITokenText } from "./feature";
-import { ITokenGeometry } from "./tokenGeometry";
-import { BaseTokenDrawing, ITokenDrawing, ITokenFace, ITokenFillEdge, ITokenFillVertex, Tokens } from "./tokens";
+import { ICharacter, coordString, edgeString, GridCoord, GridEdge, GridVertex, vertexString, FeatureDictionary, IFeature, IFeatureDictionary, IToken, ITokenProperties, ITokenText, ITokenGeometry, BaseTokenDrawing, ITokenDrawing, ITokenFace, ITokenFillEdge, ITokenFillVertex, Tokens } from '@wallandshadow/shared';
 
 import { Observable, Subscription } from 'rxjs';
 

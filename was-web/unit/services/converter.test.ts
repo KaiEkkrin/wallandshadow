@@ -1,7 +1,5 @@
 import * as Convert from './converter';
-import { ChangeType, ChangeCategory, TokenAdd, TokenMove, TokenRemove } from '../data/change';
-import { defaultGridCoord } from '../data/coord';
-import { UserLevel } from '../data/policy';
+import { ChangeType, ChangeCategory, TokenAdd, TokenMove, TokenRemove, defaultGridCoord, UserLevel } from '@wallandshadow/shared';
 
 // I'm not going to pedantically go through all the possible conversions, but just
 // target a few I want to verify:

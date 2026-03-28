@@ -1,1 +1,1 @@
-../../src/data/changeTracking.ts
+export * from '@wallandshadow/shared';

@@ -1,1 +1,1 @@
-../../src/services/interfaces.ts
+export * from '@wallandshadow/shared';

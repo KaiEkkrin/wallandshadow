@@ -1,1 +1,1 @@
-../../src/data/character.ts
+export * from '@wallandshadow/shared';

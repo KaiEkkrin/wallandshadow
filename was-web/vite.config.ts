@@ -122,6 +122,11 @@ const processAppHtml = () => ({
 
 export default defineConfig({
   plugins: [react(), copyLandingPage(), processAppHtml(), copyRobotsTxt()],
+  resolve: {
+    alias: {
+      '@wallandshadow/shared': resolve(__dirname, 'packages/shared/src/index.ts'),
+    },
+  },
   define: {
     __GIT_COMMIT__: JSON.stringify(gitCommitHash),
   },

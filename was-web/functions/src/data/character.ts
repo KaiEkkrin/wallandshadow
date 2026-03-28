@@ -1,1 +1,0 @@
-../../../src/data/character.ts

@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import * as React from 'react';
 
-import { IPlayer } from '../data/adventure';
+import { IPlayer } from '@wallandshadow/shared';
 
 import Form from 'react-bootstrap/Form';
 

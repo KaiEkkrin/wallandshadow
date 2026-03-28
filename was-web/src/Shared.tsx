@@ -8,7 +8,7 @@ import { RequireLoggedIn } from './components/RequireLoggedIn';
 import { UserContext } from './components/UserContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 
-import { IPlayer } from './data/adventure';
+import { IPlayer } from '@wallandshadow/shared';
 
 import Col from 'react-bootstrap/Col';
 import Container from 'react-bootstrap/Container';

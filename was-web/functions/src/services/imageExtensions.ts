@@ -1,10 +1,18 @@
-import { IAdventure } from '../data/adventure';
-import { IImage, IImages } from '../data/image';
-import { IMap } from '../data/map';
-import { getUserPolicy } from '../data/policy';
-import { IProfile } from '../data/profile';
+import {
+  IAdventure,
+  IImage,
+  IImages,
+  IMap,
+  getUserPolicy,
+  IProfile,
+  IDataService,
+  IDataReference,
+  IDataView,
+  ILogger,
+  IStorage,
+  IDataAndReference
+} from '@wallandshadow/shared';
 import { IAdminDataService, ICollectionGroupQueryResult } from './extraInterfaces';
-import { IDataService, IDataReference, IDataView, ILogger, IStorage, IDataAndReference } from './interfaces';
 
 import fluent from 'fluent-iterable';
 
