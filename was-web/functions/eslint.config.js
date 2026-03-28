@@ -69,7 +69,7 @@ module.exports = [
 
       // Import rules
       'import/no-deprecated': 'warn',
-      'import/no-extraneous-dependencies': 'error',
+      'import/no-extraneous-dependencies': ['error', { packageDir: ['..', '.'] }],
       'import/no-unassigned-import': 'warn',
     },
   },

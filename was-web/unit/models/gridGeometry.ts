@@ -1,1 +1,1 @@
-../../src/models/gridGeometry.ts
+export * from '@wallandshadow/shared';

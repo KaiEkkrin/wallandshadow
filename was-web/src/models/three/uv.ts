@@ -1,7 +1,4 @@
-import { coordString, coordSub, edgeString, GridCoord, GridEdge, GridVertex, vertexString } from '../../data/coord';
-import { defaultToken, FeatureDictionary, IFeature, IToken, TokenSize } from '../../data/feature';
-import { ITokenGeometry } from '../../data/tokenGeometry';
-import { IGridGeometry } from '../gridGeometry';
+import { coordString, coordSub, edgeString, GridCoord, GridEdge, GridVertex, vertexString, defaultToken, FeatureDictionary, IFeature, IToken, TokenSize, ITokenGeometry, IGridGeometry } from '@wallandshadow/shared';
 
 import * as THREE from 'three';
 

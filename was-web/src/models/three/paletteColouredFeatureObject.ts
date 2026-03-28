@@ -1,5 +1,4 @@
-import { GridCoord } from '../../data/coord';
-import { IFeature } from '../../data/feature';
+import { GridCoord, IFeature } from '@wallandshadow/shared';
 import { InstancedFeatureObject } from './instancedFeatureObject';
 import { IShader } from './shaderFilter';
 

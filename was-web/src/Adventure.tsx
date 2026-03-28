@@ -19,11 +19,7 @@ import { ProfileContext } from './components/ProfileContext';
 import { RequireLoggedIn } from './components/RequireLoggedIn';
 import { UserContext } from './components/UserContext';
 
-import { IAdventure, summariseAdventure, IPlayer, IMapSummary } from './data/adventure';
-import { ICharacter, maxCharacters } from './data/character';
-import { IImage } from './data/image';
-import { IMap } from './data/map';
-import { getUserPolicy } from './data/policy';
+import { IAdventure, summariseAdventure, IPlayer, IMapSummary, ICharacter, maxCharacters, IImage, IMap, getUserPolicy } from '@wallandshadow/shared';
 import { editAdventure, leaveAdventure, editMap, editCharacter, deleteCharacter } from './services/extensions';
 
 import Button from 'react-bootstrap/Button';

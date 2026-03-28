@@ -5,10 +5,7 @@ import ColourSelection from './ColourSelection';
 import TokenImageEditor from './TokenImageEditor';
 import TokenPlayerSelection from './TokenPlayerSelection';
 
-import { IPlayer } from '../data/adventure';
-import { defaultTokenProperties, ITokenProperties, TokenSize } from '../data/feature';
-import { IImage } from '../data/image';
-import { ISprite } from '../data/sprite';
+import { IPlayer, defaultTokenProperties, ITokenProperties, TokenSize, IImage, ISprite } from '@wallandshadow/shared';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';

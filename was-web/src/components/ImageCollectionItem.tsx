@@ -4,7 +4,7 @@ import * as React from 'react';
 import { AnalyticsContext } from './AnalyticsContext';
 import { UserContext } from './UserContext';
 
-import { IImage } from '../data/image';
+import { IImage } from '@wallandshadow/shared';
 
 import { from } from 'rxjs';
 

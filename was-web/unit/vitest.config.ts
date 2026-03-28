@@ -23,6 +23,7 @@ export default defineConfig({
   // See: https://github.com/firebase/firebase-js-sdk/issues/6905
   resolve: {
     alias: {
+      '@wallandshadow/shared': path.resolve(__dirname, '../packages/shared/src/index.ts'),
       '@firebase/rules-unit-testing': path.join(nodeModules, '@firebase/rules-unit-testing/dist/index.cjs.js'),
       'firebase/firestore': path.join(nodeModules, 'firebase/firestore/dist/index.cjs.js'),
       'firebase/auth': path.join(nodeModules, 'firebase/auth/dist/index.cjs.js'),

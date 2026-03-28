@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
 
-import { IPlayer } from '../data/adventure';
-import { ITokenProperties } from '../data/feature';
-import { IMap } from '../data/map';
+import { IPlayer, ITokenProperties, IMap } from '@wallandshadow/shared';
 import MapInfoCard from './MapInfoCard';
 import NetworkStatus, { INetworkStatusProps } from './NetworkStatus';
 import PlayerHelp from './PlayerHelp';

@@ -1,1 +1,1 @@
-../../src/data/policy.ts
+export * from '@wallandshadow/shared';

@@ -2,7 +2,7 @@ import { forwardRef, useState, useEffect, useMemo } from 'react';
 import '../App.css';
 import '../Map.css';
 
-import { IPositionedAnnotation } from '../data/annotation';
+import { IPositionedAnnotation } from '@wallandshadow/shared';
 import { ShowAnnotationFlags } from './MapAnnotations.types';
 
 import OverlayTrigger from 'react-bootstrap/OverlayTrigger';

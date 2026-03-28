@@ -1,1 +1,1 @@
-../../src/data/change.ts
+export * from '@wallandshadow/shared';

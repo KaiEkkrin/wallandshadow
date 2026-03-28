@@ -2,7 +2,7 @@ import { Subject } from 'rxjs';
 
 import { StatusContext } from './StatusContext';
 import { IContextProviderProps, IToast } from './interfaces';
-import { IIdentified } from '../data/identified';
+import { IIdentified } from '@wallandshadow/shared';
 
 const value = {
   toasts: new Subject<IIdentified<IToast | undefined>>()

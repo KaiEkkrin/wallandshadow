@@ -3,8 +3,7 @@ import { Fragment, useCallback, useContext, useEffect, useMemo, useState } from 
 import ImageCollectionItem from './ImageCollectionItem';
 import { ImagePickerForm } from './ImagePickerModal';
 import { ProfileContext } from './ProfileContext';
-import { IImage, IMapImageProperties, MapImageRotation } from '../data/image';
-import { getUserPolicy } from '../data/policy';
+import { IImage, IMapImageProperties, MapImageRotation, getUserPolicy } from '@wallandshadow/shared';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';

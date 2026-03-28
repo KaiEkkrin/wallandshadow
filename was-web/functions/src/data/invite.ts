@@ -1,1 +1,0 @@
-../../../src/data/invite.ts
