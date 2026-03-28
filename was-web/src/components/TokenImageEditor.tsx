@@ -7,7 +7,9 @@ import { ProfileContext } from './ProfileContext';
 import SpriteImage from './SpriteImage';
 import { UserContext } from './UserContext';
 
-import { IImage, getUserPolicy, defaultSpriteGeometry, ISprite, toSpriteGeometryString } from '@wallandshadow/shared';
+import { IImage } from '../data/image';
+import { getUserPolicy } from '../data/policy';
+import { defaultSpriteGeometry, ISprite, toSpriteGeometryString } from '../data/sprite';
 import { hexColours } from '../models/featureColour';
 
 import Button from 'react-bootstrap/Button';

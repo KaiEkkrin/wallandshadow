@@ -3,14 +3,28 @@ import { FaceHighlighter, PlayerFaceHighlighter } from './dragHighlighter';
 import { DragRectangle } from './dragRectangle';
 import { getClientToWorld, getWorldToClient } from './extensions';
 import { FeatureColour } from './featureColour';
+import { IGridGeometry } from './gridGeometry';
 import { IDrawing, IDragRectangle, Layer } from './interfaces';
 import { ImageResizer } from './imageResizer';
 import { MapChangeTracker } from './mapChangeTracker';
 import { RedrawFlag } from './redrawFlag';
 import { WallHighlighter, WallRectangleHighlighter, RoomHighlighter } from './wallHighlighter';
 
-import { IAnnotation, IPositionedAnnotation, Change, createTokenRemove, createTokenAdd, createNoteRemove, createNoteAdd, createTokenMove, createImageAdd, createImageRemove, netObjectCount, trackChanges, GridCoord, coordString, coordsEqual, coordSub, coordAdd, GridVertex, vertexAdd, FeatureDictionary, flipToken, IToken, ITokenDictionary, ITokenProperties, TokenSize, defaultToken, IAdventureIdentified, Anchor, anchorsEqual, anchorString, IMapImage, IMapImageProperties, LoSPosition, IMap, IUserPolicy, getTokenLoSPosition, ITokenGeometry, Tokens, IDataService, ISpriteManager, IGridGeometry } from '@wallandshadow/shared';
+import { IAnnotation, IPositionedAnnotation } from '../data/annotation';
+import { Change, createTokenRemove, createTokenAdd, createNoteRemove, createNoteAdd, createTokenMove, createImageAdd, createImageRemove } from '../data/change';
+import { netObjectCount, trackChanges } from '../data/changeTracking';
+import { GridCoord, coordString, coordsEqual, coordSub, coordAdd, GridVertex, vertexAdd } from '../data/coord';
+import { FeatureDictionary, flipToken, IToken, ITokenDictionary, ITokenProperties, TokenSize, defaultToken } from '../data/feature';
+import { IAdventureIdentified } from '../data/identified';
+import { Anchor, anchorsEqual, anchorString, IMapImage, IMapImageProperties } from '../data/image';
+import { LoSPosition } from '../data/losPosition';
+import { IMap } from '../data/map';
+import { IUserPolicy } from '../data/policy';
+import { getTokenLoSPosition, ITokenGeometry } from '../data/tokenGeometry';
+import { Tokens } from '../data/tokens';
 import { TokensWithObservableText } from '../data/tokenTexts';
+
+import { IDataService, ISpriteManager } from '../services/interfaces';
 import { createDrawing } from './three/drawing';
 import { DrawingOrtho } from './three/drawingOrtho';
 

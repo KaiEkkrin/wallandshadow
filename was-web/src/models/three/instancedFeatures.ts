@@ -1,5 +1,7 @@
-import { GridCoord, FeatureDictionary, IFeature, IFeatureDictionary, IGridGeometry } from '@wallandshadow/shared';
+import { GridCoord } from '../../data/coord';
+import { FeatureDictionary, IFeature, IFeatureDictionary } from '../../data/feature';
 import { Drawn } from '../drawn';
+import { IGridGeometry } from "../gridGeometry";
 import { IInstancedFeatureObject } from './instancedFeatureObject';
 import { RedrawFlag } from '../redrawFlag';
 

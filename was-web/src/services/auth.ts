@@ -1,4 +1,4 @@
-import { IAuth, IAuthProvider, IUser } from "@wallandshadow/shared";
+import { IAuth, IAuthProvider, IUser } from "./interfaces";
 
 import {
   Auth,

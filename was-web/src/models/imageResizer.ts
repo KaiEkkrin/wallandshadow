@@ -1,4 +1,7 @@
-import { Change, createImageAdd, createImageRemove, IIdDictionary, Anchor, anchorsEqual, anchorString, IMapControlPointDictionary, IMapControlPointIdentifier, IMapImage, IGridGeometry } from '@wallandshadow/shared';
+import { Change, createImageAdd, createImageRemove } from "../data/change";
+import { IIdDictionary } from "../data/identified";
+import { Anchor, anchorsEqual, anchorString, IMapControlPointDictionary, IMapControlPointIdentifier, IMapImage } from "../data/image";
+import { IGridGeometry } from "./gridGeometry";
 
 import * as THREE from 'three';
 

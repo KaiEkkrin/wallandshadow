@@ -2,25 +2,17 @@ import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
 import { v7 as uuidv7 } from 'uuid';
 
-import * as Convert from '@wallandshadow/shared';
+import * as Convert from './converter';
 import { IAdminDataService, IAdminDataView, ICollectionGroupQueryResult } from './extraInterfaces';
-import {
-  IChildDataReference,
-  IDataReference,
-  IDataView,
-  IDataAndReference,
-  IAppVersion,
-  IAdventure,
-  IPlayer,
-  Change,
-  Changes,
-  IIdentified,
-  IImages,
-  IInvite,
-  IMap,
-  IProfile,
-  ISpritesheet
-} from '@wallandshadow/shared';
+import { IChildDataReference, IDataReference, IDataView, IDataAndReference, IAppVersion } from './interfaces';
+import { IAdventure, IPlayer } from '../data/adventure';
+import { Change, Changes } from '../data/change';
+import { IIdentified } from '../data/identified';
+import { IImages } from '../data/image';
+import { IInvite } from '../data/invite';
+import { IMap } from '../data/map';
+import { IProfile } from '../data/profile';
+import { ISpritesheet } from '../data/sprite';
 
 // This data services is like the one in the web application, but uses the Admin SDK instead.
 

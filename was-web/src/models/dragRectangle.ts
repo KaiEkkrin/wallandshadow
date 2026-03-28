@@ -1,5 +1,7 @@
-import { GridCoord, IGridGeometry, TestVertexCollection, RectangleOcclusion } from '@wallandshadow/shared';
+import { GridCoord } from '../data/coord';
+import { IGridGeometry } from './gridGeometry';
 import { IDragRectangle, IOutlinedRectangle } from './interfaces';
+import { TestVertexCollection, RectangleOcclusion } from './occlusion';
 
 import * as THREE from 'three';
 import fluent from 'fluent-iterable';

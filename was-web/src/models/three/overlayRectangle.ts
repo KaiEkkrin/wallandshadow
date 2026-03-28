@@ -1,5 +1,5 @@
-import { IGridGeometry } from '@wallandshadow/shared';
 import { Drawn } from '../drawn';
+import { IGridGeometry } from '../gridGeometry';
 import { IOutlinedRectangle } from '../interfaces';
 import { RedrawFlag } from '../redrawFlag';
 

@@ -1,4 +1,4 @@
-import { IStorage, IStorageReference } from '@wallandshadow/shared';
+import { IStorage, IStorageReference } from './interfaces';
 
 import * as admin from 'firebase-admin';
 // eslint-disable-next-line import/no-extraneous-dependencies

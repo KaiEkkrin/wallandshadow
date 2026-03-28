@@ -1,6 +1,8 @@
-import { GridCoord, coordString, GridVertex, vertexString, IFeature, FeatureDictionary, IGridGeometry } from '@wallandshadow/shared';
+import { GridCoord, coordString, GridVertex, vertexString } from '../../data/coord';
+import { IFeature, FeatureDictionary } from '../../data/feature';
 import { createAreaGeometry, Areas, createAreas } from './areas';
 import { Drawn } from '../drawn';
+import { IGridGeometry } from '../gridGeometry';
 import { InstancedFeatureObject } from './instancedFeatureObject';
 import { IGridBounds } from '../interfaces';
 import { RedrawFlag } from '../redrawFlag';

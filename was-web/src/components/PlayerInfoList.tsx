@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
-import { IPlayer, ITokenProperties } from '@wallandshadow/shared';
+import { IPlayer } from '../data/adventure';
+import { ITokenProperties } from '../data/feature';
 import { hexColours } from '../models/featureColour';
 
 import SpriteImage from './SpriteImage';

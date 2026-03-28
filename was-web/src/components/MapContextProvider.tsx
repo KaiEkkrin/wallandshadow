@@ -1,6 +1,8 @@
 import { useEffect, useState, useContext, useReducer } from 'react';
 
-import { trackChanges, IAdventureIdentified, IMap } from '@wallandshadow/shared';
+import { trackChanges } from '../data/changeTracking';
+import { IAdventureIdentified } from '../data/identified';
+import { IMap } from '../data/map';
 import { MapLifecycleManager } from '../models/mapLifecycleManager';
 import { createDefaultState, MapStateMachine } from '../models/mapStateMachine';
 import { networkStatusTracker } from '../models/networkStatusTracker';

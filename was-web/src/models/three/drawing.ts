@@ -1,8 +1,9 @@
-import { IGridGeometry } from '@wallandshadow/shared';
 import { DrawingOrtho } from "./drawingOrtho";
+import { IGridGeometry } from "../gridGeometry";
 import { IDrawing } from "../interfaces";
 import { FeatureColour } from "../featureColour";
-import { ITokenGeometry, ISpriteManager } from '@wallandshadow/shared';
+import { ITokenGeometry } from "../../data/tokenGeometry";
+import { ISpriteManager } from "../../services/interfaces";
 
 import * as THREE from 'three';
 

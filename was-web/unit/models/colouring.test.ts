@@ -1,7 +1,8 @@
 import { MapColouring } from './colouring';
 import { HexGridGeometry } from './hexGridGeometry';
 import { SquareGridGeometry } from './squareGridGeometry';
-import { FeatureDictionary, IFeature, GridCoord, coordString } from '@wallandshadow/shared';
+import { FeatureDictionary, IFeature } from '../data/feature';
+import { GridCoord, coordString } from '../data/coord';
 
 // TODO This will be a super trivial test because expressing complex maps in
 // code isn't nice -- to better exercise it, I should create a map colouring

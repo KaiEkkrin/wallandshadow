@@ -4,12 +4,12 @@ import './App.css';
 import { AnalyticsContext } from './components/AnalyticsContext';
 import { FirebaseContext } from './components/FirebaseContext';
 import Navigation from './components/Navigation';
-import * as Policy from '@wallandshadow/shared';
+import * as Policy from './data/policy';
 import { ProfileContext } from './components/ProfileContext';
 import { StatusContext } from './components/StatusContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 
-import { IUser } from '@wallandshadow/shared';
+import { IUser } from './services/interfaces';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';

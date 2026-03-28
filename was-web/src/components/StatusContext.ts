@@ -2,7 +2,7 @@ import { createContext } from 'react';
 import { Subject } from 'rxjs';
 
 import { IStatusContext, IToast } from './interfaces';
-import { IIdentified } from '@wallandshadow/shared';
+import { IIdentified } from '../data/identified';
 
 const value = {
   toasts: new Subject<IIdentified<IToast | undefined>>()

@@ -1,5 +1,9 @@
-import { vertexString, IdDictionary, IIdDictionary, Anchor, IMapControlPoint, IMapControlPointDictionary, IMapControlPointIdentifier, IMapImage, ICacheLease, IGridGeometry } from '@wallandshadow/shared';
+import { vertexString } from "../../data/coord";
+import { IdDictionary, IIdDictionary } from "../../data/identified";
+import { Anchor, IMapControlPoint, IMapControlPointDictionary, IMapControlPointIdentifier, IMapImage } from "../../data/image";
+import { ICacheLease } from "../../services/interfaces";
 import { Drawn } from "../drawn";
+import { IGridGeometry } from "../gridGeometry";
 import { InstanceCountedMesh } from "./instancedFeatureObject";
 import { RedrawFlag } from "../redrawFlag";
 import { IShader } from "./shaderFilter";

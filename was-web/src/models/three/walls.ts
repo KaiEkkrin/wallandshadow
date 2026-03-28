@@ -1,4 +1,6 @@
-import { GridEdge, edgeString, IFeature, IFeatureDictionary, ITokenProperties, IGridGeometry } from '@wallandshadow/shared';
+import { GridEdge, edgeString } from '../../data/coord';
+import { IFeature, IFeatureDictionary, ITokenProperties } from '../../data/feature';
+import { IGridGeometry } from "../gridGeometry";
 import { IInstancedFeatureObject } from './instancedFeatureObject';
 import { InstancedFeatures } from './instancedFeatures';
 import { MultipleFeatureObject } from './multipleFeatureObject';
