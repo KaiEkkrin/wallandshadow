@@ -1,18 +1,7 @@
-import {
-  fromSpriteGeometryString,
-  getSpritePathFromId,
-  ISprite,
-  ISpritesheet,
-  IDataAndReference,
-  IDataReference,
-  IDataService,
-  IDataView,
-  ILogger,
-  IStorage,
-  IStorageReference
-} from '@wallandshadow/shared';
+import { fromSpriteGeometryString, getSpritePathFromId, ISprite, ISpritesheet } from "../data/sprite";
 import { Timestamp } from "../data/types";
 import { IAdminDataService } from "./extraInterfaces";
+import { IDataAndReference, IDataReference, IDataService, IDataView, ILogger, IStorage, IStorageReference } from "./interfaces";
 
 import * as fs from 'fs';
 import * as os from 'os';

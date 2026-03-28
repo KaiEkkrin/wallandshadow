@@ -1,4 +1,6 @@
-import { coordString, GridCoord, IFeature, IIdFeature, IToken, IGridGeometry } from '@wallandshadow/shared';
+import { coordString, GridCoord } from '../../data/coord';
+import { IFeature, IIdFeature, IToken } from '../../data/feature';
+import { IGridGeometry } from "../gridGeometry";
 import { IInstancedFeatureObject } from './instancedFeatureObject';
 import { InstancedFeatures } from './instancedFeatures';
 import { MultipleFeatureObject } from './multipleFeatureObject';

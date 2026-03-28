@@ -1,5 +1,12 @@
 import { MapColouring } from "./colouring";
-import { IAnnotation, SimpleChangeTracker, GridCoord, GridEdge, IFeatureDictionary, IFeature, IToken, ITokenDictionary, IAreaDictionary, IIdDictionary, IMapImage, IMap, IUserPolicy } from '@wallandshadow/shared';
+import { IAnnotation } from "../data/annotation";
+import { SimpleChangeTracker } from "../data/changeTracking";
+import { GridCoord, GridEdge } from "../data/coord";
+import { IFeatureDictionary, IFeature, IToken, ITokenDictionary, IAreaDictionary } from "../data/feature";
+import { IIdDictionary } from "../data/identified";
+import { IMapImage } from "../data/image";
+import { IMap } from "../data/map";
+import { IUserPolicy } from "../data/policy";
 
 // This change tracker supports all our map features.
 // The handleChangesApplied function receives true if there were any token changes

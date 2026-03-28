@@ -1,5 +1,10 @@
-import { coordString, edgeString, GridCoord, GridEdge, GridVertex, vertexString, IFeature, IToken, ITokenProperties, BaseTokenDrawing, ITokenFace, ITokenFillEdge, ITokenFillVertex, ICacheLease, IGridGeometry } from '@wallandshadow/shared';
-import { BaseTokenDrawingWithText } from '../../data/tokenTexts';
+import { coordString, edgeString, GridCoord, GridEdge, GridVertex, vertexString } from "../../data/coord";
+import { IFeature, IToken, ITokenProperties } from "../../data/feature";
+import { BaseTokenDrawing, ITokenFace, ITokenFillEdge, ITokenFillVertex } from "../../data/tokens";
+import { BaseTokenDrawingWithText } from "../../data/tokenTexts";
+import { ICacheLease } from "../../services/interfaces";
+
+import { IGridGeometry } from "../gridGeometry";
 import { RedrawFlag } from "../redrawFlag";
 
 import { createPaletteColouredAreaObject, createSelectedAreas, createSpriteAreaObject } from "./areas";

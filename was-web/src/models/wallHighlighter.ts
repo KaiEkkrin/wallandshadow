@@ -1,6 +1,9 @@
-import { Change, GridVertex, GridEdge, verticesEqual, GridCoord, coordsEqual, vertexString, FeatureDictionary, IFeature, IFeatureDictionary, IGridGeometry } from '@wallandshadow/shared';
+import { Change } from "../data/change";
+import { GridVertex, GridEdge, verticesEqual, GridCoord, coordsEqual, vertexString } from "../data/coord";
+import { FeatureDictionary, IFeature, IFeatureDictionary } from "../data/feature";
 import { MapColouring } from "./colouring";
 import { DragProperties, EdgeHighlighter, FaceHighlighter, VertexHighlighter } from "./dragHighlighter";
+import { IGridGeometry } from "./gridGeometry";
 import { IDragRectangle } from "./interfaces";
 
 import * as THREE from 'three';

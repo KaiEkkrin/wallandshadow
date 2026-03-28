@@ -1,4 +1,4 @@
-import { ILogger } from '@wallandshadow/shared';
+import { ILogger } from './interfaces';
 
 // Provides a console logger.
 class ConsoleLogger implements ILogger {

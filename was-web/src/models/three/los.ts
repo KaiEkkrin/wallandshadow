@@ -1,5 +1,8 @@
-import { GridEdge, edgeString, IFeature, LoSPosition, losPositionsEqual, IGridGeometry } from '@wallandshadow/shared';
+import { GridEdge, edgeString } from "../../data/coord";
+import { IFeature } from "../../data/feature";
+import { LoSPosition, losPositionsEqual } from "../../data/losPosition";
 import { Drawn } from "../drawn";
+import { IGridGeometry } from "../gridGeometry";
 import { InstancedFeatureObject } from "./instancedFeatureObject";
 import { InstancedFeatures } from "./instancedFeatures";
 import { RedrawFlag } from "../redrawFlag";

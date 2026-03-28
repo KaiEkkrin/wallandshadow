@@ -6,8 +6,10 @@ import { AdventureContext } from './AdventureContext';
 import { IAdventureContext, IContextProviderProps } from './interfaces';
 import { StatusContext } from './StatusContext';
 
-import { IAdventure, IPlayer, IIdentified, ISpriteManager } from '@wallandshadow/shared';
+import { IAdventure, IPlayer } from '../data/adventure';
+import { IIdentified } from '../data/identified';
 import { registerAdventureAsRecent, removeAdventureFromRecent } from '../services/extensions';
+import { ISpriteManager } from '../services/interfaces';
 import { SpriteManager } from '../services/spriteManager';
 
 import { useNavigate, useLocation } from 'react-router-dom';

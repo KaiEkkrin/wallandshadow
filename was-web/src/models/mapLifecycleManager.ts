@@ -1,4 +1,9 @@
-import { IAdventureIdentified, IMap, MapType, getUserPolicy, IProfile, getTokenGeometry, IDataService, IFunctionsService, ISpriteManager } from '@wallandshadow/shared';
+import { IAdventureIdentified } from "../data/identified";
+import { IMap, MapType } from "../data/map";
+import { getUserPolicy } from "../data/policy";
+import { IProfile } from "../data/profile";
+import { getTokenGeometry } from "../data/tokenGeometry";
+import { IDataService, IFunctionsService, ISpriteManager } from "../services/interfaces";
 
 import { standardColours } from "./featureColour";
 import { HexGridGeometry } from "./hexGridGeometry";

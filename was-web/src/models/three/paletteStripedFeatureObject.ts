@@ -1,4 +1,6 @@
-import { coordString, GridCoord, IFeature, IAreaDictionary, StripedArea, Striped, IGridGeometry } from '@wallandshadow/shared';
+import { coordString, GridCoord } from '../../data/coord';
+import { IFeature, IAreaDictionary, StripedArea, Striped } from '../../data/feature';
+import { IGridGeometry } from '../gridGeometry';
 import { RedrawFlag } from '../redrawFlag';
 import { createAreaGeometry } from './areas';
 import { InstancedFeatures } from './instancedFeatures';

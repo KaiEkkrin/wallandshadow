@@ -14,7 +14,8 @@ import ImageCollectionItem from './ImageCollectionItem';
 import { ProfileContext } from './ProfileContext';
 import { UserContext } from './UserContext';
 
-import { IImage, getUserPolicy } from '@wallandshadow/shared';
+import { IImage } from '../data/image';
+import { getUserPolicy } from '../data/policy';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';

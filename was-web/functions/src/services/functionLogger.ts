@@ -1,4 +1,4 @@
-import { ILogger } from '@wallandshadow/shared';
+import { ILogger } from './interfaces';
 import * as functions from 'firebase-functions/v1';
 
 // Provides a Firebase Functions logger.

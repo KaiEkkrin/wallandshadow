@@ -4,7 +4,7 @@ import '../App.css';
 
 import ExpansionToggle from './ExpansionToggle';
 
-import { IAdventureSummary } from '@wallandshadow/shared';
+import { IAdventureSummary } from '../data/profile';
 
 import Accordion from 'react-bootstrap/Accordion';
 import Button from 'react-bootstrap/Button';

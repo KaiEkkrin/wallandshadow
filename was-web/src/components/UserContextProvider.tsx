@@ -8,7 +8,7 @@ import { IContextProviderProps, ISignInMethodsContext, IUserContext } from './in
 import { DataService } from '../services/dataService';
 import { FunctionsService } from '../services/functions';
 import { Storage } from '../services/storage';
-import { IStorage } from '@wallandshadow/shared';
+import { IStorage } from '../services/interfaces';
 import { ExpiringStringCache } from '../services/expiringStringCache';
 
 function createResolveImageUrl(storageService: IStorage | undefined): ((path: string) => Promise<string>) | undefined {

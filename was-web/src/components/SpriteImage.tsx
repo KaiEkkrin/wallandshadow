@@ -4,7 +4,9 @@ import * as React from 'react';
 import { AdventureContext } from './AdventureContext';
 import { AnalyticsContext } from './AnalyticsContext';
 
-import { ITokenProperties, fromSpriteGeometryString, ISprite, ISpritesheetEntry } from '@wallandshadow/shared';
+import { ITokenProperties } from '../data/feature';
+import { fromSpriteGeometryString, ISprite } from '../data/sprite';
+import { ISpritesheetEntry } from '../services/interfaces';
 
 // A pretty display of the image in a sprite for use in choosers etc.
 

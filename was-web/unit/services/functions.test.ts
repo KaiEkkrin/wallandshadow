@@ -1,11 +1,23 @@
 import { assert, vi } from 'vitest';
+import { createChangesConverter } from './converter';
 import { DataService } from './dataService';
 import { deleteAdventure, deleteCharacter, deleteMap, editAdventure, editCharacter, editMap, ensureProfile, getAllMapChanges, leaveAdventure, registerAdventureAsRecent, registerMapAsRecent, removeAdventureFromRecent, removeMapFromRecent, updateProfile, watchChangesAndConsolidate } from './extensions';
 import { FunctionsService } from './functions';
+import { IDataService, IUser } from './interfaces';
 import { Storage } from './storage';
 import { getStorage, FirebaseStorage, connectStorageEmulator } from 'firebase/storage';
-import { createChangesConverter, IDataService, IUser, IAdventure, summariseAdventure, IAnnotation, ChangeCategory, ChangeType, Changes, TokenAdd, TokenMove, WallAdd, SimpleChangeTracker, trackChanges, coordString, edgeString, GridCoord, GridEdge, FeatureDictionary, IFeature, StripedArea, IdDictionary, IMapImage, IMap, MapType, getTokenGeometry, SimpleTokenDrawing, Tokens } from '@wallandshadow/shared';
-import * as Policy from '@wallandshadow/shared';
+import { IAdventure, summariseAdventure } from '../data/adventure';
+import { IAnnotation } from '../data/annotation';
+import { ChangeCategory, ChangeType, Changes, TokenAdd, TokenMove, WallAdd } from '../data/change';
+import { SimpleChangeTracker, trackChanges } from '../data/changeTracking';
+import { coordString, edgeString, GridCoord, GridEdge } from '../data/coord';
+import { FeatureDictionary, IFeature, StripedArea } from '../data/feature';
+import { IdDictionary } from '../data/identified';
+import { IMapImage } from '../data/image';
+import { IMap, MapType } from '../data/map';
+import * as Policy from '../data/policy';
+import { getTokenGeometry } from '../data/tokenGeometry';
+import { SimpleTokenDrawing, Tokens } from '../data/tokens';
 
 import { initializeApp, deleteApp, FirebaseApp } from 'firebase/app';
 import { Firestore, serverTimestamp } from 'firebase/firestore';

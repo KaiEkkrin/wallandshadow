@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { ICharacter, IImage, ISprite } from '@wallandshadow/shared';
+import { ICharacter } from '../data/character';
+import { IImage } from '../data/image';
+import { ISprite } from '../data/sprite';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';

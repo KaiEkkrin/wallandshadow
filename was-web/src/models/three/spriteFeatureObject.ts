@@ -1,4 +1,7 @@
-import { GridCoord, IFeature, ITokenProperties, fromSpriteGeometryString, ICacheLease, ISpritesheetEntry } from '@wallandshadow/shared';
+import { GridCoord } from '../../data/coord';
+import { IFeature, ITokenProperties } from '../../data/feature';
+import { fromSpriteGeometryString } from '../../data/sprite';
+import { ICacheLease, ISpritesheetEntry } from '../../services/interfaces';
 
 import { InstancedFeatureObject } from './instancedFeatureObject';
 import { fromMatrix4Columns, InstanceMatrix3Column } from './instanceMatrix';

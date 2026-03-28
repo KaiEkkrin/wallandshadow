@@ -1,5 +1,12 @@
-import { IAdventure, IPlayer, Changes, ICharacter, IMap, summariseMap, UserLevel, IAdventureSummary, IProfile, IDataService, IDataView, IDataReference, IDataAndReference, IUser, IAnalytics, IFunctionsService, updateProfileAdventures, updateAdventureMaps, updateProfileMaps } from '@wallandshadow/shared';
-import * as Convert from '@wallandshadow/shared';
+import { IAdventure, IPlayer } from '../data/adventure';
+import { Changes } from '../data/change';
+import { ICharacter } from '../data/character';
+import { IMap, summariseMap } from '../data/map';
+import { UserLevel } from '../data/policy';
+import { IAdventureSummary, IProfile } from '../data/profile';
+import * as Convert from './converter';
+import { updateProfileAdventures, updateAdventureMaps, updateProfileMaps } from './helpers';
+import { IDataService, IDataView, IDataReference, IDataAndReference, IUser, IAnalytics, IFunctionsService } from './interfaces';
 
 import { interval, Subject } from 'rxjs';
 import { throttle } from 'rxjs/operators';

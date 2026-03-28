@@ -1,4 +1,4 @@
-import { ICacheLease } from '@wallandshadow/shared';
+import { ICacheLease } from './interfaces';
 import { ReplaySubject, firstValueFrom } from 'rxjs';
 import { v7 as uuidv7 } from 'uuid';
 
