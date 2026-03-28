@@ -78,6 +78,17 @@ else
 fi
 echo ""
 
+# Install server dependencies
+echo "📦 Installing server dependencies..."
+cd /workspaces/wallandshadow/was-web/server
+if [ -f "yarn.lock" ]; then
+    echo "   Using yarn.lock for deterministic install..."
+    yarn install --frozen-lockfile || yarn install
+else
+    yarn install
+fi
+echo ""
+
 # Install Firebase Functions dependencies
 echo "📦 Installing Firebase Functions dependencies..."
 cd /workspaces/wallandshadow/was-web/functions

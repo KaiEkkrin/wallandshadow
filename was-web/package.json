@@ -4,7 +4,8 @@
   "private": true,
   "workspaces": [
     "packages/shared",
-    "functions"
+    "functions",
+    "server"
   ],
   "type": "module",
   "dependencies": {
