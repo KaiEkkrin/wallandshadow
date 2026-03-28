@@ -44,5 +44,9 @@ RUN groupadd -f video && groupadd -f render
 # in postCreateCommand (see .devcontainer/scripts/post-create.sh)
 USER node
 
+# Install Claude Code CLI as node user (native binary installs to ~/.local/bin)
+ENV PATH="/home/node/.local/bin:${PATH}"
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
 # Set working directory to VS Code's default for container volumes
 WORKDIR /workspaces
