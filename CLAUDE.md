@@ -86,6 +86,10 @@ See @DEPLOY.md for comprehensive deployment instructions.
 
 ## Code Standards
 
+### General
+
+- This project uses British English spellings where possible. For example, "colour", not "color".
+
 ### React
 
 - Functional components with hooks
