@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { MapType } from '@wallandshadow/shared';
+import type { Change, IMap } from '@wallandshadow/shared';
 import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { db } from '../db/connection.js';
 import { adventures, adventurePlayers, maps as mapsTable } from '../db/schema.js';
@@ -9,13 +10,69 @@ import {
   cloneMap,
   consolidateMapChanges,
   deleteMap,
+  updateMap,
+  addMapChanges,
+  assertAdventureMember,
 } from '../services/extensions.js';
 import { throwApiError } from '../errors.js';
-import { IMap } from '@wallandshadow/shared';
 
 export const mapRoutes = new Hono<{ Variables: AuthVariables }>();
 
 mapRoutes.use('/*', authMiddleware);
+
+// ── List maps in an adventure ────────────────────────────────────────────────
+
+mapRoutes.get('/adventures/:id/maps', async (c) => {
+  const uid = c.get('uid');
+  const adventureId = c.req.param('id');
+
+  await assertAdventureMember(db, uid, adventureId);
+
+  const rows = await db
+    .select({
+      id: mapsTable.id,
+      name: mapsTable.name,
+      description: mapsTable.description,
+      ty: mapsTable.ty,
+      ffa: mapsTable.ffa,
+      imagePath: mapsTable.imagePath,
+    })
+    .from(mapsTable)
+    .where(eq(mapsTable.adventureId, adventureId));
+
+  return c.json(rows.map(r => ({ adventureId, ...r })));
+});
+
+// ── Get one map ──────────────────────────────────────────────────────────────
+
+mapRoutes.get('/adventures/:id/maps/:mapId', async (c) => {
+  const uid = c.get('uid');
+  const adventureId = c.req.param('id');
+  const mapId = c.req.param('mapId');
+
+  await assertAdventureMember(db, uid, adventureId);
+
+  const [row] = await db
+    .select({
+      id: mapsTable.id,
+      name: mapsTable.name,
+      description: mapsTable.description,
+      ty: mapsTable.ty,
+      ffa: mapsTable.ffa,
+      imagePath: mapsTable.imagePath,
+    })
+    .from(mapsTable)
+    .where(and(eq(mapsTable.id, mapId), eq(mapsTable.adventureId, adventureId)))
+    .limit(1);
+
+  if (!row) {
+    return c.json({ error: 'Map not found' }, 404);
+  }
+
+  return c.json({ adventureId, ...row });
+});
+
+// ── Create map ───────────────────────────────────────────────────────────────
 
 mapRoutes.post('/adventures/:id/maps', async (c) => {
   const uid = c.get('uid');
@@ -34,6 +91,29 @@ mapRoutes.post('/adventures/:id/maps', async (c) => {
   return c.json({ id }, 201);
 });
 
+// ── Update map ───────────────────────────────────────────────────────────────
+
+mapRoutes.patch('/adventures/:id/maps/:mapId', async (c) => {
+  const uid = c.get('uid');
+  const adventureId = c.req.param('id');
+  const mapId = c.req.param('mapId');
+  const body = await c.req.json<{
+    name?: string;
+    description?: string;
+    imagePath?: string;
+    ffa?: boolean;
+  }>();
+  const fields: { name?: string; description?: string; imagePath?: string; ffa?: boolean } = {};
+  if (body.name !== undefined) fields.name = body.name;
+  if (body.description !== undefined) fields.description = body.description;
+  if (body.imagePath !== undefined) fields.imagePath = body.imagePath;
+  if (body.ffa !== undefined) fields.ffa = body.ffa;
+  await updateMap(db, uid, adventureId, mapId, fields);
+  return c.body(null, 204);
+});
+
+// ── Clone map ────────────────────────────────────────────────────────────────
+
 mapRoutes.post('/adventures/:id/maps/:mapId/clone', async (c) => {
   const uid = c.get('uid');
   const adventureId = c.req.param('id');
@@ -44,12 +124,27 @@ mapRoutes.post('/adventures/:id/maps/:mapId/clone', async (c) => {
     return c.json({ error: 'name is required' }, 400);
   }
 
-  // Check user is adventure owner or allowed player
-  await assertAdventureMember(uid, adventureId);
+  await assertAdventureMember(db, uid, adventureId);
 
   const id = await cloneMap(db, uid, adventureId, mapId, name, description ?? '');
   return c.json({ id }, 201);
 });
+
+// ── Add incremental map changes ──────────────────────────────────────────────
+
+mapRoutes.post('/adventures/:id/maps/:mapId/changes', async (c) => {
+  const uid = c.get('uid');
+  const adventureId = c.req.param('id');
+  const mapId = c.req.param('mapId');
+  const body = await c.req.json<{ chs?: Change[] }>();
+  if (!Array.isArray(body.chs)) {
+    return c.json({ error: 'chs array is required' }, 400);
+  }
+  const id = await addMapChanges(db, uid, adventureId, mapId, body.chs);
+  return c.json({ id }, 201);
+});
+
+// ── Consolidate map changes ──────────────────────────────────────────────────
 
 mapRoutes.post('/adventures/:id/maps/:mapId/consolidate', async (c) => {
   const uid = c.get('uid');
@@ -106,6 +201,8 @@ mapRoutes.post('/adventures/:id/maps/:mapId/consolidate', async (c) => {
   return c.body(null, 204);
 });
 
+// ── Delete map ───────────────────────────────────────────────────────────────
+
 mapRoutes.delete('/adventures/:id/maps/:mapId', async (c) => {
   const uid = c.get('uid');
   const adventureId = c.req.param('id');
@@ -113,30 +210,3 @@ mapRoutes.delete('/adventures/:id/maps/:mapId', async (c) => {
   await deleteMap(db, uid, adventureId, mapId);
   return c.body(null, 204);
 });
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-async function assertAdventureMember(uid: string, adventureId: string): Promise<void> {
-  const [row] = await db.select({ ownerId: adventures.ownerId })
-    .from(adventures)
-    .where(eq(adventures.id, adventureId))
-    .limit(1);
-
-  if (!row) {
-    throwApiError('not-found', 'Adventure not found');
-  }
-  if (row.ownerId === uid) return;
-
-  const [playerRow] = await db.select({ allowed: adventurePlayers.allowed })
-    .from(adventurePlayers)
-    .where(and(
-      eq(adventurePlayers.adventureId, adventureId),
-      eq(adventurePlayers.userId, uid),
-      eq(adventurePlayers.allowed, true),
-    ))
-    .limit(1);
-
-  if (!playerRow) {
-    throwApiError('permission-denied', 'You are not in this adventure');
-  }
-}

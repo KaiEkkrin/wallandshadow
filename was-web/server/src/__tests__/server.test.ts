@@ -7,9 +7,11 @@ import { adventures, adventurePlayers, maps, mapChanges, invites } from '../db/s
 import { eq, and } from 'drizzle-orm';
 import {
   registerUser,
+  apiGet,
   apiPost,
+  apiPatch,
   apiDelete,
-  seedMapChanges,
+  postMapChanges,
   getBaseChange,
   countMapChanges,
   createAddToken1,
@@ -19,7 +21,7 @@ import {
 
 const app = createApp();
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Local helpers ────────────────────────────────────────────────────────────
 
 async function createAdventure(token: string, name = 'Adventure One', description = 'First adventure'): Promise<string> {
   const res = await apiPost(app, '/api/adventures', { name, description }, token);
@@ -67,7 +69,8 @@ function verifyBaseChange(base: ReturnType<typeof getBaseChange> extends Promise
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('server integration tests', () => {
-  // ── Adventures and maps ──────────────────────────────────────────────────
+
+  // ── Adventures and maps (basic CRUD) ─────────────────────────────────────
 
   describe('adventures and maps', () => {
     test('create and delete adventures and maps', async () => {
@@ -78,52 +81,163 @@ describe('server integration tests', () => {
       const a2Id = await createAdventure(token, 'Adventure Two', 'Second adventure');
       expect(a1Id).not.toBe(a2Id);
 
-      // Verify both exist in DB
-      const [a1Row] = await db.select().from(adventures).where(eq(adventures.id, a1Id));
-      expect(a1Row?.name).toBe('Adventure One');
-      expect(a1Row?.ownerId).toBe(uid);
+      // Verify both via GET /api/adventures
+      const listRes = await apiGet(app, '/api/adventures', token);
+      expect(listRes.status).toBe(200);
+      const list = await listRes.json<{ id: string; name: string }[]>();
+      expect(list.some(a => a.id === a1Id && a.name === 'Adventure One')).toBe(true);
+      expect(list.some(a => a.id === a2Id && a.name === 'Adventure Two')).toBe(true);
 
-      const [a2Row] = await db.select().from(adventures).where(eq(adventures.id, a2Id));
-      expect(a2Row?.name).toBe('Adventure Two');
+      // Verify a1 details via GET /api/adventures/:id
+      const a1Res = await apiGet(app, `/api/adventures/${a1Id}`, token);
+      expect(a1Res.status).toBe(200);
+      const a1 = await a1Res.json<{ id: string; name: string; owner: string }>();
+      expect(a1.name).toBe('Adventure One');
+      expect(a1.owner).toBe(uid);
 
       // Create a map in each adventure
       const m1Id = await createMap(token, a1Id, 'Map One', 'First map', MapType.Square, false);
       const m2Id = await createMap(token, a2Id, 'Map Two', 'Second map', MapType.Hex, true);
 
-      // Verify map records
-      const [m1Row] = await db.select().from(maps).where(eq(maps.id, m1Id));
-      expect(m1Row?.name).toBe('Map One');
-      expect(m1Row?.ty).toBe(MapType.Square);
-      expect(m1Row?.ffa).toBe(false);
+      // Verify maps via GET /api/adventures/:id/maps
+      const mapsRes = await apiGet(app, `/api/adventures/${a1Id}/maps`, token);
+      expect(mapsRes.status).toBe(200);
+      const mapList = await mapsRes.json<{ id: string; name: string; ty: string }[]>();
+      expect(mapList).toHaveLength(1);
+      expect(mapList[0].id).toBe(m1Id);
+      expect(mapList[0].ty).toBe(MapType.Square);
 
-      const [m2Row] = await db.select().from(maps).where(eq(maps.id, m2Id));
-      expect(m2Row?.name).toBe('Map Two');
-      expect(m2Row?.ty).toBe(MapType.Hex);
-      expect(m2Row?.ffa).toBe(true);
+      // Verify single map via GET /api/adventures/:id/maps/:mapId
+      const m2Res = await apiGet(app, `/api/adventures/${a2Id}/maps/${m2Id}`, token);
+      expect(m2Res.status).toBe(200);
+      const m2 = await m2Res.json<{ id: string; name: string; ty: string; ffa: boolean }>();
+      expect(m2.name).toBe('Map Two');
+      expect(m2.ty).toBe(MapType.Hex);
+      expect(m2.ffa).toBe(true);
 
       // Delete map 1
       const delMapRes = await apiDelete(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
       expect(delMapRes.status).toBe(204);
 
-      const [m1After] = await db.select().from(maps).where(eq(maps.id, m1Id));
-      expect(m1After).toBeUndefined();
+      // Map 1 should now 404
+      const m1Gone = await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
+      expect(m1Gone.status).toBe(404);
 
-      // Adventure 2 and map 2 should still exist
-      const [a2After] = await db.select().from(adventures).where(eq(adventures.id, a2Id));
-      expect(a2After?.name).toBe('Adventure Two');
-      const [m2After] = await db.select().from(maps).where(eq(maps.id, m2Id));
-      expect(m2After?.name).toBe('Map Two');
+      // Adventure 2 and map 2 still exist
+      const m2Still = await apiGet(app, `/api/adventures/${a2Id}/maps/${m2Id}`, token);
+      expect(m2Still.status).toBe(200);
 
       // Delete adventure 2
       const delAdvRes = await apiDelete(app, `/api/adventures/${a2Id}`, token);
       expect(delAdvRes.status).toBe(204);
 
-      const [a2Gone] = await db.select().from(adventures).where(eq(adventures.id, a2Id));
-      expect(a2Gone).toBeUndefined();
+      // Adventure 2 should be gone from list
+      const listRes2 = await apiGet(app, '/api/adventures', token);
+      const list2 = await listRes2.json<{ id: string }[]>();
+      expect(list2.some(a => a.id === a2Id)).toBe(false);
+    });
+  });
 
-      // Map 2 should also be gone via CASCADE
-      const [m2Gone] = await db.select().from(maps).where(eq(maps.id, m2Id));
-      expect(m2Gone).toBeUndefined();
+  // ── CRUD — update and leave ───────────────────────────────────────────────
+
+  describe('CRUD', () => {
+    test('update adventure and map metadata', async () => {
+      const { token } = await registerUser(app, 'Owner');
+      const aId = await createAdventure(token, 'Original Name', 'Original desc');
+      const mId = await createMap(token, aId, 'Map Name', 'Map desc', MapType.Square, false);
+
+      // Patch adventure
+      const patchAdvRes = await apiPatch(app, `/api/adventures/${aId}`, { name: 'Updated Name', description: 'Updated desc' }, token);
+      expect(patchAdvRes.status).toBe(204);
+
+      const advRes = await apiGet(app, `/api/adventures/${aId}`, token);
+      const adv = await advRes.json<{ name: string; description: string }>();
+      expect(adv.name).toBe('Updated Name');
+      expect(adv.description).toBe('Updated desc');
+
+      // Patch map
+      const patchMapRes = await apiPatch(app, `/api/adventures/${aId}/maps/${mId}`, { name: 'New Map Name', ffa: true }, token);
+      expect(patchMapRes.status).toBe(204);
+
+      const mapRes = await apiGet(app, `/api/adventures/${aId}/maps/${mId}`, token);
+      const m = await mapRes.json<{ name: string; ffa: boolean }>();
+      expect(m.name).toBe('New Map Name');
+      expect(m.ffa).toBe(true);
+    });
+
+    test('update player allowed status and characters', async () => {
+      const owner = await registerUser(app, 'Owner');
+      const player = await registerUser(app, 'Player');
+
+      const aId = await createAdventure(owner.token);
+
+      // Player joins via invite
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = await inviteRes.json<{ inviteId: string }>();
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Verify player is in the list
+      const playersRes = await apiGet(app, `/api/adventures/${aId}/players`, owner.token);
+      expect(playersRes.status).toBe(200);
+      const players = await playersRes.json<{ playerId: string; allowed: boolean; playerName: string }[]>();
+      const playerEntry = players.find(p => p.playerId === player.uid);
+      expect(playerEntry).toBeDefined();
+      expect(playerEntry?.allowed).toBe(true);
+
+      // Owner blocks the player
+      const patchRes = await apiPatch(app, `/api/adventures/${aId}/players/${player.uid}`, { allowed: false }, owner.token);
+      expect(patchRes.status).toBe(204);
+
+      // Verify player is now blocked
+      const playersRes2 = await apiGet(app, `/api/adventures/${aId}/players`, owner.token);
+      const players2 = await playersRes2.json<{ playerId: string; allowed: boolean }[]>();
+      const playerEntry2 = players2.find(p => p.playerId === player.uid);
+      expect(playerEntry2?.allowed).toBe(false);
+    });
+
+    test('player can leave an adventure', async () => {
+      const owner = await registerUser(app, 'Owner');
+      const player = await registerUser(app, 'Player');
+
+      const aId = await createAdventure(owner.token);
+
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = await inviteRes.json<{ inviteId: string }>();
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player leaves
+      const leaveRes = await apiDelete(app, `/api/adventures/${aId}/players/me`, player.token);
+      expect(leaveRes.status).toBe(204);
+
+      // Player should no longer appear in the players list
+      const playersRes = await apiGet(app, `/api/adventures/${aId}/players`, owner.token);
+      const players = await playersRes.json<{ playerId: string }[]>();
+      expect(players.some(p => p.playerId === player.uid)).toBe(false);
+
+      // Adventure should no longer appear in player's adventure list
+      const listRes = await apiGet(app, '/api/adventures', player.token);
+      const list = await listRes.json<{ id: string }[]>();
+      expect(list.some(a => a.id === aId)).toBe(false);
+    });
+
+    test('non-owner cannot patch adventure or map', async () => {
+      const owner = await registerUser(app, 'Owner');
+      const player = await registerUser(app, 'Player');
+
+      const aId = await createAdventure(owner.token);
+      const mId = await createMap(owner.token, aId);
+
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = await inviteRes.json<{ inviteId: string }>();
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player cannot patch adventure
+      const patchAdvRes = await apiPatch(app, `/api/adventures/${aId}`, { name: 'Hacked' }, player.token);
+      expect(patchAdvRes.status).toBe(403);
+
+      // Player cannot patch map
+      const patchMapRes = await apiPatch(app, `/api/adventures/${aId}/maps/${mId}`, { name: 'Hacked' }, player.token);
+      expect(patchMapRes.status).toBe(403);
     });
   });
 
@@ -134,13 +248,12 @@ describe('server integration tests', () => {
     const a1Id = await createAdventure(token);
     const m1Id = await createMap(token, a1Id, 'Map One', 'First map', MapType.Hex);
 
-    // Seed changes: addToken + N moves + addWall
-    // TODO Phase 4: replace direct DB insert with WebSocket client once real-time sync is implemented
-    await seedMapChanges(m1Id, uid, [createAddToken1(uid)]);
+    // Post changes via REST endpoint
+    await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid)]);
     for (let i = 0; i < moveCount; ++i) {
-      await seedMapChanges(m1Id, uid, [createMoveToken1(i)]);
+      await postMapChanges(app, token, a1Id, m1Id, [createMoveToken1(i)]);
     }
-    await seedMapChanges(m1Id, uid, [createAddWall1()]);
+    await postMapChanges(app, token, a1Id, m1Id, [createAddWall1()]);
 
     // Verify incremental rows exist
     const incrementalCount = await countMapChanges(m1Id);
@@ -157,7 +270,7 @@ describe('server integration tests', () => {
 
     // Consolidate again with more moves (tests consolidation with existing base change)
     for (let i = moveCount; i < moveCount * 2; ++i) {
-      await seedMapChanges(m1Id, uid, [createMoveToken1(i)]);
+      await postMapChanges(app, token, a1Id, m1Id, [createMoveToken1(i)]);
     }
     await consolidate(token, a1Id, m1Id);
 
@@ -183,7 +296,7 @@ describe('server integration tests', () => {
       const user = await registerUser(app, 'User 1');
 
       const a1Id = await createAdventure(owner.token);
-      const m1Id = await createMap(owner.token, a1Id);
+      await createMap(owner.token, a1Id);
 
       // Create an invite
       const inviteRes = await apiPost(app, `/api/adventures/${a1Id}/invites`, {}, owner.token);
@@ -197,15 +310,12 @@ describe('server integration tests', () => {
       const { adventureId } = await joinRes.json<{ adventureId: string }>();
       expect(adventureId).toBe(a1Id);
 
-      // Verify the player record was created
-      const [playerRow] = await db.select()
-        .from(adventurePlayers)
-        .where(and(
-          eq(adventurePlayers.adventureId, a1Id),
-          eq(adventurePlayers.userId, user.uid),
-        ));
-      expect(playerRow?.allowed).toBe(true);
-      expect(playerRow?.playerName).toBe('User 1');
+      // Verify via players list
+      const playersRes = await apiGet(app, `/api/adventures/${a1Id}/players`, owner.token);
+      const players = await playersRes.json<{ playerId: string; allowed: boolean; playerName: string }[]>();
+      const playerEntry = players.find(p => p.playerId === user.uid);
+      expect(playerEntry?.allowed).toBe(true);
+      expect(playerEntry?.playerName).toBe('User 1');
 
       // Joining again should be idempotent
       const joinRes2 = await apiPost(app, `/api/invites/${inviteId}/join`, {}, user.token);
@@ -243,13 +353,9 @@ describe('server integration tests', () => {
       expect(join2Res.status).toBe(408);
 
       // User 2 should not have been added as a player
-      const players = await db.select()
-        .from(adventurePlayers)
-        .where(and(
-          eq(adventurePlayers.adventureId, a1Id),
-          eq(adventurePlayers.userId, user2.uid),
-        ));
-      expect(players).toHaveLength(0);
+      const playersRes = await apiGet(app, `/api/adventures/${a1Id}/players`, owner.token);
+      const players = await playersRes.json<{ playerId: string }[]>();
+      expect(players.some(p => p.playerId === user2.uid)).toBe(false);
 
       // Owner creates a new invite
       const inviteRes3 = await apiPost(app, `/api/adventures/${a1Id}/invites`, { policy: testPolicy }, owner.token);
@@ -283,21 +389,22 @@ describe('server integration tests', () => {
       const { id: m2Id } = await cloneRes.json<{ id: string }>();
       expect(m2Id).not.toBe(m1Id);
 
-      // Verify clone metadata matches original
-      const [m1Row] = await db.select().from(maps).where(eq(maps.id, m1Id));
-      const [m2Row] = await db.select().from(maps).where(eq(maps.id, m2Id));
-      expect(m2Row?.name).toBe('Clone of Map One');
-      expect(m2Row?.description).toBe('First map cloned');
-      expect(m2Row?.ty).toBe(m1Row?.ty);
-      expect(m2Row?.ffa).toBe(m1Row?.ffa);
+      // Verify clone metadata via GET
+      const m1Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
+      const m2Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m2Id}`, token);
+      const m1 = await m1Res.json<{ ty: string; ffa: boolean }>();
+      const m2 = await m2Res.json<{ name: string; description: string; ty: string; ffa: boolean }>();
+      expect(m2.name).toBe('Clone of Map One');
+      expect(m2.description).toBe('First map cloned');
+      expect(m2.ty).toBe(m1.ty);
+      expect(m2.ffa).toBe(m1.ffa);
 
-      // Add changes to the original
-      // TODO Phase 4: replace direct DB insert with WebSocket client once real-time sync is implemented
-      await seedMapChanges(m1Id, uid, [createAddToken1(uid)]);
+      // Add changes to the original via REST
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid)]);
       for (let i = 0; i < moveCount; ++i) {
-        await seedMapChanges(m1Id, uid, [createMoveToken1(i)]);
+        await postMapChanges(app, token, a1Id, m1Id, [createMoveToken1(i)]);
       }
-      await seedMapChanges(m1Id, uid, [createAddWall1()]);
+      await postMapChanges(app, token, a1Id, m1Id, [createAddWall1()]);
 
       // Clone the map again (with changes)
       const clone2Res = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/clone`, {
@@ -307,9 +414,10 @@ describe('server integration tests', () => {
       expect(clone2Res.status).toBe(201);
       const { id: m3Id } = await clone2Res.json<{ id: string }>();
 
-      const [m3Row] = await db.select().from(maps).where(eq(maps.id, m3Id));
-      expect(m3Row?.name).toBe('Second clone');
-      expect(m3Row?.ty).toBe(m1Row?.ty);
+      const m3Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m3Id}`, token);
+      const m3 = await m3Res.json<{ name: string; ty: string }>();
+      expect(m3.name).toBe('Second clone');
+      expect(m3.ty).toBe(m1.ty);
 
       // Both original and second clone should have same consolidated base change
       const m1Base = await getBaseChange(m1Id);
@@ -326,7 +434,7 @@ describe('server integration tests', () => {
   // ── Permissions ──────────────────────────────────────────────────────────
 
   describe('permissions', () => {
-    test('non-member cannot consolidate map changes; owner and player can', async () => {
+    test('non-member cannot consolidate or post changes; owner and player can', async () => {
       const owner = await registerUser(app, 'Owner');
       const stranger = await registerUser(app, 'Stranger');
       const player = await registerUser(app, 'Player');
@@ -334,13 +442,18 @@ describe('server integration tests', () => {
       const a1Id = await createAdventure(owner.token);
       const m1Id = await createMap(owner.token, a1Id, 'Map One', 'First map', MapType.Square);
 
-      // TODO Phase 4: replace direct DB insert with WebSocket client once real-time sync is implemented
-      await seedMapChanges(m1Id, owner.uid, [createAddToken1(owner.uid), createAddWall1()]);
+      // Post changes as owner
+      await postMapChanges(app, owner.token, a1Id, m1Id, [createAddToken1(owner.uid), createAddWall1()]);
 
-      // Stranger (non-member) cannot consolidate — should get 403
+      // Stranger cannot post changes
+      const strangerChangeRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/changes`, {
+        chs: [createAddToken1(stranger.uid)],
+      }, stranger.token);
+      expect(strangerChangeRes.status).toBe(403);
+
+      // Stranger cannot consolidate — should get 403
       const strangerRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/consolidate`, {}, stranger.token);
       expect(strangerRes.status).toBe(403);
-      // HTTPException sends a plain text message body
       const errText = await strangerRes.text();
       expect(errText).toMatch(/not in this adventure/i);
 
@@ -355,8 +468,8 @@ describe('server integration tests', () => {
       const { inviteId } = await inviteRes.json<{ inviteId: string }>();
       await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
 
-      // Add a change so there's something to consolidate
-      await seedMapChanges(m1Id, owner.uid, [createMoveToken1(0)]);
+      // Player can post changes
+      await postMapChanges(app, player.token, a1Id, m1Id, [createMoveToken1(0)]);
 
       // Player can also consolidate
       const playerRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/consolidate`, {}, player.token);
@@ -372,13 +485,12 @@ describe('server integration tests', () => {
       const a1Id = await createAdventure(token);
       const m1Id = await createMap(token, a1Id);
 
-      // Seed changes and consolidate
-      // TODO Phase 4: replace direct DB insert with WebSocket client once real-time sync is implemented
-      await seedMapChanges(m1Id, uid, [createAddToken1(uid)]);
+      // Post changes and consolidate
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid)]);
       for (let i = 0; i < 3; ++i) {
-        await seedMapChanges(m1Id, uid, [createMoveToken1(i)]);
+        await postMapChanges(app, token, a1Id, m1Id, [createMoveToken1(i)]);
       }
-      await seedMapChanges(m1Id, uid, [createAddWall1()]);
+      await postMapChanges(app, token, a1Id, m1Id, [createAddWall1()]);
       await consolidate(token, a1Id, m1Id);
 
       // Verify we have exactly 1 consolidated change
@@ -388,9 +500,9 @@ describe('server integration tests', () => {
       const res = await apiDelete(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
       expect(res.status).toBe(204);
 
-      // Map should be gone
-      const [mapRow] = await db.select().from(maps).where(eq(maps.id, m1Id));
-      expect(mapRow).toBeUndefined();
+      // Map should 404
+      const mapRes = await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
+      expect(mapRes.status).toBe(404);
 
       // Changes should be gone (FK CASCADE from maps)
       expect(await countMapChanges(m1Id)).toBe(0);
@@ -402,10 +514,9 @@ describe('server integration tests', () => {
       const m1Id = await createMap(token, a1Id, 'Map One', '', MapType.Square);
       const m2Id = await createMap(token, a1Id, 'Map Two', '', MapType.Hex);
 
-      // Seed and consolidate both maps
-      // TODO Phase 4: replace direct DB insert with WebSocket client once real-time sync is implemented
-      await seedMapChanges(m1Id, uid, [createAddToken1(uid), createAddWall1()]);
-      await seedMapChanges(m2Id, uid, [createAddToken1(uid), createAddWall1()]);
+      // Post and consolidate both maps
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid), createAddWall1()]);
+      await postMapChanges(app, token, a1Id, m2Id, [createAddToken1(uid), createAddWall1()]);
       await consolidate(token, a1Id, m1Id);
       await consolidate(token, a1Id, m2Id);
 
@@ -413,14 +524,15 @@ describe('server integration tests', () => {
       const res = await apiDelete(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
       expect(res.status).toBe(204);
 
-      // Map 1 and its changes should be gone
-      const [m1Row] = await db.select().from(maps).where(eq(maps.id, m1Id));
-      expect(m1Row).toBeUndefined();
+      // Map 1 should 404
+      expect((await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token)).status).toBe(404);
       expect(await countMapChanges(m1Id)).toBe(0);
 
       // Map 2 should still exist with its changes
-      const [m2Row] = await db.select().from(maps).where(eq(maps.id, m2Id));
-      expect(m2Row?.name).toBe('Map Two');
+      const m2Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m2Id}`, token);
+      expect(m2Res.status).toBe(200);
+      const m2 = await m2Res.json<{ name: string }>();
+      expect(m2.name).toBe('Map Two');
 
       const m2Base = await getBaseChange(m2Id);
       expect(m2Base).not.toBeUndefined();
@@ -433,13 +545,12 @@ describe('server integration tests', () => {
       const a1Id = await createAdventure(token);
       const m1Id = await createMap(token, a1Id, 'Map One', '', MapType.Hex);
 
-      // Add changes to the original
-      // TODO Phase 4: replace direct DB insert with WebSocket client once real-time sync is implemented
-      await seedMapChanges(m1Id, uid, [createAddToken1(uid)]);
+      // Add changes to the original via REST
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid)]);
       for (let i = 0; i < moveCount; ++i) {
-        await seedMapChanges(m1Id, uid, [createMoveToken1(i)]);
+        await postMapChanges(app, token, a1Id, m1Id, [createMoveToken1(i)]);
       }
-      await seedMapChanges(m1Id, uid, [createAddWall1()]);
+      await postMapChanges(app, token, a1Id, m1Id, [createAddWall1()]);
 
       // Clone (cloneMap consolidates then copies the base change)
       const cloneRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/clone`, {
@@ -456,14 +567,15 @@ describe('server integration tests', () => {
       const delRes = await apiDelete(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
       expect(delRes.status).toBe(204);
 
-      // Original and its changes are gone
-      const [m1Row] = await db.select().from(maps).where(eq(maps.id, m1Id));
-      expect(m1Row).toBeUndefined();
+      // Original is gone
+      expect((await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token)).status).toBe(404);
       expect(await countMapChanges(m1Id)).toBe(0);
 
       // Clone still exists with correct state
-      const [m2Row] = await db.select().from(maps).where(eq(maps.id, m2Id));
-      expect(m2Row?.name).toBe('Clone of Map One');
+      const m2Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m2Id}`, token);
+      expect(m2Res.status).toBe(200);
+      const m2 = await m2Res.json<{ name: string }>();
+      expect(m2.name).toBe('Clone of Map One');
       verifyBaseChange(await getBaseChange(m2Id), uid, moveCount);
     });
 
@@ -473,10 +585,9 @@ describe('server integration tests', () => {
       const m1Id = await createMap(token, a1Id, 'Map One', '', MapType.Square);
       const m2Id = await createMap(token, a1Id, 'Map Two', '', MapType.Hex);
 
-      // Seed and consolidate both
-      // TODO Phase 4: replace direct DB insert with WebSocket client once real-time sync is implemented
-      await seedMapChanges(m1Id, uid, [createAddToken1(uid), createAddWall1()]);
-      await seedMapChanges(m2Id, uid, [createAddToken1(uid)]);
+      // Post and consolidate both
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid), createAddWall1()]);
+      await postMapChanges(app, token, a1Id, m2Id, [createAddToken1(uid)]);
       await consolidate(token, a1Id, m1Id);
       await consolidate(token, a1Id, m2Id);
 
@@ -484,16 +595,12 @@ describe('server integration tests', () => {
       const res = await apiDelete(app, `/api/adventures/${a1Id}`, token);
       expect(res.status).toBe(204);
 
-      // Adventure, both maps, and all their changes should be gone
-      const [advRow] = await db.select().from(adventures).where(eq(adventures.id, a1Id));
-      expect(advRow).toBeUndefined();
+      // Adventure should not appear in list
+      const listRes = await apiGet(app, '/api/adventures', token);
+      const list = await listRes.json<{ id: string }[]>();
+      expect(list.some(a => a.id === a1Id)).toBe(false);
 
-      const [m1Row] = await db.select().from(maps).where(eq(maps.id, m1Id));
-      expect(m1Row).toBeUndefined();
-
-      const [m2Row] = await db.select().from(maps).where(eq(maps.id, m2Id));
-      expect(m2Row).toBeUndefined();
-
+      // All changes should be gone
       expect(await countMapChanges(m1Id)).toBe(0);
       expect(await countMapChanges(m2Id)).toBe(0);
     });
@@ -506,10 +613,9 @@ describe('server integration tests', () => {
       const m1Id = await createMap(token, a1Id, 'Map One', '', MapType.Square);
       const m2Id = await createMap(token, a2Id, 'Map Two', '', MapType.Hex);
 
-      // Seed and consolidate both
-      // TODO Phase 4: replace direct DB insert with WebSocket client once real-time sync is implemented
-      await seedMapChanges(m1Id, uid, [createAddToken1(uid), createAddWall1()]);
-      await seedMapChanges(m2Id, uid, [createAddToken1(uid)]);
+      // Post and consolidate both
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid), createAddWall1()]);
+      await postMapChanges(app, token, a2Id, m2Id, [createAddToken1(uid)]);
       await consolidate(token, a1Id, m1Id);
       await consolidate(token, a2Id, m2Id);
 
@@ -517,19 +623,16 @@ describe('server integration tests', () => {
       const res = await apiDelete(app, `/api/adventures/${a1Id}`, token);
       expect(res.status).toBe(204);
 
-      // Adventure 1, map 1, and its changes should be gone
-      const [a1Row] = await db.select().from(adventures).where(eq(adventures.id, a1Id));
-      expect(a1Row).toBeUndefined();
-      const [m1Row] = await db.select().from(maps).where(eq(maps.id, m1Id));
-      expect(m1Row).toBeUndefined();
       expect(await countMapChanges(m1Id)).toBe(0);
 
       // Adventure 2, map 2, and its changes should be intact
-      const [a2Row] = await db.select().from(adventures).where(eq(adventures.id, a2Id));
-      expect(a2Row?.name).toBe('Adventure Two');
+      const a2Res = await apiGet(app, `/api/adventures/${a2Id}`, token);
+      expect(a2Res.status).toBe(200);
+      const a2 = await a2Res.json<{ name: string }>();
+      expect(a2.name).toBe('Adventure Two');
 
-      const [m2Row] = await db.select().from(maps).where(eq(maps.id, m2Id));
-      expect(m2Row?.name).toBe('Map Two');
+      const m2Res = await apiGet(app, `/api/adventures/${a2Id}/maps/${m2Id}`, token);
+      expect(m2Res.status).toBe(200);
 
       const m2Base = await getBaseChange(m2Id);
       expect(m2Base).not.toBeUndefined();

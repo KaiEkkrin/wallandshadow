@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { authRoutes } from './auth/routes.js';
 import { adventureRoutes } from './routes/adventures.js';
 import { mapRoutes } from './routes/maps.js';
+import { playerRoutes } from './routes/players.js';
 import { inviteRoutes } from './routes/invites.js';
 import { imageRoutes } from './routes/images.js';
 import { spritesheetRoutes } from './routes/spritesheets.js';
@@ -14,6 +15,7 @@ export function createApp(): Hono {
   app.route('/api/auth', authRoutes);
   app.route('/api', adventureRoutes);
   app.route('/api', mapRoutes);
+  app.route('/api', playerRoutes);
   app.route('/api', inviteRoutes);
   app.route('/api', imageRoutes);
   app.route('/api', spritesheetRoutes);

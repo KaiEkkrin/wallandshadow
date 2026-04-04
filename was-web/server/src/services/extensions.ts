@@ -24,6 +24,7 @@ import {
   SimpleTokenDrawing,
   createChangesConverter,
   UserLevel,
+  ICharacter,
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
@@ -38,6 +39,47 @@ import {
 import { eq, and, count, sql, inArray, gt } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import dayjs from 'dayjs';
+
+// ─── Shared auth helper ───────────────────────────────────────────────────────
+
+export async function assertAdventureMember(db: Db, uid: string, adventureId: string): Promise<void> {
+  const [row] = await db.select({ ownerId: adventures.ownerId })
+    .from(adventures)
+    .where(eq(adventures.id, adventureId))
+    .limit(1);
+
+  if (!row) {
+    throwApiError('not-found', 'Adventure not found');
+  }
+  if (row.ownerId === uid) return;
+
+  const [playerRow] = await db.select({ allowed: adventurePlayers.allowed })
+    .from(adventurePlayers)
+    .where(and(
+      eq(adventurePlayers.adventureId, adventureId),
+      eq(adventurePlayers.userId, uid),
+      eq(adventurePlayers.allowed, true),
+    ))
+    .limit(1);
+
+  if (!playerRow) {
+    throwApiError('permission-denied', 'You are not in this adventure');
+  }
+}
+
+export async function assertAdventureOwner(db: Db, uid: string, adventureId: string): Promise<void> {
+  const [row] = await db.select({ ownerId: adventures.ownerId })
+    .from(adventures)
+    .where(eq(adventures.id, adventureId))
+    .limit(1);
+
+  if (!row) {
+    throwApiError('not-found', 'Adventure not found');
+  }
+  if (row.ownerId !== uid) {
+    throwApiError('permission-denied', 'Only the adventure owner can perform this action');
+  }
+}
 
 // ─── Adventure ───────────────────────────────────────────────────────────────
 
@@ -414,6 +456,110 @@ export async function inviteToAdventure(
 
   return id;
 }
+
+// ─── Adventure updates ────────────────────────────────────────────────────────
+
+export async function updateAdventure(
+  db: Db,
+  uid: string,
+  adventureId: string,
+  fields: { name?: string; description?: string; imagePath?: string },
+): Promise<void> {
+  await assertAdventureOwner(db, uid, adventureId);
+  if (Object.keys(fields).length === 0) return;
+  await db.update(adventures)
+    .set(fields)
+    .where(eq(adventures.id, adventureId));
+}
+
+export async function updateMap(
+  db: Db,
+  uid: string,
+  adventureId: string,
+  mapId: string,
+  fields: { name?: string; description?: string; imagePath?: string; ffa?: boolean },
+): Promise<void> {
+  await assertAdventureOwner(db, uid, adventureId);
+  if (Object.keys(fields).length === 0) return;
+  await db.update(maps)
+    .set(fields)
+    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)));
+}
+
+export async function updatePlayer(
+  db: Db,
+  uid: string,
+  adventureId: string,
+  playerId: string,
+  fields: { allowed?: boolean; characters?: ICharacter[] },
+): Promise<void> {
+  await assertAdventureOwner(db, uid, adventureId);
+  if (Object.keys(fields).length === 0) return;
+  await db.update(adventurePlayers)
+    .set(fields)
+    .where(and(
+      eq(adventurePlayers.adventureId, adventureId),
+      eq(adventurePlayers.userId, playerId),
+    ));
+}
+
+export async function leaveAdventure(db: Db, uid: string, adventureId: string): Promise<void> {
+  const [row] = await db.select({ ownerId: adventures.ownerId })
+    .from(adventures)
+    .where(eq(adventures.id, adventureId))
+    .limit(1);
+  if (!row) {
+    throwApiError('not-found', 'Adventure not found');
+  }
+  if (row.ownerId === uid) {
+    throwApiError('permission-denied', 'The owner cannot leave their own adventure');
+  }
+  await db.delete(adventurePlayers)
+    .where(and(
+      eq(adventurePlayers.adventureId, adventureId),
+      eq(adventurePlayers.userId, uid),
+    ));
+}
+
+// ─── Map changes ─────────────────────────────────────────────────────────────
+
+export async function addMapChanges(
+  db: Db,
+  uid: string,
+  adventureId: string,
+  mapId: string,
+  chs: Change[],
+): Promise<string> {
+  await assertAdventureMember(db, uid, adventureId);
+
+  const [mapRow] = await db.select({ id: maps.id })
+    .from(maps)
+    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)))
+    .limit(1);
+  if (!mapRow) {
+    throwApiError('not-found', 'Map not found');
+  }
+
+  const id = uuidv7();
+  const changesDoc: Changes = {
+    chs,
+    timestamp: Date.now(),
+    incremental: true,
+    user: uid,
+    resync: false,
+  };
+  await db.insert(mapChanges).values({
+    id,
+    mapId,
+    changes: changesDoc as unknown as object,
+    incremental: true,
+    resync: false,
+    userId: uid,
+  });
+  return id;
+}
+
+// ─── Invites ─────────────────────────────────────────────────────────────────
 
 export async function joinAdventure(
   db: Db,

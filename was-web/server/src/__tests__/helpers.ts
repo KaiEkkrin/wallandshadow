@@ -1,9 +1,9 @@
 import type { Hono } from 'hono';
-import { v7 as uuidv7 } from 'uuid';
 import {
   ChangeType,
   ChangeCategory,
   type Changes,
+  type Change,
   type TokenAdd,
   type TokenMove,
   type WallAdd,
@@ -41,6 +41,17 @@ export async function registerUser(
 
 // ─── Request helpers ──────────────────────────────────────────────────────────
 
+export async function apiGet(
+  app: Hono,
+  path: string,
+  token: string,
+): Promise<Response> {
+  return app.request(path, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export async function apiPost(
   app: Hono,
   path: string,
@@ -49,6 +60,22 @@ export async function apiPost(
 ): Promise<Response> {
   return app.request(path, {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function apiPatch(
+  app: Hono,
+  path: string,
+  body: unknown,
+  token: string,
+): Promise<Response> {
+  return app.request(path, {
+    method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -68,30 +95,20 @@ export async function apiDelete(
   });
 }
 
-// ─── DB helpers ───────────────────────────────────────────────────────────────
-
-// TODO Phase 4: replace direct DB insert with WebSocket client once real-time sync is implemented
-export async function seedMapChanges(
+export async function postMapChanges(
+  app: Hono,
+  token: string,
+  adventureId: string,
   mapId: string,
-  userId: string,
-  changes: (TokenAdd | TokenMove | WallAdd)[],
+  chs: Change[],
 ): Promise<void> {
-  const changesDoc: Changes = {
-    chs: changes,
-    timestamp: Date.now(),
-    incremental: true,
-    user: userId,
-    resync: false,
-  };
-  await db.insert(mapChanges).values({
-    id: uuidv7(),
-    mapId,
-    changes: changesDoc as unknown as object,
-    incremental: true,
-    resync: false,
-    userId,
-  });
+  const res = await apiPost(app, `/api/adventures/${adventureId}/maps/${mapId}/changes`, { chs }, token);
+  if (res.status !== 201) {
+    throw new Error(`postMapChanges failed: ${res.status} ${await res.text()}`);
+  }
 }
+
+// ─── DB read helpers (used for verifying internal consolidation state) ────────
 
 export async function getBaseChange(mapId: string): Promise<Changes | undefined> {
   const rows = await db.select({ changes: mapChanges.changes })
