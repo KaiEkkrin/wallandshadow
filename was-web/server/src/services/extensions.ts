@@ -565,7 +565,7 @@ export async function joinAdventure(
   db: Db,
   uid: string,
   inviteId: string,
-  policy: IInviteExpiryPolicy = defaultInviteExpiryPolicy,
+  _policy: IInviteExpiryPolicy = defaultInviteExpiryPolicy,
 ): Promise<string> {
   const [invite] = await db.select()
     .from(invites).where(eq(invites.id, inviteId)).limit(1);
