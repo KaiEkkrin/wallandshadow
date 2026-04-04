@@ -486,6 +486,23 @@ Firebase stays live throughout. Each phase can ship independently.
 
 ---
 
+## TODO Phase Comments
+
+During migration, code that uses a temporary workaround that will be replaced in a later phase is marked with a structured comment:
+
+```
+// TODO Phase N: <description of what changes in that phase>
+```
+
+This applies to both production code and tests. Examples:
+
+- `// TODO Phase 2: replace local JWT registration with OIDC test flow`
+- `// TODO Phase 4: replace direct DB insert with WebSocket client once real-time sync is implemented`
+
+The comment makes it easy to search for all workarounds that become addressable in a given phase: `grep -r "TODO Phase 4"`.
+
+---
+
 ## What Does Not Change
 
 The following are unaffected by the replatforming and require no migration work:

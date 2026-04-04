@@ -38,6 +38,7 @@
     "preview": "vite preview",
     "test": "vitest --config ./unit/vitest.config.ts run",
     "test:unit": "vitest --config ./unit/vitest.config.ts",
+    "test:server": "yarn workspace @wallandshadow/server test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
