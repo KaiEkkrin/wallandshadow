@@ -1,0 +1,67 @@
+name: CI Server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'was-web/server/**'
+      - 'was-web/packages/shared/**'
+      - '.github/workflows/ci-server.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'was-web/server/**'
+      - 'was-web/packages/shared/**'
+      - '.github/workflows/ci-server.yml'
+
+# Least-privilege permissions: only read access to repository contents
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: postgresql://was:wasdev@localhost:5432/wallandshadow
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: was
+          POSTGRES_PASSWORD: wasdev
+          POSTGRES_DB: wallandshadow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "yarn"
+          cache-dependency-path: was-web/yarn.lock
+
+      - name: Install dependencies
+        working-directory: was-web
+        run: yarn install --frozen-lockfile
+
+      - name: Type-check
+        working-directory: was-web/server
+        run: yarn tsc --noEmit
+
+      - name: Apply database schema
+        working-directory: was-web/server
+        run: yarn drizzle-kit push
+
+      - name: Run tests
+        working-directory: was-web/server
+        run: yarn test
