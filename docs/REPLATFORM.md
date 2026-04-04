@@ -62,7 +62,8 @@ off Firebase and onto a portable, containerised server stack.
 
 ### WebSocket Room Model
 
-Each map session is a WebSocket room (`/ws/maps/:mapId`). Three message types flow through it:
+Each map session is a WebSocket room (`/ws/maps/:mapId`). Message types split cleanly
+into persistent and ephemeral:
 
 | Message type | Direction | Persisted? | Description |
 |---|---|---|---|
@@ -71,7 +72,7 @@ Each map session is a WebSocket room (`/ws/maps/:mapId`). Three message types fl
 | `measurement` | client → server → broadcast | No | Drag-to-measure line, shown live to all clients |
 
 Ephemeral messages (ping, measurement) are forwarded immediately with no database write.
-Map changes are written to PostgreSQL first, then broadcast to the room.
+Map changes are persisted first, then broadcast to the room.
 
 ```
 Client A sends measurement update
@@ -79,8 +80,15 @@ Client A sends measurement update
     ▼
 WebSocket server
     ├─ (measurement) → forward to all other clients in room
-    └─ (change)      → write to PostgreSQL → NOTIFY → broadcast to room
+    └─ (change)      → service.addChanges() → PostgreSQL → NOTIFY → broadcast to room
+                                   ↑
+                        same function as POST /api/.../changes
 ```
+
+**The WebSocket layer is transport + pub/sub only.** All business logic (authorization,
+validation, persistence) lives in service functions shared with the REST endpoints. A
+WebSocket `change` message and a `POST /api/.../changes` request call identical code;
+the WebSocket path additionally triggers the room broadcast.
 
 PostgreSQL LISTEN/NOTIFY is used internally so that if the server is ever scaled to multiple
 instances, each instance's rooms stay in sync via the database notification channel.
@@ -143,10 +151,15 @@ mock upstream).
 | **Hosting** | React SPA + static landing page | Caddy |
 | **Analytics** | Optional opt-in event tracking | TBD (Plausible candidate) |
 
-### Firebase Functions → API Routes
+### Firebase Functions → Full REST API
 
-The current server exposes a single `interact()` callable with verb dispatch, plus `addSprites`.
-All verbs become `POST /api/:verb` routes in the new server:
+Firebase used a "client drives the database" model: clients wrote directly to Firestore
+(security rules enforced auth), and Functions only handled operations too complex for
+direct writes. The new server replaces both the Functions *and* the Firestore client
+writes with a conventional REST API. All persistent operations are mediated by the server;
+no client writes directly to the database.
+
+The Firebase Functions verbs map directly to the new routes:
 
 | Current verb | New route | Notes |
 |---|---|---|
@@ -161,8 +174,34 @@ All verbs become `POST /api/:verb` routes in the new server:
 | `deleteAdventure` | `DELETE /api/adventures/:id` | |
 | `addSprites` | `POST /api/adventures/:id/spritesheets` | |
 
-The Storage upload trigger (`onUpload`) becomes a server-side hook called after the image
-upload is accepted: validate MIME type, then write the image record to PostgreSQL.
+The direct Firestore writes (no Functions equivalent) become these new routes:
+
+| Current Firestore write | New route | Notes |
+|---|---|---|
+| `adventures/{id}` update | `PATCH /api/adventures/:id` | name, description, imagePath |
+| `adventures/{id}/maps/{id}` update | `PATCH /api/adventures/:id/maps/:id` | name, description, imagePath, ffa |
+| `adventures/{id}/players/{uid}` upsert | `PATCH /api/adventures/:id/players/:uid` | allowed (block/unblock), characters |
+| `adventures/{id}/players/{uid}` delete | `DELETE /api/adventures/:id/players/me` | leave adventure |
+| `adventures/{id}/maps/{id}/changes` add | `POST /api/adventures/:id/maps/:id/changes` | write incremental change |
+
+Read endpoints (Firestore listeners → REST queries):
+
+| Current Firestore listener/get | New route |
+|---|---|
+| `adventures/` query (profile summary) | `GET /api/adventures` |
+| `adventures/{id}` get | `GET /api/adventures/:id` |
+| `adventures/{id}/maps/` query | `GET /api/adventures/:id/maps` |
+| `adventures/{id}/maps/{id}` get | `GET /api/adventures/:id/maps/:id` |
+| `adventures/{id}/players/` query | `GET /api/adventures/:id/players` |
+
+The Storage upload trigger (`onUpload`) becomes an explicit upload endpoint:
+`POST /api/images` — validates MIME type, writes to S3, records in PostgreSQL.
+
+**WebSocket and REST share the same service layer.** The `POST .../changes` REST
+endpoint and the WebSocket `change` message type both call the same service function;
+the WebSocket path additionally broadcasts to the room. This means all persistent
+operations can be tested via REST without a WebSocket connection, and the WebSocket
+layer stays thin (transport + pub/sub only, no business logic).
 
 ### Real-Time Sync Migration
 
@@ -433,12 +472,21 @@ Firebase stays live throughout. Each phase can ship independently.
 
 ### Phase 1 — New server foundation (alongside Firebase)
 
-- Set up PostgreSQL schema with migrations (suggest Drizzle or raw SQL + `node-postgres`)
-- Build Hono API server with JWT auth middleware
-- Port `interact` verb handlers to HTTP routes
+The goal of Phase 1 is a complete, fully-tested REST API that covers the entire data
+model — not just the operations Firebase Functions handled, but also the direct Firestore
+writes the client made without going through Functions. Firebase's "client drives the
+database" model is not carried forward; all persistent operations are server-mediated.
+
+- Set up PostgreSQL schema with Drizzle ORM and migrations
+- Build Hono API server with JWT auth middleware (Phase 1 uses local email/password JWT;
+  replaced by OIDC in Phase 2)
+- Implement all REST routes: CRUD for adventures, maps, players, map changes, images,
+  spritesheets, invites (see "Firebase Functions → Full REST API" above for the full list)
+- Integration test suite running against real PostgreSQL and MinIO — no direct DB seeding
+  in tests once all write endpoints are implemented
+- Compose file for local dev (PostgreSQL + MinIO already running; add API container)
+- GitHub Actions CI pipeline (`test:server` against real PostgreSQL/MinIO services)
 - Write data migration script (Firestore export → PostgreSQL import)
-- Compose file for local dev
-- GitHub Actions CI pipeline
 - **No client changes yet**
 
 ### Phase 2 — Auth migration
@@ -461,11 +509,17 @@ Firebase stays live throughout. Each phase can ship independently.
 
 ### Phase 4 — Real-time sync and data migration
 
-- Implement WebSocket server (`/ws/maps/:id`) with room management
-- Implement ping and measurement message types (ephemeral, no DB)
-- Implement map change broadcast via PostgreSQL LISTEN/NOTIFY
+By this point the full REST API exists and is tested. The WebSocket layer is a thin
+transport + pub/sub adapter on top of the same service functions.
+
+- Implement WebSocket server (`/ws/maps/:id`) with room management and auth
+- Wire `change` messages to the same `addChanges` service used by `POST .../changes`;
+  broadcast the persisted result to all room members
+- Implement ephemeral `ping` and `measurement` messages (forward only, no DB write)
+- Implement map change broadcast via PostgreSQL LISTEN/NOTIFY (supports multi-instance)
 - Run the data migration script to move Firestore data to PostgreSQL
-- **Client change**: replace Firestore `onSnapshot` with WebSocket; replace `httpsCallable` with `fetch`
+- **Client change**: replace Firestore `onSnapshot` with WebSocket; replace `httpsCallable`
+  with `fetch` against the REST API
 - Smoke test collaborative editing with both old and new paths available
 
 ### Phase 5 — Decommission Firebase
