@@ -2,9 +2,6 @@ import { describe, test, expect } from 'vitest';
 import { MapType, ChangeCategory, ChangeType } from '@wallandshadow/shared';
 import type { TokenAdd, WallAdd } from '@wallandshadow/shared';
 import { createApp } from '../app.js';
-import { db } from '../db/connection.js';
-import { adventures, adventurePlayers, maps, mapChanges, invites } from '../db/schema.js';
-import { eq, and } from 'drizzle-orm';
 import {
   registerUser,
   apiGet,
@@ -26,7 +23,7 @@ const app = createApp();
 async function createAdventure(token: string, name = 'Adventure One', description = 'First adventure'): Promise<string> {
   const res = await apiPost(app, '/api/adventures', { name, description }, token);
   expect(res.status).toBe(201);
-  const { id } = await res.json<{ id: string }>();
+  const { id } = (await res.json()) as { id: string };
   return id;
 }
 
@@ -40,7 +37,7 @@ async function createMap(
 ): Promise<string> {
   const res = await apiPost(app, `/api/adventures/${adventureId}/maps`, { name, description, ty, ffa }, token);
   expect(res.status).toBe(201);
-  const { id } = await res.json<{ id: string }>();
+  const { id } = (await res.json()) as { id: string };
   return id;
 }
 
@@ -84,14 +81,14 @@ describe('server integration tests', () => {
       // Verify both via GET /api/adventures
       const listRes = await apiGet(app, '/api/adventures', token);
       expect(listRes.status).toBe(200);
-      const list = await listRes.json<{ id: string; name: string }[]>();
+      const list = (await listRes.json()) as { id: string; name: string }[];
       expect(list.some(a => a.id === a1Id && a.name === 'Adventure One')).toBe(true);
       expect(list.some(a => a.id === a2Id && a.name === 'Adventure Two')).toBe(true);
 
       // Verify a1 details via GET /api/adventures/:id
       const a1Res = await apiGet(app, `/api/adventures/${a1Id}`, token);
       expect(a1Res.status).toBe(200);
-      const a1 = await a1Res.json<{ id: string; name: string; owner: string }>();
+      const a1 = (await a1Res.json()) as { id: string; name: string; owner: string };
       expect(a1.name).toBe('Adventure One');
       expect(a1.owner).toBe(uid);
 
@@ -102,7 +99,7 @@ describe('server integration tests', () => {
       // Verify maps via GET /api/adventures/:id/maps
       const mapsRes = await apiGet(app, `/api/adventures/${a1Id}/maps`, token);
       expect(mapsRes.status).toBe(200);
-      const mapList = await mapsRes.json<{ id: string; name: string; ty: string }[]>();
+      const mapList = (await mapsRes.json()) as { id: string; name: string; ty: string }[];
       expect(mapList).toHaveLength(1);
       expect(mapList[0].id).toBe(m1Id);
       expect(mapList[0].ty).toBe(MapType.Square);
@@ -110,7 +107,7 @@ describe('server integration tests', () => {
       // Verify single map via GET /api/adventures/:id/maps/:mapId
       const m2Res = await apiGet(app, `/api/adventures/${a2Id}/maps/${m2Id}`, token);
       expect(m2Res.status).toBe(200);
-      const m2 = await m2Res.json<{ id: string; name: string; ty: string; ffa: boolean }>();
+      const m2 = (await m2Res.json()) as { id: string; name: string; ty: string; ffa: boolean };
       expect(m2.name).toBe('Map Two');
       expect(m2.ty).toBe(MapType.Hex);
       expect(m2.ffa).toBe(true);
@@ -133,7 +130,7 @@ describe('server integration tests', () => {
 
       // Adventure 2 should be gone from list
       const listRes2 = await apiGet(app, '/api/adventures', token);
-      const list2 = await listRes2.json<{ id: string }[]>();
+      const list2 = (await listRes2.json()) as { id: string }[];
       expect(list2.some(a => a.id === a2Id)).toBe(false);
     });
   });
@@ -151,7 +148,7 @@ describe('server integration tests', () => {
       expect(patchAdvRes.status).toBe(204);
 
       const advRes = await apiGet(app, `/api/adventures/${aId}`, token);
-      const adv = await advRes.json<{ name: string; description: string }>();
+      const adv = (await advRes.json()) as { name: string; description: string };
       expect(adv.name).toBe('Updated Name');
       expect(adv.description).toBe('Updated desc');
 
@@ -160,7 +157,7 @@ describe('server integration tests', () => {
       expect(patchMapRes.status).toBe(204);
 
       const mapRes = await apiGet(app, `/api/adventures/${aId}/maps/${mId}`, token);
-      const m = await mapRes.json<{ name: string; ffa: boolean }>();
+      const m = (await mapRes.json()) as { name: string; ffa: boolean };
       expect(m.name).toBe('New Map Name');
       expect(m.ffa).toBe(true);
     });
@@ -173,13 +170,13 @@ describe('server integration tests', () => {
 
       // Player joins via invite
       const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
-      const { inviteId } = await inviteRes.json<{ inviteId: string }>();
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
       await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
 
       // Verify player is in the list
       const playersRes = await apiGet(app, `/api/adventures/${aId}/players`, owner.token);
       expect(playersRes.status).toBe(200);
-      const players = await playersRes.json<{ playerId: string; allowed: boolean; playerName: string }[]>();
+      const players = (await playersRes.json()) as { playerId: string; allowed: boolean; playerName: string }[];
       const playerEntry = players.find(p => p.playerId === player.uid);
       expect(playerEntry).toBeDefined();
       expect(playerEntry?.allowed).toBe(true);
@@ -190,7 +187,7 @@ describe('server integration tests', () => {
 
       // Verify player is now blocked
       const playersRes2 = await apiGet(app, `/api/adventures/${aId}/players`, owner.token);
-      const players2 = await playersRes2.json<{ playerId: string; allowed: boolean }[]>();
+      const players2 = (await playersRes2.json()) as { playerId: string; allowed: boolean }[];
       const playerEntry2 = players2.find(p => p.playerId === player.uid);
       expect(playerEntry2?.allowed).toBe(false);
     });
@@ -202,7 +199,7 @@ describe('server integration tests', () => {
       const aId = await createAdventure(owner.token);
 
       const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
-      const { inviteId } = await inviteRes.json<{ inviteId: string }>();
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
       await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
 
       // Player leaves
@@ -211,12 +208,12 @@ describe('server integration tests', () => {
 
       // Player should no longer appear in the players list
       const playersRes = await apiGet(app, `/api/adventures/${aId}/players`, owner.token);
-      const players = await playersRes.json<{ playerId: string }[]>();
+      const players = (await playersRes.json()) as { playerId: string }[];
       expect(players.some(p => p.playerId === player.uid)).toBe(false);
 
       // Adventure should no longer appear in player's adventure list
       const listRes = await apiGet(app, '/api/adventures', player.token);
-      const list = await listRes.json<{ id: string }[]>();
+      const list = (await listRes.json()) as { id: string }[];
       expect(list.some(a => a.id === aId)).toBe(false);
     });
 
@@ -228,7 +225,7 @@ describe('server integration tests', () => {
       const mId = await createMap(owner.token, aId);
 
       const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
-      const { inviteId } = await inviteRes.json<{ inviteId: string }>();
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
       await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
 
       // Player cannot patch adventure
@@ -301,18 +298,18 @@ describe('server integration tests', () => {
       // Create an invite
       const inviteRes = await apiPost(app, `/api/adventures/${a1Id}/invites`, {}, owner.token);
       expect(inviteRes.status).toBe(200);
-      const { inviteId } = await inviteRes.json<{ inviteId: string }>();
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
       expect(inviteId).toBeTruthy();
 
       // User joins via invite
       const joinRes = await apiPost(app, `/api/invites/${inviteId}/join`, {}, user.token);
       expect(joinRes.status).toBe(200);
-      const { adventureId } = await joinRes.json<{ adventureId: string }>();
+      const { adventureId } = (await joinRes.json()) as { adventureId: string };
       expect(adventureId).toBe(a1Id);
 
       // Verify via players list
       const playersRes = await apiGet(app, `/api/adventures/${a1Id}/players`, owner.token);
-      const players = await playersRes.json<{ playerId: string; allowed: boolean; playerName: string }[]>();
+      const players = (await playersRes.json()) as { playerId: string; allowed: boolean; playerName: string }[];
       const playerEntry = players.find(p => p.playerId === user.uid);
       expect(playerEntry?.allowed).toBe(true);
       expect(playerEntry?.playerName).toBe('User 1');
@@ -334,11 +331,11 @@ describe('server integration tests', () => {
       // Create invite with short expiry
       const inviteRes = await apiPost(app, `/api/adventures/${a1Id}/invites`, { policy: testPolicy }, owner.token);
       expect(inviteRes.status).toBe(200);
-      const { inviteId: invite } = await inviteRes.json<{ inviteId: string }>();
+      const { inviteId: invite } = (await inviteRes.json()) as { inviteId: string };
 
       // Re-issuing immediately should return the same invite
       const inviteRes2 = await apiPost(app, `/api/adventures/${a1Id}/invites`, { policy: testPolicy }, owner.token);
-      const { inviteId: invite2 } = await inviteRes2.json<{ inviteId: string }>();
+      const { inviteId: invite2 } = (await inviteRes2.json()) as { inviteId: string };
       expect(invite2).toBe(invite);
 
       // User 1 can join with the current invite
@@ -354,18 +351,18 @@ describe('server integration tests', () => {
 
       // User 2 should not have been added as a player
       const playersRes = await apiGet(app, `/api/adventures/${a1Id}/players`, owner.token);
-      const players = await playersRes.json<{ playerId: string }[]>();
+      const players = (await playersRes.json()) as { playerId: string }[];
       expect(players.some(p => p.playerId === user2.uid)).toBe(false);
 
       // Owner creates a new invite
       const inviteRes3 = await apiPost(app, `/api/adventures/${a1Id}/invites`, { policy: testPolicy }, owner.token);
-      const { inviteId: invite3 } = await inviteRes3.json<{ inviteId: string }>();
+      const { inviteId: invite3 } = (await inviteRes3.json()) as { inviteId: string };
       expect(invite3).not.toBe(invite);
 
       // User 2 can now join with the new invite
       const join3Res = await apiPost(app, `/api/invites/${invite3}/join`, { policy: testPolicy }, user2.token);
       expect(join3Res.status).toBe(200);
-      const { adventureId } = await join3Res.json<{ adventureId: string }>();
+      const { adventureId } = (await join3Res.json()) as { adventureId: string };
       expect(adventureId).toBe(a1Id);
     }, 10000);
   });
@@ -386,14 +383,14 @@ describe('server integration tests', () => {
         description: 'First map cloned',
       }, token);
       expect(cloneRes.status).toBe(201);
-      const { id: m2Id } = await cloneRes.json<{ id: string }>();
+      const { id: m2Id } = (await cloneRes.json()) as { id: string };
       expect(m2Id).not.toBe(m1Id);
 
       // Verify clone metadata via GET
       const m1Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
       const m2Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m2Id}`, token);
-      const m1 = await m1Res.json<{ ty: string; ffa: boolean }>();
-      const m2 = await m2Res.json<{ name: string; description: string; ty: string; ffa: boolean }>();
+      const m1 = (await m1Res.json()) as { ty: string; ffa: boolean };
+      const m2 = (await m2Res.json()) as { name: string; description: string; ty: string; ffa: boolean };
       expect(m2.name).toBe('Clone of Map One');
       expect(m2.description).toBe('First map cloned');
       expect(m2.ty).toBe(m1.ty);
@@ -412,10 +409,10 @@ describe('server integration tests', () => {
         description: 'First map cloned with changes',
       }, token);
       expect(clone2Res.status).toBe(201);
-      const { id: m3Id } = await clone2Res.json<{ id: string }>();
+      const { id: m3Id } = (await clone2Res.json()) as { id: string };
 
       const m3Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m3Id}`, token);
-      const m3 = await m3Res.json<{ name: string; ty: string }>();
+      const m3 = (await m3Res.json()) as { name: string; ty: string };
       expect(m3.name).toBe('Second clone');
       expect(m3.ty).toBe(m1.ty);
 
@@ -465,7 +462,7 @@ describe('server integration tests', () => {
 
       // Player joins via invite
       const inviteRes = await apiPost(app, `/api/adventures/${a1Id}/invites`, {}, owner.token);
-      const { inviteId } = await inviteRes.json<{ inviteId: string }>();
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
       await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
 
       // Player can post changes
@@ -531,7 +528,7 @@ describe('server integration tests', () => {
       // Map 2 should still exist with its changes
       const m2Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m2Id}`, token);
       expect(m2Res.status).toBe(200);
-      const m2 = await m2Res.json<{ name: string }>();
+      const m2 = (await m2Res.json()) as { name: string };
       expect(m2.name).toBe('Map Two');
 
       const m2Base = await getBaseChange(m2Id);
@@ -557,7 +554,7 @@ describe('server integration tests', () => {
         name: 'Clone of Map One',
       }, token);
       expect(cloneRes.status).toBe(201);
-      const { id: m2Id } = await cloneRes.json<{ id: string }>();
+      const { id: m2Id } = (await cloneRes.json()) as { id: string };
 
       // Both original and clone should have the same state
       verifyBaseChange(await getBaseChange(m1Id), uid, moveCount);
@@ -574,7 +571,7 @@ describe('server integration tests', () => {
       // Clone still exists with correct state
       const m2Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m2Id}`, token);
       expect(m2Res.status).toBe(200);
-      const m2 = await m2Res.json<{ name: string }>();
+      const m2 = (await m2Res.json()) as { name: string };
       expect(m2.name).toBe('Clone of Map One');
       verifyBaseChange(await getBaseChange(m2Id), uid, moveCount);
     });
@@ -597,7 +594,7 @@ describe('server integration tests', () => {
 
       // Adventure should not appear in list
       const listRes = await apiGet(app, '/api/adventures', token);
-      const list = await listRes.json<{ id: string }[]>();
+      const list = (await listRes.json()) as { id: string }[];
       expect(list.some(a => a.id === a1Id)).toBe(false);
 
       // All changes should be gone
@@ -628,7 +625,7 @@ describe('server integration tests', () => {
       // Adventure 2, map 2, and its changes should be intact
       const a2Res = await apiGet(app, `/api/adventures/${a2Id}`, token);
       expect(a2Res.status).toBe(200);
-      const a2 = await a2Res.json<{ name: string }>();
+      const a2 = (await a2Res.json()) as { name: string };
       expect(a2.name).toBe('Adventure Two');
 
       const m2Res = await apiGet(app, `/api/adventures/${a2Id}/maps/${m2Id}`, token);

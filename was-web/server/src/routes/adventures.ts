@@ -7,7 +7,7 @@ import {
   maps,
   users,
 } from '../db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
   createAdventure,
   deleteAdventure,

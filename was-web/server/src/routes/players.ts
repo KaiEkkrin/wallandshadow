@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import type { ICharacter } from '@wallandshadow/shared';
 import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { db } from '../db/connection.js';
-import { adventurePlayers, users } from '../db/schema.js';
-import { and, eq } from 'drizzle-orm';
+import { adventurePlayers } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 import {
   updatePlayer,
   assertAdventureMember,
