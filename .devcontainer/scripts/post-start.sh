@@ -16,12 +16,12 @@ else
     echo "🪣 Starting MinIO..."
     MINIO_ROOT_USER=wasdev MINIO_ROOT_PASSWORD=wasdevpass \
         minio server "$MINIO_DATA" \
-        --address :9000 --console-address :9001 \
+        --address 0.0.0.0:9000 --console-address 0.0.0.0:9001 \
         > "$MINIO_DATA/minio.log" 2>&1 &
 
     # Wait for MinIO to be ready, then configure mc alias and ensure bucket exists
     for i in $(seq 1 10); do
-        if mc alias set was-local http://localhost:9000 wasdev wasdevpass > /dev/null 2>&1; then
+        if mc alias set was-local http://127.0.0.1:9000 wasdev wasdevpass > /dev/null 2>&1; then
             mc mb --ignore-existing was-local/wallandshadow > /dev/null 2>&1 || true
             break
         fi
@@ -40,7 +40,7 @@ echo "  New stack"
 echo "    Hono API Server:         http://localhost:3000  (start manually)"
 echo "    PostgreSQL:              localhost:5432         (auto-started)"
 echo "    MinIO console:           http://localhost:9001  (auto-started)"
-echo "    MinIO API:               http://localhost:9000"
+echo "    MinIO API:               http://127.0.0.1:9000"
 echo ""
 echo "  Firebase (existing stack)"
 echo "    React Dev Server:        http://localhost:5000"

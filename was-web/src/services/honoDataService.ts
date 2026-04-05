@@ -30,6 +30,7 @@ import {
   InviteDetailRow,
 } from './honoApi';
 import { MapWebSocket } from './honoWebSocket';
+import { PollingWatch } from './pollingWatch';
 
 // ── Reference types ──────────────────────────────────────────────────────────
 
@@ -133,10 +134,6 @@ function writeLatestMaps(uid: string, maps: IMapSummary[]): void {
 
 function isNotFound(e: unknown): boolean {
   return e instanceof ApiError && e.status === 404;
-}
-
-function toError(e: unknown): Error {
-  return e instanceof Error ? e : new Error(String(e));
 }
 
 function emptyAdventureRow(adventureId: string): AdventureRow {
@@ -574,7 +571,7 @@ export class HonoDataService implements IDataService {
     await this.api.addMapChanges(adventureId, mapId, changes);
   }
 
-  // ── Watch methods (one-shot fetch) ──────────────────────────────────────
+  // ── Watch methods (polling) ─────────────────────────────────────────────
 
   watch<T>(
     d: IDataReference<T>,
@@ -582,10 +579,8 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    this.get(d)
-      .then(data => onNext(data))
-      .catch(e => onError?.(toError(e)));
-    return () => {};
+    const w = new PollingWatch(() => this.get(d), onNext, onError, 5000);
+    return () => w.stop();
   }
 
   watchAdventures(
@@ -594,13 +589,14 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    this.api.getAdventures()
-      .then(rows => onNext(rows.map(r => ({
+    const w = new PollingWatch(
+      () => this.api.getAdventures().then(rows => rows.map(r => ({
         id: r.id,
         record: adventureRowToIAdventure(r),
-      }))))
-      .catch(e => onError?.(toError(e)));
-    return () => {};
+      }))),
+      onNext, onError, 10000,
+    );
+    return () => w.stop();
   }
 
   watchChanges(
@@ -626,15 +622,14 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    Promise.all([
-      this.api.getPlayers(adventureId).catch(e => isNotFound(e) ? [] as PlayerRow[] : Promise.reject(e)),
-      this.api.getAdventure(adventureId).catch(() => emptyAdventureRow(adventureId)),
-    ])
-      .then(([players, adv]) => {
-        onNext(players.map(p => playerRowToIPlayer(p, adv)));
-      })
-      .catch(e => onError?.(toError(e)));
-    return () => {};
+    const w = new PollingWatch(
+      () => Promise.all([
+        this.api.getPlayers(adventureId).catch(e => isNotFound(e) ? [] as PlayerRow[] : Promise.reject(e)),
+        this.api.getAdventure(adventureId).catch(() => emptyAdventureRow(adventureId)),
+      ]).then(([players, adv]) => players.map(p => playerRowToIPlayer(p, adv))),
+      onNext, onError, 5000,
+    );
+    return () => w.stop();
   }
 
   watchSharedAdventures(
@@ -643,14 +638,13 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    this.api.getAdventures()
-      .then(rows => {
-        onNext(rows
-          .filter(r => r.owner !== this.uid)
-          .map(r => adventureRowToSelfPlayer(r, this.uid)));
-      })
-      .catch(e => onError?.(toError(e)));
-    return () => {};
+    const w = new PollingWatch(
+      () => this.api.getAdventures().then(rows =>
+        rows.filter(r => r.owner !== this.uid)
+          .map(r => adventureRowToSelfPlayer(r, this.uid))),
+      onNext, onError, 10000,
+    );
+    return () => w.stop();
   }
 
   watchSpritesheets(
@@ -659,15 +653,17 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    this.api.getSpritesheets(adventureId)
-      .catch(e => isNotFound(e) ? [] : Promise.reject(e))
-      .then(rows => onNext(rows.map(r => new HonoDataAndReference<ISpritesheet>(
-        r.id,
-        `adventures/${adventureId}/spritesheets/${r.id}`,
-        passthroughConverter(),
-        spritesheetRowToISpritesheet(r),
-      ))))
-      .catch(e => onError?.(toError(e)));
-    return () => {};
+    const w = new PollingWatch(
+      () => this.api.getSpritesheets(adventureId)
+        .catch(e => isNotFound(e) ? [] : Promise.reject(e))
+        .then(rows => rows.map(r => new HonoDataAndReference<ISpritesheet>(
+          r.id,
+          `adventures/${adventureId}/spritesheets/${r.id}`,
+          passthroughConverter(),
+          spritesheetRowToISpritesheet(r),
+        ))),
+      onNext, onError, 10000,
+    );
+    return () => w.stop();
   }
 }

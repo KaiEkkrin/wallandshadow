@@ -17,7 +17,7 @@ if (!dbUrl.includes('_test')) {
 }
 
 export const testS3 = new S3Client({
-  endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
+  endpoint: process.env.S3_ENDPOINT ?? 'http://127.0.0.1:9000',
   region: process.env.S3_REGION ?? 'us-east-1',
   credentials: {
     accessKeyId: process.env.S3_ACCESS_KEY ?? 'wasdev',

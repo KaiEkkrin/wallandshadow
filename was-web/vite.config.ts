@@ -144,6 +144,11 @@ export default defineConfig({
     // Force IPv4 — VS Code port forwarding doesn't reliably handle IPv6
     // WebSocket upgrades, and Node.js defaults to :: (IPv6) on Linux.
     host: '0.0.0.0',
+    hmr: {
+      // Explicit localhost so the HMR WebSocket client in the browser connects
+      // to ws://localhost:5000/ rather than ws://0.0.0.0:5000/ (which Firefox rejects).
+      host: 'localhost',
+    },
     proxy: {
       // Replaces setupProxy.js - proxy Firebase reserved URLs to emulator
       '/__': {

@@ -31,7 +31,7 @@
     "NVIDIA_DRIVER_CAPABILITIES": "all",
     "PGDATA": "/workspaces/wallandshadow/.devcontainer/.pgdata",
     "DATABASE_URL": "postgresql://was:wasdev@localhost:5432/wallandshadow",
-    "S3_ENDPOINT": "http://localhost:9000",
+    "S3_ENDPOINT": "http://127.0.0.1:9000",
     "S3_BUCKET": "wallandshadow",
     "S3_ACCESS_KEY": "wasdev",
     "S3_SECRET_KEY": "wasdevpass"
