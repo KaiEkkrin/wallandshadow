@@ -57,7 +57,7 @@ export function createUpgradeHandler(wss: WebSocketServer, rooms: MapRoomManager
         return;
       }
       wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-        rooms.join(mapId, ws, uid);
+        rooms.join(mapId, ws);
 
         ws.on('close', () => {
           rooms.leave(mapId, ws);

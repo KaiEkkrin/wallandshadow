@@ -9,8 +9,7 @@ const CHANNEL = 'map_changes';
 
 /**
  * Start a PostgreSQL LISTEN connection that broadcasts new map changes
- * to WebSocket rooms. Each NOTIFY payload contains `mapId:changeId:authorUid`
- * so the broadcast can exclude the author (they already applied locally).
+ * to WebSocket rooms. NOTIFY payload is `mapId:changeId`.
  */
 export async function startNotifyListener(
   connectionString: string,
@@ -22,10 +21,10 @@ export async function startNotifyListener(
   function onNotification(msg: pg.Notification) {
     if (msg.channel !== CHANNEL || !msg.payload) return;
 
-    // Payload format: "mapId:changeId:authorUid" (authorUid may be empty for consolidations)
-    const parts = msg.payload.split(':');
-    if (parts.length < 2) return;
-    const [mapId, changeId, authorUid] = parts;
+    const sep = msg.payload.indexOf(':');
+    if (sep === -1) return;
+    const mapId = msg.payload.slice(0, sep);
+    const changeId = msg.payload.slice(sep + 1);
     if (!mapId || !changeId) return;
 
     if (!rooms.hasRoom(mapId)) return;
@@ -36,9 +35,7 @@ export async function startNotifyListener(
       .limit(1)
       .then(([row]) => {
         if (row) {
-          // Exclude the author for incremental changes (they already applied locally).
-          // For consolidations (no authorUid), broadcast to everyone.
-          rooms.broadcast(mapId, JSON.stringify(row.changes), authorUid || undefined);
+          rooms.broadcast(mapId, JSON.stringify(row.changes));
         }
       })
       .catch(e => console.error('Failed to fetch change for broadcast:', e));
@@ -84,19 +81,9 @@ export async function startNotifyListener(
 }
 
 /**
- * Issue a NOTIFY for a new incremental change. Includes the author UID so the
- * broadcast can exclude the author (they already applied the change locally).
+ * Issue a NOTIFY so the LISTEN handler can fetch and broadcast the change.
  */
-export async function notifyMapChange(mapId: string, changeId: string, authorUid: string): Promise<void> {
-  const payload = `${mapId}:${changeId}:${authorUid}`.replaceAll("'", "''");
-  await pool.query(`NOTIFY ${CHANNEL}, '${payload}'`);
-}
-
-/**
- * Issue a NOTIFY for a consolidation. No author exclusion — all clients need
- * to see the new base change.
- */
-export async function notifyMapConsolidation(mapId: string, changeId: string): Promise<void> {
+export async function notifyMapChange(mapId: string, changeId: string): Promise<void> {
   const payload = `${mapId}:${changeId}`.replaceAll("'", "''");
   await pool.query(`NOTIFY ${CHANNEL}, '${payload}'`);
 }

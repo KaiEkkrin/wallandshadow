@@ -28,7 +28,7 @@ import {
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
-import { notifyMapChange, notifyMapConsolidation } from '../ws/notify.js';
+import { notifyMapChange } from '../ws/notify.js';
 import {
   adventures,
   adventurePlayers,
@@ -400,9 +400,8 @@ async function tryConsolidateMapChanges(
     await tx.delete(mapChanges).where(inArray(mapChanges.id, ids));
   });
 
-  // Notify all WebSocket clients about the consolidated base change (no author exclusion)
   const baseId = baseRow?.id ?? mapId;
-  await notifyMapConsolidation(mapId, baseId).catch(e => console.error('NOTIFY failed:', e));
+  await notifyMapChange(mapId, baseId).catch(e => console.error('NOTIFY failed:', e));
 
   return { baseChange: newBaseChange, isNew: true };
 }
@@ -592,7 +591,7 @@ export async function addMapChanges(
     resync: false,
     userId: uid,
   });
-  await notifyMapChange(mapId, id, uid).catch(e => console.error('NOTIFY failed:', e));
+  await notifyMapChange(mapId, id).catch(e => console.error('NOTIFY failed:', e));
   return id;
 }
 

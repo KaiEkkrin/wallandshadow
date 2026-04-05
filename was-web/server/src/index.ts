@@ -9,8 +9,8 @@ import { startNotifyListener } from './ws/notify.js';
 const app = createApp();
 const port = parseInt(process.env.PORT ?? '3000', 10);
 
-const server = serve({ fetch: app.fetch, port }, () => {
-  console.log(`Server running on http://localhost:${port}`);
+const server = serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, () => {
+  console.log(`Server running on http://0.0.0.0:${port}`);
 });
 
 // ── WebSocket setup ───────────────────────────────────────────────────────────

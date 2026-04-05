@@ -26,12 +26,15 @@ export class MapWebSocket {
     this.onMessage = onMessage;
     this.onError = onError;
 
-    // Derive WebSocket URL from HTTP base URL
-    const httpUrl = baseUrl || window.location.origin;
+    // In dev, __HONO_WS_BASE__ is injected by Vite's `define` to point directly
+    // at the Hono server (e.g. 'http://localhost:3000'), bypassing Vite's unreliable
+    // WS proxy. In production it's '' (same origin).
+    const httpUrl = __HONO_WS_BASE__ || baseUrl || window.location.origin;
     const wsProtocol = httpUrl.startsWith('https') ? 'wss' : 'ws';
     const host = httpUrl.replace(/^https?:\/\//, '');
     this.url = `${wsProtocol}://${host}/ws/maps/${mapId}?token=${encodeURIComponent(token)}`;
 
+    console.log('[MapWebSocket] connecting to', this.url);
     this.connect();
   }
 
@@ -57,19 +60,20 @@ export class MapWebSocket {
     };
 
     this.ws.onopen = () => {
-      // Reset reconnect delay on successful connection
+      console.log('[MapWebSocket] connected successfully');
       this.reconnectDelay = 1000;
     };
 
     this.ws.onclose = (event) => {
+      console.log(`[MapWebSocket] closed (code=${event.code}, reason=${event.reason})`);
       if (!this.closed) {
-        console.debug(`WebSocket closed (code=${event.code}), reconnecting...`);
+        console.log(`[MapWebSocket] reconnecting in ${this.reconnectDelay}ms...`);
         this.scheduleReconnect();
       }
     };
 
-    this.ws.onerror = () => {
-      // onclose will fire after onerror, which handles reconnection
+    this.ws.onerror = (_event) => {
+      console.log('[MapWebSocket] error event fired');
     };
   }
 
