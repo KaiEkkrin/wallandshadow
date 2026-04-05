@@ -1,6 +1,3 @@
 # Noticed from manual testing after first phase
 
-- Non-map things e.g. adventure pages aren't live updating as things change, even for the user making the changes. For example: add/edit/delete character, add/edit/delete maps, player joins or leaves. This stuff used to be pushed via Firebase and should change to being pushed with WebSockets.
-- Map metadata (as opposed to map **changes** -- the features drawn on the map) are also not live updating. This means, for example, that if the map owner hits the cogwheel to get the map edit modal and changes its name and description, it won't update without a reload, either for themselves or for other users with the map open at the time.
-- Firefox can't start the application -- it just sits and spins at "Wall & Shadow is loading." with nothing logged in the console. This only started happening, I believe, upon commit `71c519c` (or possibly the commit before that) -- before, it worked just as well as Chromium.
-- Can't upload images -- the image pane of the image or token dialog hangs at "Processing {image name}...", never enabling "Use image" or showing a preview. No errors logged on either client or server. Possibly another issue with port binding, IPv4 vs IPv6 (IPv6 forwarding not supported by VS Code) and forwarding a port from container to host, in this case the MinIO port?
+- Can't upload images -- the image pane of the image or token dialog shows "Internal Server Error", but no log appears on the server side (that itself is also a problem -- it should be logged :) 
