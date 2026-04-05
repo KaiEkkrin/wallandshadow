@@ -6,8 +6,32 @@ import { eq } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { hashPassword, verifyPassword } from './password.js';
 import { signJwt } from './jwt.js';
+import { authMiddleware, type AuthVariables } from './middleware.js';
 
-export const authRoutes = new Hono();
+export const authRoutes = new Hono<{ Variables: AuthVariables }>();
+
+// ── Current user info ───────────────────────────────────────────────────────
+
+authRoutes.get('/me', authMiddleware, async (c) => {
+  const uid = c.get('uid');
+  const [user] = await db.select({
+    id: users.id,
+    email: users.email,
+    name: users.name,
+    level: users.level,
+  }).from(users).where(eq(users.id, uid)).limit(1);
+
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404);
+  }
+
+  return c.json({
+    uid: user.id,
+    email: user.email,
+    name: user.name,
+    level: user.level,
+  });
+});
 
 authRoutes.post('/register', async (c) => {
   const body = await c.req.json<{ email?: string; password?: string; name?: string }>();

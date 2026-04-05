@@ -86,6 +86,28 @@ yarn dev
 
 The server runs on **http://localhost:3000**.
 
+### Running the client against the Hono server
+
+The React client can run against the Hono server instead of Firebase by setting the `VITE_BACKEND` environment variable:
+
+```bash
+cd was-web
+
+# Terminal 1: Start the Hono server
+cd server && yarn dev
+
+# Terminal 2: Start Vite with Hono backend
+VITE_BACKEND=hono yarn dev:vite
+```
+
+Open **http://localhost:5000** and register a new account. The Hono backend uses local email/password authentication with JWTs — no Firebase credentials are needed.
+
+The Firebase emulators do not need to be running when using the Hono backend.
+
+**What works:** Sign up, log in, create/edit/delete adventures, invite/join, player management, create/edit/delete maps (metadata only).
+
+**What doesn't work yet:** Map live editing (WebSockets), image/spritesheet upload, Google sign-in. These are planned for Session 2.
+
 ## Running Tests
 
 ```bash

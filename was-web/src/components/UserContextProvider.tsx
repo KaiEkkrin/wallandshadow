@@ -8,17 +8,7 @@ import { IContextProviderProps, ISignInMethodsContext, IUserContext } from './in
 import { DataService } from '../services/dataService';
 import { FunctionsService } from '../services/functions';
 import { Storage } from '../services/storage';
-import { IStorage } from '@wallandshadow/shared';
-import { ExpiringStringCache } from '../services/expiringStringCache';
-
-function createResolveImageUrl(storageService: IStorage | undefined): ((path: string) => Promise<string>) | undefined {
-  if (storageService === undefined) {
-    return undefined;
-  }
-
-  const imageUrlCache = new ExpiringStringCache(1000 * 60 * 10); // the URL has a token; 10 minutes should be okay
-  return (path: string) => imageUrlCache.resolve(path, p => storageService.ref(p).getDownloadURL());
-}
+import { createResolveImageUrl } from '../services/resolveImageUrl';
 
 // This provides the user context.
 function UserContextProvider(props: IContextProviderProps) {

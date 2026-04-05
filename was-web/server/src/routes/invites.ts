@@ -1,12 +1,46 @@
 import { Hono } from 'hono';
 import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { db } from '../db/connection.js';
+import { invites, adventures, users } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 import { inviteToAdventure, joinAdventure } from '../services/extensions.js';
 import { IInviteExpiryPolicy } from '@wallandshadow/shared';
 
 export const inviteRoutes = new Hono<{ Variables: AuthVariables }>();
 
 inviteRoutes.use('/*', authMiddleware);
+
+// ── Get invite details ──────────────────────────────────────────────────────
+
+inviteRoutes.get('/invites/:id', async (c) => {
+  const inviteId = c.req.param('id');
+
+  const [row] = await db
+    .select({
+      id: invites.id,
+      adventureId: invites.adventureId,
+      adventureName: adventures.name,
+      ownerName: users.name,
+      expiresAt: invites.expiresAt,
+    })
+    .from(invites)
+    .innerJoin(adventures, eq(invites.adventureId, adventures.id))
+    .innerJoin(users, eq(invites.ownerId, users.id))
+    .where(eq(invites.id, inviteId))
+    .limit(1);
+
+  if (!row) {
+    return c.json({ error: 'Invite not found' }, 404);
+  }
+
+  return c.json({
+    id: row.id,
+    adventureId: row.adventureId,
+    adventureName: row.adventureName,
+    ownerName: row.ownerName,
+    expiresAt: row.expiresAt,
+  });
+});
 
 inviteRoutes.post('/adventures/:id/invites', async (c) => {
   const uid = c.get('uid');

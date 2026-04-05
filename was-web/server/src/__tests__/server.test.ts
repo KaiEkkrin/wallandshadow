@@ -636,4 +636,87 @@ describe('server integration tests', () => {
       expect(m2Base!.chs).toHaveLength(1); // token only
     });
   });
+
+  // ── GET /api/auth/me ─────────────────────────────────────────────────────
+
+  describe('GET /api/auth/me', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/auth/me');
+      expect(res.status).toBe(401);
+    });
+
+    test('returns user info after registration', async () => {
+      const { token } = await registerUser(app, 'Alice', 'alice@example.com');
+      const res = await apiGet(app, '/api/auth/me', token);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { uid: string; email: string; name: string; level: string };
+      expect(body.uid).toBeTruthy();
+      expect(body.email).toBe('alice@example.com');
+      expect(body.name).toBe('Alice');
+      expect(body.level).toBe('standard');
+    });
+
+    test('returns user info after login', async () => {
+      const email = `me-login-${Date.now()}@example.com`;
+      await registerUser(app, 'Bob', email, 'TestPass1');
+
+      // Login
+      const loginRes = await app.request('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: 'TestPass1' }),
+      });
+      expect(loginRes.status).toBe(200);
+      const { token } = (await loginRes.json()) as { token: string };
+
+      const res = await apiGet(app, '/api/auth/me', token);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { uid: string; email: string; name: string; level: string };
+      expect(body.email).toBe(email);
+      expect(body.name).toBe('Bob');
+    });
+  });
+
+  // ── GET /api/invites/:id ─────────────────────────────────────────────────
+
+  describe('GET /api/invites/:id', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/invites/nonexistent');
+      expect(res.status).toBe(401);
+    });
+
+    test('returns 404 for nonexistent invite', async () => {
+      const { token } = await registerUser(app);
+      const res = await apiGet(app, '/api/invites/00000000-0000-0000-0000-000000000000', token);
+      expect(res.status).toBe(404);
+    });
+
+    test('returns invite details', async () => {
+      const owner = await registerUser(app, 'InviteOwner');
+      const viewer = await registerUser(app, 'Viewer');
+
+      const aId = await createAdventure(owner.token, 'Test Adventure', 'desc');
+
+      // Create an invite
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      expect(inviteRes.status).toBe(200);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+
+      // Any authenticated user can view invite details
+      const res = await apiGet(app, `/api/invites/${inviteId}`, viewer.token);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        id: string;
+        adventureId: string;
+        adventureName: string;
+        ownerName: string;
+        expiresAt: string;
+      };
+      expect(body.id).toBe(inviteId);
+      expect(body.adventureId).toBe(aId);
+      expect(body.adventureName).toBe('Test Adventure');
+      expect(body.ownerName).toBe('InviteOwner');
+      expect(body.expiresAt).toBeTruthy();
+    });
+  });
 });

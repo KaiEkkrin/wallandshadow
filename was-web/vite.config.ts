@@ -138,6 +138,13 @@ export default defineConfig({
         target: 'http://localhost:3400',
         changeOrigin: true,
       },
+      // When using the Hono backend, proxy /api requests to the Hono server
+      ...(process.env.VITE_BACKEND === 'hono' ? {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+      } : {}),
     },
   },
   build: {
