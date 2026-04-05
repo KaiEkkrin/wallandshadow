@@ -125,7 +125,9 @@ export async function apiUploadImage(
   name?: string,
 ): Promise<Response> {
   const formData = new FormData();
-  formData.append('file', new Blob([fileContent], { type: contentType }), fileName);
+  // Copy into a plain ArrayBuffer — Buffer.buffer is ArrayBufferLike which Blob rejects
+  const ab = fileContent.buffer.slice(fileContent.byteOffset, fileContent.byteOffset + fileContent.byteLength) as ArrayBuffer;
+  formData.append('file', new Blob([ab], { type: contentType }), fileName);
   if (name !== undefined) {
     formData.append('name', name);
   }
