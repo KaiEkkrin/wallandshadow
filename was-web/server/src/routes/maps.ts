@@ -3,7 +3,7 @@ import { MapType } from '@wallandshadow/shared';
 import type { Change, IMap } from '@wallandshadow/shared';
 import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { db } from '../db/connection.js';
-import { adventures, adventurePlayers, maps as mapsTable } from '../db/schema.js';
+import { adventures, maps as mapsTable } from '../db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import {
   createMap,
@@ -14,7 +14,7 @@ import {
   addMapChanges,
   assertAdventureMember,
 } from '../services/extensions.js';
-import { throwApiError } from '../errors.js';
+
 
 export const mapRoutes = new Hono<{ Variables: AuthVariables }>();
 
@@ -153,7 +153,8 @@ mapRoutes.post('/adventures/:id/maps/:mapId/consolidate', async (c) => {
   const body = await c.req.json<{ resync?: boolean }>().catch(() => ({}));
   const resync = (body as { resync?: boolean }).resync ?? false;
 
-  // Fetch map and adventure to construct IMap; also verify membership
+  await assertAdventureMember(db, uid, adventureId);
+
   const [row] = await db.select({
     name: mapsTable.name,
     description: mapsTable.description,
@@ -170,21 +171,6 @@ mapRoutes.post('/adventures/:id/maps/:mapId/consolidate', async (c) => {
 
   if (!row) {
     return c.json({ error: 'Map not found' }, 404);
-  }
-
-  // Check user is adventure owner or allowed player
-  if (row.ownerId !== uid) {
-    const [playerRow] = await db.select({ allowed: adventurePlayers.allowed })
-      .from(adventurePlayers)
-      .where(and(
-        eq(adventurePlayers.adventureId, adventureId),
-        eq(adventurePlayers.userId, uid),
-        eq(adventurePlayers.allowed, true),
-      ))
-      .limit(1);
-    if (!playerRow) {
-      throwApiError('permission-denied', 'You are not in this adventure');
-    }
   }
 
   const mapRecord: IMap = {

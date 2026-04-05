@@ -22,7 +22,9 @@ export const users = pgTable('users', {
   // Temporary Phase 1 auth — replaced by OIDC in Phase 2
   passwordHash: text('password_hash'),
   createdAt: tstz('created_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('users_email_idx').on(t.email),
+]);
 
 export const adventures = pgTable('adventures', {
   id: uuid('id').primaryKey(),
@@ -31,7 +33,9 @@ export const adventures = pgTable('adventures', {
   ownerId: uuid('owner_id').notNull().references(() => users.id),
   imagePath: text('image_path').notNull().default(''),
   createdAt: tstz('created_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('adventures_owner_id_idx').on(t.ownerId),
+]);
 
 export const adventurePlayers = pgTable('adventure_players', {
   adventureId: uuid('adventure_id').notNull().references(() => adventures.id, { onDelete: 'cascade' }),
@@ -53,7 +57,9 @@ export const maps = pgTable('maps', {
   ffa: boolean('ffa').notNull().default(false),
   imagePath: text('image_path').notNull().default(''),
   createdAt: tstz('created_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('maps_adventure_id_idx').on(t.adventureId),
+]);
 
 export const mapChanges = pgTable('map_changes', {
   id: uuid('id').primaryKey(),
@@ -73,7 +79,9 @@ export const images = pgTable('images', {
   name: text('name').notNull(),
   path: text('path').notNull(),
   createdAt: tstz('created_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('images_user_id_idx').on(t.userId),
+]);
 
 export const spritesheets = pgTable('spritesheets', {
   id: uuid('id').primaryKey(),
@@ -85,7 +93,9 @@ export const spritesheets = pgTable('spritesheets', {
   supersededBy: uuid('superseded_by'),
   refs: integer('refs').notNull().default(0),
   createdAt: tstz('created_at').notNull().defaultNow(),
-});
+}, (t) => [
+  index('spritesheets_adventure_geometry_idx').on(t.adventureId, t.geometry),
+]);
 
 export const invites = pgTable('invites', {
   id: uuid('id').primaryKey(),

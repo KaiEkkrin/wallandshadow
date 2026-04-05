@@ -189,16 +189,19 @@ export async function cloneMap(
   name: string,
   description: string,
 ): Promise<string> {
-  // Fetch the existing map
-  const [existingMap] = await db.select().from(maps)
-    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId))).limit(1);
+  const [mapResult, adventureResult] = await Promise.all([
+    db.select().from(maps)
+      .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId))).limit(1),
+    db.select({ name: adventures.name, ownerId: adventures.ownerId })
+      .from(adventures).where(eq(adventures.id, adventureId)).limit(1),
+  ]);
+
+  const [existingMap] = mapResult;
   if (!existingMap) {
     throwApiError('not-found', 'Existing map not found.');
   }
 
-  // Get adventure name for the IMap record (needed by consolidation)
-  const [adventure] = await db.select({ name: adventures.name, ownerId: adventures.ownerId })
-    .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
+  const [adventure] = adventureResult;
   if (!adventure) {
     throwApiError('not-found', 'Adventure not found');
   }
@@ -430,7 +433,7 @@ export async function inviteToAdventure(
 
   // Return a valid existing invite if one exists and is within the recreate window
   const recreateCutoff = dayjs().subtract(policy.recreate, policy.timeUnit as dayjs.ManipulateType).toDate();
-  const existingInvites = await db.select()
+  const existingInvites = await db.select({ id: invites.id, createdAt: invites.createdAt })
     .from(invites)
     .where(and(eq(invites.adventureId, adventureId), gt(invites.expiresAt, new Date())))
     .orderBy(sql`${invites.createdAt} DESC`)
@@ -567,7 +570,7 @@ export async function joinAdventure(
   inviteId: string,
   _policy: IInviteExpiryPolicy = defaultInviteExpiryPolicy,
 ): Promise<string> {
-  const [invite] = await db.select()
+  const [invite] = await db.select({ adventureId: invites.adventureId, expiresAt: invites.expiresAt })
     .from(invites).where(eq(invites.id, inviteId)).limit(1);
   if (!invite) {
     throwApiError('not-found', 'No such invite');
@@ -586,22 +589,24 @@ export async function joinAdventure(
       throwApiError('not-found', 'No such adventure');
     }
 
-    const [ownerUser] = await tx.select({ level: users.level })
-      .from(users).where(eq(users.id, adventure.ownerId)).limit(1);
+    const [ownerResult, countResult, joiningResult] = await Promise.all([
+      tx.select({ level: users.level })
+        .from(users).where(eq(users.id, adventure.ownerId)).limit(1),
+      tx.select({ playerCount: count() })
+        .from(adventurePlayers)
+        .where(and(eq(adventurePlayers.adventureId, adventureId), eq(adventurePlayers.allowed, true))),
+      tx.select({ name: users.name })
+        .from(users).where(eq(users.id, uid)).limit(1),
+    ]);
+
+    const [ownerUser] = ownerResult;
     const ownerPolicy = getUserPolicy((ownerUser?.level ?? 'standard') as UserLevel);
-
-    const [{ playerCount }] = await tx
-      .select({ playerCount: count() })
-      .from(adventurePlayers)
-      .where(and(eq(adventurePlayers.adventureId, adventureId), eq(adventurePlayers.allowed, true)));
-
+    const [{ playerCount }] = countResult;
     if (Number(playerCount) >= ownerPolicy.players) {
       throwApiError('permission-denied', 'This adventure already has the maximum number of players');
     }
 
-    // Get joining user's name
-    const [joiningUser] = await tx.select({ name: users.name })
-      .from(users).where(eq(users.id, uid)).limit(1);
+    const [joiningUser] = joiningResult;
     if (!joiningUser) {
       throwApiError('not-found', 'No profile for this user');
     }

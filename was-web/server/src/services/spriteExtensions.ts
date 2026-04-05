@@ -12,7 +12,7 @@ import { Db } from '../db/connection.js';
 import { adventures, adventurePlayers, spritesheets } from '../db/schema.js';
 import { eq, and, gt, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { execFile } from 'child_process';
@@ -62,11 +62,10 @@ async function createMontage(
     await sheetRef.upload(tmpSheetPath, { contentType: 'image/png' });
     return sheetRef;
   } finally {
-    for (const p of tmpPaths) {
-      if (p !== 'null:') {
-        fs.unlink(p, () => { /* ignore */ });
-      }
-    }
+    await Promise.all(tmpPaths
+      .filter(p => p !== 'null:')
+      .map(p => fs.unlink(p).catch(() => { /* best-effort cleanup */ })),
+    );
   }
 }
 
@@ -114,7 +113,7 @@ async function allocateNewSpritesToSheets(
   geometry: string,
   sources: string[],
 ): Promise<AllocatedSprites[]> {
-  const canExtend = await db.select()
+  const canExtend = await db.select({ id: spritesheets.id, freeSpaces: spritesheets.freeSpaces, sprites: spritesheets.sprites })
     .from(spritesheets)
     .where(and(
       eq(spritesheets.adventureId, adventureId),
