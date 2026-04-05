@@ -20,10 +20,16 @@ For contributing to development I would strongly recommend Linux, either nativel
 
 ## Tech Stack
 
+**Current (Firebase):**
 - **React 18** + TypeScript + Vite
 - **Firebase v11** (Firestore, Functions, Auth, Hosting, Storage)
 - **Three.js** for 3D map rendering
 - **Bootstrap 5** with react-bootstrap
+
+**New self-hosted stack (in progress):**
+- **Hono** + TypeScript API server (`was-web/server/`)
+- **PostgreSQL 17** + Drizzle ORM
+- **MinIO** for object storage
 
 ## Development with VS Code Dev Container (Recommended)
 
@@ -64,16 +70,43 @@ Running emulators and dev server separately is recommended - you can restart the
 
 See [`.devcontainer/README.md`](.devcontainer/README.md) for comprehensive documentation.
 
+## Hono API Server
+
+PostgreSQL and MinIO start automatically when the dev container starts.
+
+```bash
+cd was-web/server
+
+# Apply schema to local database (first time, or after schema changes)
+yarn drizzle-kit push
+
+# Start the server with hot reload
+yarn dev
+```
+
+The server runs on **http://localhost:3000**.
+
 ## Running Tests
 
 ```bash
 cd was-web
 
-# Unit tests (watch mode)
+# Firebase client unit tests (watch mode)
 yarn test:unit
+
+# Hono server integration tests (requires PostgreSQL running)
+yarn test:server
 
 # End-to-end tests (requires dev server running)
 yarn test:e2e
+```
+
+To run server tests with lint and type-check, from `was-web/server/`:
+
+```bash
+yarn tsc --noEmit
+yarn lint
+yarn test
 ```
 
 ## Deployment
