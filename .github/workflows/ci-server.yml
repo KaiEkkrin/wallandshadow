@@ -71,6 +71,9 @@ jobs:
             -e MC_HOST_local=http://wasdev:wasdevpass@127.0.0.1:9000 \
             minio/mc:latest mb local/wallandshadow --ignore-existing
 
+      - name: Install ImageMagick
+        run: sudo apt-get install -y imagemagick
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
