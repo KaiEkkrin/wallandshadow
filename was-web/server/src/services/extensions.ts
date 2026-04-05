@@ -496,8 +496,15 @@ export async function updatePlayer(
   playerId: string,
   fields: { allowed?: boolean; characters?: ICharacter[] },
 ): Promise<void> {
-  await assertAdventureOwner(db, uid, adventureId);
   if (Object.keys(fields).length === 0) return;
+
+  // Players can update their own characters; only the owner can change `allowed`
+  if (uid === playerId && fields.allowed === undefined) {
+    await assertAdventureMember(db, uid, adventureId);
+  } else {
+    await assertAdventureOwner(db, uid, adventureId);
+  }
+
   await db.update(adventurePlayers)
     .set(fields)
     .where(and(

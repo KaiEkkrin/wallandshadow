@@ -7,6 +7,7 @@ import {
   timestamp,
   jsonb,
   index,
+  uniqueIndex,
   primaryKey,
 } from 'drizzle-orm/pg-core';
 
@@ -23,7 +24,7 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash'),
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
-  index('users_email_idx').on(t.email),
+  uniqueIndex('users_email_idx').on(t.email),
 ]);
 
 export const adventures = pgTable('adventures', {

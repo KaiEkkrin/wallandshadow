@@ -35,9 +35,9 @@ authRoutes.get('/me', authMiddleware, async (c) => {
 
 authRoutes.post('/register', async (c) => {
   const body = await c.req.json<{ email?: string; password?: string; name?: string }>();
-  const { email, password, name } = body;
+  const { email: rawEmail, password, name } = body;
 
-  if (!email || !emailIsValid(email)) {
+  if (!rawEmail || !emailIsValid(rawEmail)) {
     return c.json({ error: 'Invalid email address' }, 400);
   }
   if (!password || !passwordIsValid(password)) {
@@ -47,6 +47,7 @@ authRoutes.post('/register', async (c) => {
     return c.json({ error: 'Name is required' }, 400);
   }
 
+  const email = rawEmail.trim().toLowerCase();
   const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
   if (existing.length > 0) {
     return c.json({ error: 'Email already registered' }, 409);
@@ -71,12 +72,13 @@ authRoutes.post('/register', async (c) => {
 
 authRoutes.post('/login', async (c) => {
   const body = await c.req.json<{ email?: string; password?: string }>();
-  const { email, password } = body;
+  const { email: rawEmail, password } = body;
 
-  if (!email || !password) {
+  if (!rawEmail || !password) {
     return c.json({ error: 'Email and password are required' }, 400);
   }
 
+  const email = rawEmail.trim().toLowerCase();
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (!user || !user.passwordHash) {
     return c.json({ error: 'Invalid credentials' }, 401);

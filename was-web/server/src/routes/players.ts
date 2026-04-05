@@ -40,7 +40,7 @@ playerRoutes.get('/adventures/:id/players', async (c) => {
   })));
 });
 
-// ── Update a player (owner only) ─────────────────────────────────────────────
+// ── Update a player (own characters; owner can also change `allowed`) ────────
 
 playerRoutes.patch('/adventures/:id/players/:userId', async (c) => {
   const uid = c.get('uid');
