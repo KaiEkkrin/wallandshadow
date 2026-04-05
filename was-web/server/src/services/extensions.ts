@@ -28,6 +28,7 @@ import {
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
+import { notifyMapChange, notifyMapConsolidation } from '../ws/notify.js';
 import {
   adventures,
   adventurePlayers,
@@ -39,6 +40,23 @@ import {
 import { eq, and, count, sql, inArray, gt } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import dayjs from 'dayjs';
+
+// ─── Shared query helpers ────────────────────────────────────────────────────
+
+/** Fetch base and incremental map changes in parallel. */
+export async function fetchMapChanges(db: Db, mapId: string) {
+  const [baseRows, incrementalRows] = await Promise.all([
+    db.select({ id: mapChanges.id, changes: mapChanges.changes })
+      .from(mapChanges)
+      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.incremental, false)))
+      .limit(1),
+    db.select({ id: mapChanges.id, changes: mapChanges.changes })
+      .from(mapChanges)
+      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.incremental, true)))
+      .orderBy(mapChanges.createdAt),
+  ]);
+  return { baseRow: baseRows[0] as { id: string; changes: unknown } | undefined, incrementalRows };
+}
 
 // ─── Shared auth helper ───────────────────────────────────────────────────────
 
@@ -342,12 +360,16 @@ async function tryConsolidateMapChanges(
   syncChanges?.(tokenDict);
   const consolidated: Change[] = tracker.getConsolidated();
 
-  // Write consolidated state atomically
+  // Write consolidated state atomically.
+  // Use the adventure owner as the user — the base change contains all users' changes
+  // merged together, and trackChanges enforces ownership (e.g. only the owner can edit
+  // areas). Using the consolidator's UID would cause trackChange to reject owner-only
+  // operations when a player triggers consolidation.
   const newBaseChange: Changes = {
     chs: consolidated,
     timestamp: Date.now(),
     incremental: false,
-    user: uid,
+    user: m.owner,
     resync: isResync,
   };
 
@@ -377,6 +399,10 @@ async function tryConsolidateMapChanges(
     const ids = incrementalRows.map(r => r.id);
     await tx.delete(mapChanges).where(inArray(mapChanges.id, ids));
   });
+
+  // Notify all WebSocket clients about the consolidated base change (no author exclusion)
+  const baseId = baseRow?.id ?? mapId;
+  await notifyMapConsolidation(mapId, baseId).catch(e => console.error('NOTIFY failed:', e));
 
   return { baseChange: newBaseChange, isNew: true };
 }
@@ -566,6 +592,7 @@ export async function addMapChanges(
     resync: false,
     userId: uid,
   });
+  await notifyMapChange(mapId, id, uid).catch(e => console.error('NOTIFY failed:', e));
   return id;
 }
 

@@ -8,6 +8,8 @@ import {
   apiPost,
   apiPatch,
   apiDelete,
+  apiUploadImage,
+  TINY_PNG,
   postMapChanges,
   getBaseChange,
   countMapChanges,
@@ -717,6 +719,109 @@ describe('server integration tests', () => {
       expect(body.adventureName).toBe('Test Adventure');
       expect(body.ownerName).toBe('InviteOwner');
       expect(body.expiresAt).toBeTruthy();
+    });
+  });
+
+  // ── GET /api/images/download ──────────────────────────────────────────────
+
+  describe('GET /api/images/download', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/images/download?path=images/foo');
+      expect(res.status).toBe(401);
+    });
+
+    test('returns 400 without path query parameter', async () => {
+      const { token } = await registerUser(app);
+      const res = await apiGet(app, '/api/images/download', token);
+      expect(res.status).toBe(400);
+    });
+
+    test('returns presigned URL for a valid path', async () => {
+      const { token } = await registerUser(app);
+      // Upload an image first
+      const uploadRes = await apiUploadImage(app, token, TINY_PNG, 'test.png', 'image/png', 'Test Image');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      // Get download URL
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, token);
+      expect(res.status).toBe(200);
+      const { url } = (await res.json()) as { url: string };
+      expect(url).toBeTruthy();
+      expect(typeof url).toBe('string');
+    });
+  });
+
+  // ── GET /api/adventures/:id/spritesheets ──────────────────────────────────
+
+  describe('GET /api/adventures/:id/spritesheets', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/adventures/fake/spritesheets');
+      expect(res.status).toBe(401);
+    });
+
+    test('returns empty array for adventure with no spritesheets', async () => {
+      const { token } = await registerUser(app);
+      const aId = await createAdventure(token, 'No Sprites Adventure');
+      const res = await apiGet(app, `/api/adventures/${aId}/spritesheets`, token);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as unknown[];
+      expect(body).toEqual([]);
+    });
+  });
+
+  // ── GET /api/adventures/:id/maps/:mapId/changes ───────────────────────────
+
+  describe('GET /api/adventures/:id/maps/:mapId/changes', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/adventures/fake/maps/fake/changes');
+      expect(res.status).toBe(401);
+    });
+
+    test('returns empty base and incrementals for new map', async () => {
+      const { token } = await registerUser(app);
+      const aId = await createAdventure(token);
+      const mId = await createMap(token, aId);
+
+      const res = await apiGet(app, `/api/adventures/${aId}/maps/${mId}/changes`, token);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { base: unknown; incremental: unknown[] };
+      expect(body.base).toBeNull();
+      expect(body.incremental).toEqual([]);
+    });
+
+    test('returns base and incrementals after changes and consolidation', async () => {
+      const { token, uid } = await registerUser(app);
+      const aId = await createAdventure(token);
+      const mId = await createMap(token, aId);
+
+      // Post some changes
+      await postMapChanges(app, token, aId, mId, [createAddToken1(uid), createAddWall1()]);
+      await postMapChanges(app, token, aId, mId, [createMoveToken1(0)]);
+
+      // Before consolidation: no base, 2 incrementals
+      const res1 = await apiGet(app, `/api/adventures/${aId}/maps/${mId}/changes`, token);
+      expect(res1.status).toBe(200);
+      const body1 = (await res1.json()) as { base: unknown; incremental: { id: string; changes: unknown }[] };
+      expect(body1.base).toBeNull();
+      expect(body1.incremental).toHaveLength(2);
+
+      // Consolidate
+      await consolidate(token, aId, mId);
+
+      // After consolidation: base exists, no incrementals
+      const res2 = await apiGet(app, `/api/adventures/${aId}/maps/${mId}/changes`, token);
+      expect(res2.status).toBe(200);
+      const body2 = (await res2.json()) as { base: unknown; incremental: unknown[] };
+      expect(body2.base).not.toBeNull();
+      expect(body2.incremental).toEqual([]);
+    });
+
+    test('returns 404 for nonexistent map', async () => {
+      const { token } = await registerUser(app);
+      const aId = await createAdventure(token);
+      const res = await apiGet(app, `/api/adventures/${aId}/maps/00000000-0000-0000-0000-000000000000/changes`, token);
+      expect(res.status).toBe(404);
     });
   });
 });

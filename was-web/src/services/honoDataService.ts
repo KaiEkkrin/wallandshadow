@@ -29,6 +29,7 @@ import {
   PlayerRow,
   InviteDetailRow,
 } from './honoApi';
+import { MapWebSocket } from './honoWebSocket';
 
 // ── Reference types ──────────────────────────────────────────────────────────
 
@@ -51,7 +52,10 @@ function parsePath(path: string): RefMeta {
   if (path.startsWith('invites/')) return { kind: 'invite' };
 
   const mapChangeMatch = RE_MAP_CHANGES.exec(path);
-  if (mapChangeMatch) return { kind: 'mapChanges', adventureId: mapChangeMatch[1], mapId: mapChangeMatch[2] };
+  if (mapChangeMatch) {
+    const kind = path.endsWith('/changes/base') ? 'mapBaseChange' as const : 'mapChanges' as const;
+    return { kind, adventureId: mapChangeMatch[1], mapId: mapChangeMatch[2] };
+  }
 
   const mapMatch = RE_MAP.exec(path);
   if (mapMatch) return { kind: 'map', adventureId: mapMatch[1], mapId: mapMatch[2] };
@@ -137,6 +141,17 @@ function toError(e: unknown): Error {
 
 function emptyAdventureRow(adventureId: string): AdventureRow {
   return { id: adventureId, name: '', description: '', owner: '', ownerName: '', imagePath: '' };
+}
+
+function spritesheetRowToISpritesheet(r: { sprites: string[]; geometry: string; freeSpaces: number; supersededBy: string; refs: number }): ISpritesheet {
+  return {
+    sprites: r.sprites,
+    geometry: r.geometry,
+    freeSpaces: r.freeSpaces,
+    date: Date.now(),
+    supersededBy: r.supersededBy,
+    refs: r.refs,
+  };
 }
 
 function adventureRowToSelfPlayer(row: AdventureRow, uid: string): IPlayer {
@@ -301,9 +316,20 @@ export class HonoDataService implements IDataService {
         }
       }
 
+      case 'mapBaseChange': {
+        if (ref.meta.adventureId && ref.meta.mapId) {
+          try {
+            const response = await this.api.getMapChanges(ref.meta.adventureId, ref.meta.mapId);
+            if (response.base) {
+              return ref.convert(response.base as Record<string, unknown>);
+            }
+          } catch { /* return undefined */ }
+        }
+        return undefined;
+      }
+
       case 'images':
       case 'version':
-      case 'mapBaseChange':
       case 'mapChanges':
         return undefined;
     }
@@ -484,7 +510,7 @@ export class HonoDataService implements IDataService {
 
   async getPlayerRefs(adventureId: string): Promise<IDataAndReference<IPlayer>[]> {
     const [players, adv] = await Promise.all([
-      this.api.getPlayers(adventureId),
+      this.api.getPlayers(adventureId).catch(e => isNotFound(e) ? [] as PlayerRow[] : Promise.reject(e)),
       this.api.getAdventure(adventureId).catch(() => emptyAdventureRow(adventureId)),
     ]);
 
@@ -497,15 +523,41 @@ export class HonoDataService implements IDataService {
   }
 
   async getMapIncrementalChangesRefs(
-    _adventureId: string, _id: string, _limit: number, _converter: IConverter<Changes>
+    adventureId: string, id: string, _limit: number, converter: IConverter<Changes>
   ): Promise<IDataAndReference<Changes>[] | undefined> {
-    return undefined; // Session 2
+    try {
+      const response = await this.api.getMapChanges(adventureId, id);
+      if (response.incremental.length === 0) return undefined;
+      return response.incremental.map(row => new HonoDataAndReference<Changes>(
+        row.id,
+        `adventures/${adventureId}/maps/${id}/changes/${row.id}`,
+        converter,
+        converter.convert(row.changes as Record<string, unknown>),
+      ));
+    } catch {
+      return undefined;
+    }
   }
 
   async getSpritesheetsBySource(
-    _adventureId: string, _geometry: string, _sources: string[]
+    adventureId: string, geometry: string, sources: string[]
   ): Promise<IDataAndReference<ISpritesheet>[]> {
-    return []; // Session 2
+    let rows;
+    try {
+      rows = await this.api.getSpritesheets(adventureId);
+    } catch (e) {
+      if (isNotFound(e)) return [];
+      throw e;
+    }
+    const sourceSet = new Set(sources);
+    return rows
+      .filter(r => r.geometry === geometry && r.sprites.some(s => sourceSet.has(s)))
+      .map(r => new HonoDataAndReference<ISpritesheet>(
+        r.id,
+        `adventures/${adventureId}/spritesheets/${r.id}`,
+        passthroughConverter(),
+        spritesheetRowToISpritesheet(r),
+      ));
   }
 
   // ── Transaction support ─────────────────────────────────────────────────
@@ -553,12 +605,19 @@ export class HonoDataService implements IDataService {
 
   watchChanges(
     _adventureId: string,
-    _mapId: string,
-    _onNext: (changes: Changes) => void,
-    _onError?: ((error: Error) => void) | undefined,
+    mapId: string,
+    onNext: (changes: Changes) => void,
+    onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    return () => {}; // Session 2
+    const token = this.api.getToken();
+    if (!token) {
+      onError?.(new Error('Not authenticated'));
+      return () => {};
+    }
+
+    const ws = new MapWebSocket(this.api.baseUrl, mapId, token, onNext, onError);
+    return () => ws.close();
   }
 
   watchPlayers(
@@ -568,7 +627,7 @@ export class HonoDataService implements IDataService {
     _onCompletion?: (() => void) | undefined
   ): () => void {
     Promise.all([
-      this.api.getPlayers(adventureId),
+      this.api.getPlayers(adventureId).catch(e => isNotFound(e) ? [] as PlayerRow[] : Promise.reject(e)),
       this.api.getAdventure(adventureId).catch(() => emptyAdventureRow(adventureId)),
     ])
       .then(([players, adv]) => {
@@ -595,11 +654,20 @@ export class HonoDataService implements IDataService {
   }
 
   watchSpritesheets(
-    _adventureId: string,
-    _onNext: (spritesheets: IDataAndReference<ISpritesheet>[]) => void,
-    _onError?: ((error: Error) => void) | undefined,
+    adventureId: string,
+    onNext: (spritesheets: IDataAndReference<ISpritesheet>[]) => void,
+    onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    return () => {}; // Session 2
+    this.api.getSpritesheets(adventureId)
+      .catch(e => isNotFound(e) ? [] : Promise.reject(e))
+      .then(rows => onNext(rows.map(r => new HonoDataAndReference<ISpritesheet>(
+        r.id,
+        `adventures/${adventureId}/spritesheets/${r.id}`,
+        passthroughConverter(),
+        spritesheetRowToISpritesheet(r),
+      ))))
+      .catch(e => onError?.(toError(e)));
+    return () => {};
   }
 }

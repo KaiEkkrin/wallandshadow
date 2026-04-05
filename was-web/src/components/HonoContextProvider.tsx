@@ -24,7 +24,7 @@ function HonoContextProvider(props: IContextProviderProps) {
   const [userContext, setUserContext] = useState<IUserContext>({ user: undefined });
 
   useEffect(() => {
-    const storageService = new HonoStorage();
+    const storageService = new HonoStorage(apiClient);
     const resolveImageUrl = createResolveImageUrl(storageService);
 
     return auth.onAuthStateChanged(user => {

@@ -11,6 +11,16 @@ export const imageRoutes = new Hono<{ Variables: AuthVariables }>();
 
 imageRoutes.use('/*', authMiddleware);
 
+// GET /images/download — get a presigned download URL for an image
+imageRoutes.get('/images/download', async (c) => {
+  const path = c.req.query('path');
+  if (!path) {
+    return c.json({ error: 'path query parameter is required' }, 400);
+  }
+  const url = await storage.ref(path).getDownloadURL();
+  return c.json({ url });
+});
+
 // GET /images — list the authenticated user's images
 imageRoutes.get('/images', async (c) => {
   const uid = c.get('uid');

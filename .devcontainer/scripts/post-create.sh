@@ -124,9 +124,10 @@ if [ ! -f "$PGDATA/PG_VERSION" ]; then
 
     psql -h localhost -U postgres -c "CREATE USER was WITH PASSWORD 'wasdev';"
     createdb -h localhost -U postgres --owner=was wallandshadow
+    createdb -h localhost -U postgres --owner=was wallandshadow_test
 
     pg_ctl -D "$PGDATA" -w stop
-    echo "   ✅ PostgreSQL cluster created (user: was, database: wallandshadow)"
+    echo "   ✅ PostgreSQL cluster created (user: was, databases: wallandshadow, wallandshadow_test)"
 else
     echo "   ✅ PostgreSQL cluster already initialised"
 fi

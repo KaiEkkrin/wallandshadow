@@ -10,6 +10,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
+    "db:push:test": "DATABASE_URL=postgresql://was:wasdev@localhost:5432/wallandshadow_test drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "lint": "eslint src"
   },
@@ -24,11 +25,13 @@
     "hono": "^4.0.0",
     "jose": "^6.0.0",
     "pg": "^8.13.0",
-    "uuid": "^11.0.0"
+    "uuid": "^11.0.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.0",
     "@types/pg": "^8.11.0",
+    "@types/ws": "^8.5.0",
     "drizzle-kit": "^0.30.0",
     "tsx": "^4.0.0",
     "typescript": "^5.7.0",

@@ -188,7 +188,7 @@ groups
 | Service              | URL                        | Credentials          |
 | -------------------- | -------------------------- | -------------------- |
 | **Hono API Server**  | http://localhost:3000      | start manually (see below) |
-| **PostgreSQL**       | localhost:5432             | user: `was`, pass: `wasdev`, db: `wallandshadow` |
+| **PostgreSQL**       | localhost:5432             | user: `was`, pass: `wasdev`, dbs: `wallandshadow` (dev), `wallandshadow_test` (tests) |
 | **MinIO API**        | http://localhost:9000      | — |
 | **MinIO Console**    | http://localhost:9001      | `wasdev` / `wasdevpass` |
 
@@ -233,11 +233,22 @@ cd was-web
 # Unit tests (watch mode)
 yarn test:unit
 
+# Server integration tests (uses wallandshadow_test database)
+yarn test:server
+
 # E2E tests (requires dev server running in another terminal)
 yarn test:e2e
 
 # All tests
 yarn test
+```
+
+After changing the database schema (`was-web/server/src/db/schema.ts`), push to both databases:
+
+```bash
+cd was-web/server
+yarn db:push            # dev database
+yarn db:push:test       # test database
 ```
 
 ### Building for Production
@@ -319,6 +330,17 @@ yarn start
 ```
 
 If `firebase-admin-credentials.json` is missing, follow Step 2 in the Quick Start section above.
+
+### Test Database Missing (existing dev containers)
+
+If your dev container was created before the test database was added to `post-create.sh`,
+create it manually (one-time):
+
+```bash
+psql -h localhost -U postgres -c "CREATE DATABASE wallandshadow_test OWNER was;"
+cd was-web/server
+yarn db:push:test
+```
 
 ### Firebase Emulators Won't Start
 

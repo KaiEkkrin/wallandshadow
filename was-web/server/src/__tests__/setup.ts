@@ -6,6 +6,16 @@ import {
   DeleteObjectsCommand,
 } from '@aws-sdk/client-s3';
 
+// Safety: refuse to run if DATABASE_URL doesn't point to a test database.
+// This prevents accidental truncation of the dev database.
+const dbUrl = process.env.DATABASE_URL ?? '';
+if (!dbUrl.includes('_test')) {
+  throw new Error(
+    'Refusing to run: DATABASE_URL does not point to a test database. ' +
+    'Expected URL containing "_test". Got: ' + dbUrl
+  );
+}
+
 export const testS3 = new S3Client({
   endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
   region: process.env.S3_REGION ?? 'us-east-1',

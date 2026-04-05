@@ -13,6 +13,7 @@ import {
   updateMap,
   addMapChanges,
   assertAdventureMember,
+  fetchMapChanges,
 } from '../services/extensions.js';
 
 
@@ -128,6 +129,30 @@ mapRoutes.post('/adventures/:id/maps/:mapId/clone', async (c) => {
 
   const id = await cloneMap(db, uid, adventureId, mapId, name, description ?? '');
   return c.json({ id }, 201);
+});
+
+// ── Get map changes (base + incrementals) ───────────────────────────────────
+
+mapRoutes.get('/adventures/:id/maps/:mapId/changes', async (c) => {
+  const uid = c.get('uid');
+  const adventureId = c.req.param('id');
+  const mapId = c.req.param('mapId');
+
+  await assertAdventureMember(db, uid, adventureId);
+
+  const [mapRow] = await db.select({ id: mapsTable.id })
+    .from(mapsTable)
+    .where(and(eq(mapsTable.id, mapId), eq(mapsTable.adventureId, adventureId)))
+    .limit(1);
+  if (!mapRow) {
+    return c.json({ error: 'Map not found' }, 404);
+  }
+
+  const { baseRow, incrementalRows } = await fetchMapChanges(db, mapId);
+  return c.json({
+    base: baseRow?.changes ?? null,
+    incremental: incrementalRows.map(r => ({ id: r.id, changes: r.changes })),
+  });
 });
 
 // ── Add incremental map changes ──────────────────────────────────────────────

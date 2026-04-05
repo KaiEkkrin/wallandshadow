@@ -61,6 +61,20 @@ export interface ImageRow {
   path: string;
 }
 
+export interface MapChangesResponse {
+  base: Record<string, unknown> | null;
+  incremental: { id: string; changes: Record<string, unknown> }[];
+}
+
+export interface SpritesheetRow {
+  id: string;
+  sprites: string[];
+  geometry: string;
+  freeSpaces: number;
+  supersededBy: string;
+  refs: number;
+}
+
 // ── API Error ────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -76,7 +90,7 @@ export class ApiError extends Error {
 // ── API Client ───────────────────────────────────────────────────────────────
 
 export class HonoApiClient {
-  private readonly baseUrl: string;
+  readonly baseUrl: string;
   private token: string | null = null;
 
   constructor(baseUrl = '') {
@@ -89,6 +103,14 @@ export class HonoApiClient {
 
   getToken(): string | null {
     return this.token;
+  }
+
+  private async throwIfNotOk(res: Response): Promise<void> {
+    if (res.ok) return;
+    const text = await res.text();
+    let message: string;
+    try { message = JSON.parse(text).error ?? text; } catch { message = text; }
+    throw new ApiError(message, res.status);
   }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -106,17 +128,7 @@ export class HonoApiClient {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      let message: string;
-      try {
-        const json = JSON.parse(text);
-        message = json.error ?? text;
-      } catch {
-        message = text;
-      }
-      throw new ApiError(message, res.status);
-    }
+    await this.throwIfNotOk(res);
 
     if (res.status === 204) {
       return undefined as T;
@@ -223,10 +235,39 @@ export class HonoApiClient {
     return this.request('POST', `/api/invites/${inviteId}/join`, policy ? { policy } : {});
   }
 
+  // ── Map changes ───────────────────────────────────────────────────────────
+
+  getMapChanges(adventureId: string, mapId: string): Promise<MapChangesResponse> {
+    return this.request('GET', `/api/adventures/${adventureId}/maps/${mapId}/changes`);
+  }
+
   // ── Images ────────────────────────────────────────────────────────────────
 
   getImages(): Promise<{ images: ImageRow[] }> {
     return this.request('GET', '/api/images');
+  }
+
+  getImageDownloadUrl(path: string): Promise<{ url: string }> {
+    return this.request('GET', `/api/images/download?path=${encodeURIComponent(path)}`);
+  }
+
+  async uploadImage(file: Blob, name?: string): Promise<ImageRow> {
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    if (name) {
+      formData.append('name', name);
+    }
+    const res = await fetch(`${this.baseUrl}/api/images`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    await this.throwIfNotOk(res);
+    return res.json() as Promise<ImageRow>;
   }
 
   deleteImage(path: string): Promise<void> {
@@ -234,6 +275,10 @@ export class HonoApiClient {
   }
 
   // ── Spritesheets ──────────────────────────────────────────────────────────
+
+  getSpritesheets(adventureId: string): Promise<SpritesheetRow[]> {
+    return this.request('GET', `/api/adventures/${adventureId}/spritesheets`);
+  }
 
   addSprites(adventureId: string, geometry: string, sources: string[]): Promise<{ sprites: unknown[] }> {
     return this.request('POST', `/api/adventures/${adventureId}/spritesheets`, { geometry, sources });

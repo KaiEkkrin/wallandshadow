@@ -85,6 +85,11 @@ jobs:
         working-directory: was-web
         run: yarn install --frozen-lockfile
 
+      - name: Create test database
+        run: psql -h localhost -U was -d wallandshadow -c "CREATE DATABASE wallandshadow_test OWNER was;"
+        env:
+          PGPASSWORD: wasdev
+
       - name: Type-check
         working-directory: was-web/server
         run: yarn tsc --noEmit
@@ -93,9 +98,11 @@ jobs:
         working-directory: was-web/server
         run: yarn lint
 
-      - name: Apply database schema
+      - name: Apply database schema (test database)
         working-directory: was-web/server
         run: yarn drizzle-kit push
+        env:
+          DATABASE_URL: postgresql://was:wasdev@localhost:5432/wallandshadow_test
 
       - name: Run tests
         working-directory: was-web/server

@@ -1,41 +1,45 @@
 import { IStorage, IStorageReference } from '@wallandshadow/shared';
+import { HonoApiClient } from './honoApi.js';
 
-// Minimal IStorage stub for Session 1.
-// Full S3 presigned URL support comes in Session 2.
-
-// TODO Phase 3: replace with S3-backed storage
 export class HonoStorage implements IStorage {
+  private readonly api: HonoApiClient;
+
+  constructor(api: HonoApiClient) {
+    this.api = api;
+  }
+
   ref(path: string): IStorageReference {
-    return new HonoStorageReference(path);
+    return new HonoStorageReference(path, this.api);
   }
 }
 
 class HonoStorageReference implements IStorageReference {
   private readonly path: string;
+  private readonly api: HonoApiClient;
 
-  constructor(path: string) {
+  constructor(path: string, api: HonoApiClient) {
     this.path = path;
+    this.api = api;
   }
 
   async delete(): Promise<void> {
-    // Stub — image deletion goes through IFunctionsService.deleteImage
+    // Actual deletion goes through IFunctionsService.deleteImage, not storage ref
   }
 
   async download(_destination: string): Promise<void> {
-    throw new Error('download not implemented in Phase 1');
+    throw new Error('Storage download not supported in browser');
   }
 
   async getDownloadURL(): Promise<string> {
-    // Return a placeholder — actual S3 presigned URL support comes in Session 2
-    return `/api/images/download?path=${encodeURIComponent(this.path)}`;
+    const { url } = await this.api.getImageDownloadUrl(this.path);
+    return url;
   }
 
-  async put(_file: Blob, _metadata: { contentType?: string; customMetadata?: Record<string, string> }): Promise<void> {
-    // Stub — image upload comes in Session 2
-    throw new Error('Image upload not implemented in Phase 1');
+  async put(file: Blob, _metadata: { contentType?: string; customMetadata?: Record<string, string> }): Promise<void> {
+    await this.api.uploadImage(file);
   }
 
   async upload(_source: string, _metadata: { contentType: string }): Promise<void> {
-    throw new Error('upload not implemented in Phase 1');
+    throw new Error('Storage upload from file path not supported in browser');
   }
 }
