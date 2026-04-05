@@ -1,8 +1,51 @@
-import { IStorage, ILogger } from '@wallandshadow/shared';
+import { IStorage, ILogger, getUserPolicy, UserLevel } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
-import { adventures, maps, images, spritesheets } from '../db/schema.js';
-import { eq, sql } from 'drizzle-orm';
+import { adventures, maps, images, spritesheets, users } from '../db/schema.js';
+import { eq, sql, count } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
+
+export async function addImage(
+  db: Db,
+  storage: IStorage,
+  uid: string,
+  name: string,
+  contentType: string,
+  fileData: Blob,
+): Promise<{ id: string; name: string; path: string }> {
+  if (!contentType.startsWith('image/')) {
+    throwApiError('invalid-argument', 'Only image files are allowed');
+  }
+
+  const id = uuidv7();
+  const path = `images/${uid}/${id}`;
+
+  await db.transaction(async (tx) => {
+    const [user] = await tx.select({ level: users.level })
+      .from(users).where(eq(users.id, uid)).limit(1);
+    if (!user) {
+      throwApiError('permission-denied', 'No profile available');
+    }
+
+    const [{ imageCount }] = await tx.select({ imageCount: count() })
+      .from(images).where(eq(images.userId, uid));
+    const policy = getUserPolicy(user.level as UserLevel);
+    if (imageCount >= policy.images) {
+      throwApiError('resource-exhausted', 'You have too many images; delete one to upload another.');
+    }
+
+    await tx.insert(images).values({ id, userId: uid, name, path });
+  });
+
+  try {
+    await storage.ref(path).put(fileData, { contentType });
+  } catch (e) {
+    await db.delete(images).where(eq(images.id, id));
+    throw e;
+  }
+
+  return { id, name, path };
+}
 
 function getImageUid(path: string): string | undefined {
   // Extract the uid from the image path: images/{uid}/{filename}

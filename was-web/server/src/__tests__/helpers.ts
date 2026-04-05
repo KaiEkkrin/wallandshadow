@@ -11,6 +11,27 @@ import {
 import { db } from '../db/connection.js';
 import { mapChanges } from '../db/schema.js';
 import { and, eq } from 'drizzle-orm';
+import { HeadObjectCommand } from '@aws-sdk/client-s3';
+import { testS3, testBucket } from './setup.js';
+
+// ─── Test fixtures ─────────────────────────────────────────────────────────────
+
+// Minimal 1x1 red PNG (68 bytes)
+export const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+// ─── S3 helpers ───────────────────────────────────────────────────────────────
+
+export async function s3ObjectExists(key: string): Promise<boolean> {
+  try {
+    await testS3.send(new HeadObjectCommand({ Bucket: testBucket, Key: key }));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -92,6 +113,26 @@ export async function apiDelete(
   return app.request(path, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function apiUploadImage(
+  app: Hono,
+  token: string,
+  fileContent: Buffer | Uint8Array,
+  fileName: string,
+  contentType: string,
+  name?: string,
+): Promise<Response> {
+  const formData = new FormData();
+  formData.append('file', new Blob([fileContent], { type: contentType }), fileName);
+  if (name !== undefined) {
+    formData.append('name', name);
+  }
+  return app.request('/api/images', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
   });
 }
 

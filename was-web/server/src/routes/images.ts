@@ -3,11 +3,38 @@ import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { db } from '../db/connection.js';
 import { storage } from '../services/storage.js';
 import { logger } from '../services/logger.js';
-import { deleteImage } from '../services/imageExtensions.js';
+import { addImage, deleteImage } from '../services/imageExtensions.js';
+import { images } from '../db/schema.js';
+import { eq, desc } from 'drizzle-orm';
 
 export const imageRoutes = new Hono<{ Variables: AuthVariables }>();
 
 imageRoutes.use('/*', authMiddleware);
+
+// GET /images — list the authenticated user's images
+imageRoutes.get('/images', async (c) => {
+  const uid = c.get('uid');
+  const rows = await db.select({ id: images.id, name: images.name, path: images.path })
+    .from(images)
+    .where(eq(images.userId, uid))
+    .orderBy(desc(images.createdAt));
+  return c.json({ images: rows });
+});
+
+// POST /images — upload a new image (multipart form: file, optional name)
+imageRoutes.post('/images', async (c) => {
+  const uid = c.get('uid');
+  const body = await c.req.parseBody();
+  const file = body['file'];
+  if (!(file instanceof File)) {
+    return c.json({ error: 'file is required (multipart form field "file")' }, 400);
+  }
+  const name = typeof body['name'] === 'string' && body['name']
+    ? body['name']
+    : (file.name || 'untitled');
+  const result = await addImage(db, storage, uid, name, file.type, file);
+  return c.json(result, 201);
+});
 
 // DELETE /images/:path — path may contain slashes, use wildcard
 imageRoutes.delete('/images/*', async (c) => {
