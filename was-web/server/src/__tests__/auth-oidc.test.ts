@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
-import { SignJWT, exportJWK, generateKeyPair, type KeyLike } from 'jose';
+import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import { createLocalJWKSet } from 'jose';
 import { createApp } from '../app.js';
 import { createOidcVerifier, setOidcVerifier } from '../auth/oidc.js';
@@ -9,7 +9,7 @@ import './setup.js';
 
 const TEST_ISSUER = 'https://test-oidc.example.com';
 
-let privateKey: KeyLike;
+let privateKey: CryptoKey;
 let app: ReturnType<typeof createApp>;
 
 beforeAll(async () => {
