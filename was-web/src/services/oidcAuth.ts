@@ -50,8 +50,11 @@ export async function oidcSignOut(): Promise<void> {
   await getUserManager().signoutRedirect();
 }
 
-/** Get the access token from the current OIDC session. */
-export async function getOidcAccessToken(): Promise<string | null> {
-  const user = await getUserManager().getUser();
-  return user?.access_token ?? null;
+/**
+ * Extract the Bearer token from an OIDC user object.
+ * Prefers id_token (always a JWT) over access_token (which may be opaque
+ * depending on Zitadel project settings).
+ */
+export function getOidcBearerToken(user: OidcUser): string {
+  return user.id_token ?? user.access_token;
 }

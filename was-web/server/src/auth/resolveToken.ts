@@ -51,32 +51,34 @@ export async function resolveTokenToUid(token: string): Promise<string> {
 async function upsertOidcUser(sub: string, email: string | undefined, name: string | undefined): Promise<string> {
   const displayName = name || email || 'User';
 
-  // Look up existing user by provider_sub
-  const [existing] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.providerSub, sub))
-    .limit(1);
+  return db.transaction(async (tx) => {
+    // Look up existing user by provider_sub
+    const [existing] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.providerSub, sub))
+      .limit(1);
 
-  if (existing) {
-    // Update cached claims from the latest token
-    const updates: Partial<{ email: string | null; name: string }> = {};
-    if (email !== undefined) updates.email = email;
-    if (name !== undefined) updates.name = name;
-    if (Object.keys(updates).length > 0) {
-      await db.update(users).set(updates).where(eq(users.id, existing.id));
+    if (existing) {
+      // Update cached claims from the latest token
+      const updates: Partial<{ email: string | null; name: string }> = {};
+      if (email !== undefined) updates.email = email;
+      if (name !== undefined) updates.name = name;
+      if (Object.keys(updates).length > 0) {
+        await tx.update(users).set(updates).where(eq(users.id, existing.id));
+      }
+      return existing.id;
     }
-    return existing.id;
-  }
 
-  // First login — create user
-  const id = uuidv7();
-  await db.insert(users).values({
-    id,
-    providerSub: sub,
-    email: email ?? null,
-    name: displayName,
-    level: 'standard',
+    // First login — create user
+    const id = uuidv7();
+    await tx.insert(users).values({
+      id,
+      providerSub: sub,
+      email: email ?? null,
+      name: displayName,
+      level: 'standard',
+    });
+    return id;
   });
-  return id;
 }

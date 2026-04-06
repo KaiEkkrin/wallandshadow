@@ -1,6 +1,6 @@
 import { IAuth, IAuthProvider, IUser } from '@wallandshadow/shared';
 import { HonoApiClient } from './honoApi';
-import { isOidcEnabled, startOidcLogin, getOidcUser, oidcSignOut } from './oidcAuth';
+import { isOidcEnabled, startOidcLogin, getOidcUser, getOidcBearerToken, oidcSignOut } from './oidcAuth';
 import md5 from 'blueimp-md5';
 
 const TOKEN_KEY = 'was_hono_token';
@@ -86,8 +86,7 @@ export class HonoAuth implements IAuth {
       const oidcUser = await getOidcUser();
       if (!oidcUser || oidcUser.expired) return null;
 
-      // Use id_token (always a JWT) rather than access_token (may be opaque)
-      const token = oidcUser.id_token ?? oidcUser.access_token;
+      const token = getOidcBearerToken(oidcUser);
       this.api.setToken(token);
       const me = await this.api.getMe();
       return new HonoUser(me.uid, me.email, me.name, 'oidc');
