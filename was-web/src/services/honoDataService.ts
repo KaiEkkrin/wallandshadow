@@ -590,7 +590,7 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    const w = new PollingWatch(() => this.get(d), onNext, onError, 5000);
+    const w = new PollingWatch(() => this.get(d), onNext, onError, 500);
     return () => w.stop();
   }
 
@@ -605,7 +605,7 @@ export class HonoDataService implements IDataService {
         id: r.id,
         record: adventureRowToIAdventure(r),
       }))),
-      onNext, onError, 10000,
+      onNext, onError, 500,
     );
     return () => w.stop();
   }
@@ -638,7 +638,7 @@ export class HonoDataService implements IDataService {
         this.api.getPlayers(adventureId).catch(e => isNotFound(e) ? [] as PlayerRow[] : Promise.reject(e)),
         this.api.getAdventure(adventureId).catch(() => emptyAdventureRow(adventureId)),
       ]).then(([players, adv]) => players.map(p => playerRowToIPlayer(p, adv))),
-      onNext, onError, 5000,
+      onNext, onError, 500,
     );
     return () => w.stop();
   }
@@ -653,7 +653,7 @@ export class HonoDataService implements IDataService {
       () => this.api.getAdventures().then(rows =>
         rows.filter(r => r.owner !== this.uid)
           .map(r => adventureRowToSelfPlayer(r, this.uid))),
-      onNext, onError, 10000,
+      onNext, onError, 500,
     );
     return () => w.stop();
   }
@@ -673,7 +673,7 @@ export class HonoDataService implements IDataService {
           passthroughConverter(),
           spritesheetRowToISpritesheet(r),
         ))),
-      onNext, onError, 10000,
+      onNext, onError, 500,
     );
     return () => w.stop();
   }

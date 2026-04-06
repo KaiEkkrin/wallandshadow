@@ -264,6 +264,38 @@ export async function dismissAllToasts(page: Page) {
   }
 }
 
+/**
+ * Handle WebGL success/failure on a map page. Waits for either the throbber
+ * to disappear (WebGL success) or an error toast (WebGL failure). Dismisses
+ * any error toasts so the page is in a clean state afterward.
+ */
+export async function handleWebGLOrError(page: Page): Promise<'map' | 'error'> {
+  const throbberGone = expect(page.locator('.Throbber-container')).not.toBeVisible({ timeout: 30000 });
+  const errorToast = page.locator('.toast-header:has-text("Error loading map")');
+  const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
+
+  const which = await Promise.race([
+    throbberGone.then(() => 'map' as const),
+    errorAppeared.then(() => 'error' as const),
+  ]);
+
+  if (which === 'error') {
+    await dismissAllToasts(page);
+  }
+  return which;
+}
+
+/**
+ * Navigate to the home page via the navbar.
+ */
+export async function navigateHome(page: Page, deviceName: string): Promise<void> {
+  await dismissAllToasts(page);
+  await ensureNavbarExpanded(page, deviceName);
+  await page.click('.nav-link >> text="Home"');
+  await expect(page.locator('h5 >> text="Latest maps"')).toBeVisible();
+  await dismissAllToasts(page);
+}
+
 async function navigateToAdventure(
   page: Page, deviceName: string, adventureName: string, adventureDescription: string
 ) {
