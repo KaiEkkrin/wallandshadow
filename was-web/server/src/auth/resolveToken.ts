@@ -39,6 +39,11 @@ export async function resolveTokenToUid(token: string): Promise<string> {
     }
   }
 
+  // In OIDC-only mode, do not accept local JWTs — all tokens must come from the provider
+  if (process.env.AUTH_MODE === 'oidc') {
+    throw new Error('Invalid token: OIDC token required');
+  }
+
   // Fall through to local JWT verification
   const { uid } = await verifyJwt(token);
   return uid;

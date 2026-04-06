@@ -3,10 +3,16 @@ import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
 const DEV_SECRET = 'dev-only-secret-change-in-production-please-do-not-use';
 
 function getSecret(): Uint8Array {
-  const secret = process.env.JWT_SECRET ?? (process.env.NODE_ENV !== 'production' ? DEV_SECRET : undefined);
-  if (!secret) {
-    throw new Error('JWT_SECRET environment variable is required in production');
+  const raw = process.env.JWT_SECRET;
+  if (process.env.NODE_ENV === 'production') {
+    if (!raw) {
+      throw new Error('JWT_SECRET environment variable is required in production');
+    }
+    if (raw === DEV_SECRET) {
+      throw new Error('JWT_SECRET must not be the dev-only default in production');
+    }
   }
+  const secret = raw ?? DEV_SECRET;
   return new TextEncoder().encode(secret);
 }
 

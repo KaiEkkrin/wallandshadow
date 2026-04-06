@@ -5,6 +5,10 @@ import { createApp } from './app.js';
 import { MapRoomManager } from './ws/rooms.js';
 import { createUpgradeHandler } from './ws/handler.js';
 import { startNotifyListener } from './ws/notify.js';
+import { validateAuthEnv } from './auth/validateEnv.js';
+
+// Fail fast if production auth config is invalid
+validateAuthEnv();
 
 const app = createApp();
 const port = parseInt(process.env.PORT ?? '3000', 10);
