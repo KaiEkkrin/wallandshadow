@@ -750,6 +750,172 @@ describe('server integration tests', () => {
       expect(url).toBeTruthy();
       expect(typeof url).toBe('string');
     });
+
+    test('denies download of another user\'s image without shared adventure', async () => {
+      const owner = await registerUser(app);
+      const stranger = await registerUser(app);
+
+      // Owner uploads an image
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'private.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      // Stranger tries to download it
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, stranger.token);
+      expect(res.status).toBe(404);
+    });
+
+    test('adventure member can download adventure cover image', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      // Owner uploads image and creates adventure with it as cover
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'cover.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      await apiPatch(app, `/api/adventures/${aId}`, { imagePath }, owner.token);
+
+      // Invite player
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player can download the cover image
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(res.status).toBe(200);
+    });
+
+    test('adventure member can download map background image', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      // Owner uploads image and creates adventure + map with it
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'bg.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      const mId = await createMap(owner.token, aId);
+      await apiPatch(app, `/api/adventures/${aId}/maps/${mId}`, { imagePath }, owner.token);
+
+      // Invite player
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player can download the map image
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(res.status).toBe(200);
+    });
+
+    test('non-member denied for adventure cover image', async () => {
+      const owner = await registerUser(app);
+      const stranger = await registerUser(app);
+
+      // Owner uploads image and creates adventure with it
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'cover.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      await apiPatch(app, `/api/adventures/${aId}`, { imagePath }, owner.token);
+
+      // Stranger cannot download the cover image (404 to avoid leaking existence)
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, stranger.token);
+      expect(res.status).toBe(404);
+    });
+
+    test('rejects unrecognised path format', async () => {
+      const { token } = await registerUser(app);
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent('arbitrary/key')}`, token);
+      expect(res.status).toBe(404);
+    });
+
+    test('blocked player denied download', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      // Owner uploads image and creates adventure with it
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'cover.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      await apiPatch(app, `/api/adventures/${aId}`, { imagePath }, owner.token);
+
+      // Invite player then block them
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+      await apiPatch(app, `/api/adventures/${aId}/players/${player.uid}`, { allowed: false }, owner.token);
+
+      // Blocked player cannot download (404 to avoid leaking existence)
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(res.status).toBe(404);
+    });
+
+    test('adventure member can download spritesheet image', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      // Owner uploads source images for the spritesheet
+      const upload1 = await apiUploadImage(app, owner.token, TINY_PNG, 's1.png', 'image/png');
+      expect(upload1.status).toBe(201);
+      const { path: src1 } = (await upload1.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+
+      // Create spritesheet
+      const sheetRes = await apiPost(app, `/api/adventures/${aId}/spritesheets`, {
+        geometry: '1x1',
+        sources: [src1],
+      }, owner.token);
+      expect(sheetRes.status).toBe(200);
+      const { sprites } = (await sheetRes.json()) as { sprites: { id: string }[] };
+      const sheetId = sprites[0].id;
+
+      // Invite player
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player can download the spritesheet
+      const spritePath = `sprites/${sheetId}.png`;
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(spritePath)}`, player.token);
+      expect(res.status).toBe(200);
+    });
+
+    test('non-member denied for spritesheet download', async () => {
+      const owner = await registerUser(app);
+      const stranger = await registerUser(app);
+
+      // Owner uploads source image and creates adventure + spritesheet
+      const upload1 = await apiUploadImage(app, owner.token, TINY_PNG, 's1.png', 'image/png');
+      expect(upload1.status).toBe(201);
+      const { path: src1 } = (await upload1.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      const sheetRes = await apiPost(app, `/api/adventures/${aId}/spritesheets`, {
+        geometry: '1x1',
+        sources: [src1],
+      }, owner.token);
+      expect(sheetRes.status).toBe(200);
+      const { sprites } = (await sheetRes.json()) as { sprites: { id: string }[] };
+      const sheetId = sprites[0].id;
+
+      // Stranger cannot download the spritesheet (404 to avoid leaking existence)
+      const spritePath = `sprites/${sheetId}.png`;
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(spritePath)}`, stranger.token);
+      expect(res.status).toBe(404);
+    });
+
+    test('returns 404 for non-existent spritesheet', async () => {
+      const { token } = await registerUser(app);
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent('sprites/00000000-0000-0000-0000-000000000000.png')}`, token);
+      expect(res.status).toBe(404);
+    });
   });
 
   // ── GET /api/adventures/:id/spritesheets ──────────────────────────────────

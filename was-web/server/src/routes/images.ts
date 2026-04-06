@@ -3,7 +3,7 @@ import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { db } from '../db/connection.js';
 import { storage } from '../services/storage.js';
 import { logger } from '../services/logger.js';
-import { addImage, deleteImage } from '../services/imageExtensions.js';
+import { addImage, deleteImage, assertImageDownloadAccess } from '../services/imageExtensions.js';
 import { images } from '../db/schema.js';
 import { eq, desc } from 'drizzle-orm';
 
@@ -13,10 +13,12 @@ imageRoutes.use('/*', authMiddleware);
 
 // GET /images/download — get a presigned download URL for an image
 imageRoutes.get('/images/download', async (c) => {
+  const uid = c.get('uid');
   const path = c.req.query('path');
   if (!path) {
     return c.json({ error: 'path query parameter is required' }, 400);
   }
+  await assertImageDownloadAccess(db, uid, path);
   const url = await storage.ref(path).getDownloadURL();
   return c.json({ url });
 });

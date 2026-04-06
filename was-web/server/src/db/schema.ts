@@ -39,6 +39,7 @@ export const adventures = pgTable('adventures', {
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
   index('adventures_owner_id_idx').on(t.ownerId),
+  index('adventures_image_path_idx').on(t.imagePath).where(sql`image_path != ''`),
 ]);
 
 export const adventurePlayers = pgTable('adventure_players', {
@@ -63,6 +64,7 @@ export const maps = pgTable('maps', {
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
   index('maps_adventure_id_idx').on(t.adventureId),
+  index('maps_image_path_idx').on(t.imagePath).where(sql`image_path != ''`),
 ]);
 
 export const mapChanges = pgTable('map_changes', {
@@ -99,6 +101,7 @@ export const spritesheets = pgTable('spritesheets', {
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
   index('spritesheets_adventure_geometry_idx').on(t.adventureId, t.geometry),
+  index('spritesheets_sprites_gin_idx').using('gin', t.sprites),
 ]);
 
 export const invites = pgTable('invites', {
