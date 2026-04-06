@@ -155,6 +155,7 @@ See @DEPLOY.md for comprehensive deployment instructions.
 - Test behaviour, not implementation details. Assert on outputs and side effects.
 - Server integration tests run against real PostgreSQL and MinIO — no mocks for data stores.
 - Cover error paths: bad input returns the right status code, auth failures are rejected.
+- **E2E tests**: Include terse step-by-step narrative comments (e.g. `// Open the edit modal and change the name`). Unlike application code, Playwright tests benefit from WHAT comments because selectors alone don't convey the user-facing intent of each step.
 
 ### General
 

@@ -32,6 +32,8 @@ import {
 import { MapWebSocket } from './honoWebSocket';
 import { PollingWatch } from './pollingWatch';
 
+const POLL_INTERVAL_MS = 500;
+
 // ── Reference types ──────────────────────────────────────────────────────────
 
 type RefKind = 'profile' | 'adventure' | 'player' | 'map' | 'invite' | 'images' | 'version' | 'mapBaseChange' | 'mapChanges';
@@ -590,7 +592,7 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    const w = new PollingWatch(() => this.get(d), onNext, onError, 500);
+    const w = new PollingWatch(() => this.get(d), onNext, onError, POLL_INTERVAL_MS);
     return () => w.stop();
   }
 

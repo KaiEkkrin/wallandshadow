@@ -299,11 +299,7 @@ export async function navigateHome(page: Page, deviceName: string): Promise<void
 async function navigateToAdventure(
   page: Page, deviceName: string, adventureName: string, adventureDescription: string
 ) {
-  await dismissAllToasts(page);
-  await ensureNavbarExpanded(page, deviceName);
-  await page.click('.nav-link >> text="Home"');
-  await expect(page.locator('h5 >> text="Latest maps"')).toBeVisible();
-  await dismissAllToasts(page);
+  await navigateHome(page, deviceName);
 
   if (isPhone(deviceName)) {
     const adventureToggle = page.locator(`text="${adventureName}"`);
@@ -314,4 +310,45 @@ async function navigateToAdventure(
   await page.click('text="Open adventure"');
   await expect(page.locator('.card-text').filter({ hasText: adventureDescription })).toBeVisible();
   await dismissAllToasts(page);
+}
+
+/**
+ * Set up a second browser context with an authenticated user.
+ * Returns the page — caller must close page2 and context2 in a finally block.
+ */
+export async function setupSecondUser(
+  browser: { newContext(): Promise<{ newPage(): Promise<Page>; close(): Promise<void> }> },
+  user: User,
+  deviceName: string,
+): Promise<{ page2: Page; context2: { close(): Promise<void> } }> {
+  const context2 = await browser.newContext();
+  const page2 = await context2.newPage();
+  await page2.goto('/');
+  await Promise.race([
+    expect(page2.locator('.App-login-text').first()).toBeVisible(),
+    expect(page2.locator('.App-consent-container')).toBeVisible()
+  ]);
+  await acceptCookieConsent(page2);
+  await signIn(page2, user, deviceName);
+  return { page2, context2 };
+}
+
+/**
+ * Locator for a danger delete button (X icon) — used for maps, images, etc.
+ * Use context to scope within a modal body.
+ */
+export function deleteButton(page: Page, inModal = false) {
+  const scope = inModal ? page.locator('.modal-body') : page;
+  return scope.locator('button.btn-danger').filter({
+    has: page.locator('svg[data-icon="xmark"]')
+  }).first();
+}
+
+/**
+ * Locator for the adventure image picker button (camera icon next to Edit).
+ */
+export function adventureImageButton(page: Page) {
+  return page.locator('.card-row-spaced button').filter({
+    has: page.locator('svg[data-icon="image"]')
+  }).first();
 }

@@ -99,8 +99,7 @@ export interface ApiUser {
   displayName: string;
 }
 
-// Counter shared with util.ts signUp (they use the same auth backend,
-// so email uniqueness is all that matters — UUID handles that)
+// Start at 100 to avoid collisions with browser-based signUp counter
 let apiUserCounter = 100;
 
 /**

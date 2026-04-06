@@ -16,14 +16,15 @@ test.describe('Character CRUD tests', () => {
   test('create, edit, and delete character', async ({ page }, testInfo) => {
     const deviceName = Util.getDeviceNameFromProject(testInfo.project.name);
 
+    // Sign up and create an adventure
     await Util.signUp(page, deviceName);
     await Util.createNewAdventure(page, 'Character test', 'Testing characters');
     await expect(page).toHaveURL(/\/adventure\//);
 
-    // Verify initial character count
+    // Verify the character list starts empty
     await expect(page.locator('h5:has-text("My Characters (0/")')).toBeVisible();
 
-    // --- Create ---
+    // Create a character
     await page.click('text="New character"');
     await expect(page.locator('#characterName')).toBeVisible();
     await page.fill('#characterName', 'Gandalf');
@@ -34,8 +35,7 @@ test.describe('Character CRUD tests', () => {
     await expect(page.locator('.list-group-item >> text="Gandalf"')).toBeVisible({ timeout: 3000 });
     await expect(page.locator('h5:has-text("My Characters (1/")')).toBeVisible({ timeout: 3000 });
 
-    // --- Edit ---
-    // Click the edit button (pencil icon) on Gandalf's row
+    // Edit the character name and label
     const gandalfRow = page.locator('.list-group-item', { hasText: 'Gandalf' });
     await gandalfRow.locator('button.btn-primary').click();
 
@@ -48,8 +48,7 @@ test.describe('Character CRUD tests', () => {
     await expect(page.locator('.list-group-item >> text="Gandalf the Grey"')).toBeVisible({ timeout: 3000 });
     await expect(page.locator('.list-group-item >> text="Gandalf"').first()).not.toBeVisible();
 
-    // --- Delete ---
-    // Click the delete button (X icon) on the character's row
+    // Delete the character
     const greyRow = page.locator('.list-group-item', { hasText: 'Gandalf the Grey' });
     await greyRow.locator('button.btn-danger').click();
 
@@ -65,35 +64,22 @@ test.describe('Character CRUD tests', () => {
   test('second user sees other characters', async ({ browser, page }, testInfo) => {
     const deviceName = Util.getDeviceNameFromProject(testInfo.project.name);
 
-    // User 1: sign up and create adventure
+    // User 1 signs up and creates an adventure
     const user1 = await Util.signUp(page, deviceName, 'Owner');
     await Util.createNewAdventure(page, 'Party adventure', 'Team building');
     await expect(page).toHaveURL(/\/adventure\//);
     const adventureId = page.url().split('/adventure/')[1];
 
-    // Set up user 2 via API
+    // Invite user 2 via the API
     const user1Api = await Api.loginApiUser(user1.email, user1.password);
     const user2 = await Api.createApiUser('Guest');
     await Api.inviteAndJoin(user1Api, user2.api, adventureId);
 
-    // User 2: sign in via browser
-    const context2 = await browser.newContext();
-    const page2 = await context2.newPage();
+    // User 2 signs in and navigates to the adventure
+    const { page2, context2 } = await Util.setupSecondUser(browser, {
+      displayName: user2.displayName, email: user2.email, number: 0, password: user2.password,
+    }, deviceName);
     try {
-      await page2.goto('/');
-      await Promise.race([
-        expect(page2.locator('.App-login-text').first()).toBeVisible(),
-        expect(page2.locator('.App-consent-container')).toBeVisible()
-      ]);
-      await Util.acceptCookieConsent(page2);
-      await Util.signIn(page2, {
-        displayName: user2.displayName,
-        email: user2.email,
-        number: 0,
-        password: user2.password,
-      }, deviceName);
-
-      // User 2 navigates to the adventure
       await page2.goto(`/adventure/${adventureId}`);
       await expect(page2.locator('.card-title >> text="Party adventure"')).toBeVisible({ timeout: 5000 });
 
