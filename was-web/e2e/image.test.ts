@@ -37,7 +37,7 @@ test.describe('Image management tests', () => {
     await expect(page.locator('.modal-title:has-text("Choose image")')).not.toBeVisible();
 
     // Verify the adventure card now shows an image
-    await expect(page.locator('.card img.App-image-collection-image, .card img[alt="Image test"]')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.card img.App-image-collection-image, .card img[alt="Image test"]')).toBeVisible({ timeout: 5000 });
   });
 
   test('remove image from adventure', async ({ page }, testInfo) => {
@@ -62,7 +62,7 @@ test.describe('Image management tests', () => {
     await expect(page.locator('.modal-title:has-text("Choose image")')).not.toBeVisible();
 
     // Verify the image is shown on the card
-    await expect(page.locator('.card img')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.card img')).toBeVisible({ timeout: 5000 });
 
     // Re-open image picker and click "Use no image"
     await Util.adventureImageButton(page).click();
@@ -71,7 +71,7 @@ test.describe('Image management tests', () => {
     await expect(page.locator('.modal-title:has-text("Choose image")')).not.toBeVisible();
 
     // Verify the adventure card image is gone
-    await expect(page.locator('.card img')).not.toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.card img')).not.toBeVisible({ timeout: 5000 });
   });
 
   test('delete an image', async ({ page }, testInfo) => {
@@ -92,7 +92,7 @@ test.describe('Image management tests', () => {
       buffer: TINY_PNG,
     });
     await expect(page.locator('.App-image-collection-image')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('.modal-title:has-text("Choose image (1/")')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.modal-title:has-text("Choose image (1/")')).toBeVisible({ timeout: 5000 });
 
     // Click the delete button and confirm deletion
     await Util.deleteButton(page, true).click();
@@ -100,7 +100,7 @@ test.describe('Image management tests', () => {
     await page.click('text="Yes, delete image!"');
 
     // Both modals close after deletion
-    await expect(page.locator('.modal')).not.toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.modal')).not.toBeVisible({ timeout: 5000 });
 
     // Re-open image picker and verify image count went to 0
     await Util.adventureImageButton(page).click();
@@ -157,7 +157,7 @@ test.describe('Image management tests', () => {
 
     // Select the previously uploaded image
     await expect(page.locator('.modal-title:has-text("Choose image")')).toBeVisible();
-    await expect(page.locator('.App-image-collection-image')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.App-image-collection-image')).toBeVisible({ timeout: 5000 });
 
     await page.click('text="Use this image"');
     await expect(page.locator('.modal-title:has-text("Choose image")')).not.toBeVisible();

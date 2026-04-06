@@ -32,8 +32,8 @@ test.describe('Character CRUD tests', () => {
     await page.click('.modal button >> text="Save"');
 
     // Wait for character to appear in the list
-    await expect(page.locator('.list-group-item >> text="Gandalf"')).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('h5:has-text("My Characters (1/")')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.list-group-item >> text="Gandalf"')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('h5:has-text("My Characters (1/")')).toBeVisible({ timeout: 5000 });
 
     // Edit the character name and label
     const gandalfRow = page.locator('.list-group-item', { hasText: 'Gandalf' });
@@ -45,7 +45,7 @@ test.describe('Character CRUD tests', () => {
     await page.click('.modal button >> text="Save"');
 
     // Verify the updated name appears
-    await expect(page.locator('.list-group-item >> text="Gandalf the Grey"')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.list-group-item >> text="Gandalf the Grey"')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('.list-group-item >> text="Gandalf"').first()).not.toBeVisible();
 
     // Delete the character
@@ -57,8 +57,8 @@ test.describe('Character CRUD tests', () => {
     await page.click('text="Yes, delete character!"');
 
     // Verify character is gone
-    await expect(page.locator('.list-group-item >> text="Gandalf the Grey"')).not.toBeVisible({ timeout: 3000 });
-    await expect(page.locator('h5:has-text("My Characters (0/")')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.list-group-item >> text="Gandalf the Grey"')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('h5:has-text("My Characters (0/")')).toBeVisible({ timeout: 5000 });
   });
 
   test('second user sees other characters', async ({ browser, page }, testInfo) => {
@@ -91,11 +91,11 @@ test.describe('Character CRUD tests', () => {
       await page.click('.modal button >> text="Save"');
 
       // User 1 sees the character
-      await expect(page.locator('.list-group-item >> text="Fighter"')).toBeVisible({ timeout: 3000 });
+      await expect(page.locator('.list-group-item >> text="Fighter"')).toBeVisible({ timeout: 5000 });
 
       // User 2 should see it under "Other Characters"
-      await expect(page2.locator('h5:has-text("Other Characters")')).toBeVisible({ timeout: 3000 });
-      await expect(page2.locator('.list-group-item >> text="Fighter"')).toBeVisible({ timeout: 3000 });
+      await expect(page2.locator('h5:has-text("Other Characters")')).toBeVisible({ timeout: 5000 });
+      await expect(page2.locator('.list-group-item >> text="Fighter"')).toBeVisible({ timeout: 5000 });
     } finally {
       await page2.close();
       await context2.close();

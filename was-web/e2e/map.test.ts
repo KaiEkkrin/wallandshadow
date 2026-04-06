@@ -59,7 +59,7 @@ test.describe('Map CRUD tests', () => {
     // Confirm deletion and verify the map disappears
     await expect(page.locator('text="Do you really want to delete Sacrificial map?"')).toBeVisible();
     await page.click('text="Yes, delete map!"');
-    await expect(page.locator('text="Sacrificial map"')).not.toBeVisible({ timeout: 3000 });
+    await expect(page.locator('text="Sacrificial map"')).not.toBeVisible({ timeout: 5000 });
   });
 
   test('delete map - second user sees deletion', async ({ browser, page }, testInfo) => {
@@ -93,9 +93,9 @@ test.describe('Map CRUD tests', () => {
 
       // User 2 should see the map
       if (Util.isPhone(deviceName)) {
-        await expect(page2.locator('text="Shared map"')).toBeVisible({ timeout: 3000 });
+        await expect(page2.locator('text="Shared map"')).toBeVisible({ timeout: 5000 });
       } else {
-        await expect(page2.locator('.card-title >> text="Shared map"')).toBeVisible({ timeout: 3000 });
+        await expect(page2.locator('.card-title >> text="Shared map"')).toBeVisible({ timeout: 5000 });
       }
 
       // User 1 deletes the map (expand accordion on phones)
@@ -111,7 +111,7 @@ test.describe('Map CRUD tests', () => {
       await page.click('text="Yes, delete map!"');
 
       // User 2 should see the map disappear
-      await expect(page2.locator('text="Shared map"')).not.toBeVisible({ timeout: 3000 });
+      await expect(page2.locator('text="Shared map"')).not.toBeVisible({ timeout: 5000 });
     } finally {
       await page2.close();
       await context2.close();

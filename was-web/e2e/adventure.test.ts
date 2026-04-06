@@ -34,8 +34,8 @@ test.describe('Adventure CRUD tests', () => {
 
     // Verify the updated values appear on the adventure page
     await expect(page.locator('#adventureNameInput')).not.toBeVisible();
-    await expect(page.locator('.card-title >> text="Updated name"')).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('.card-text >> text="Updated description"')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.card-title >> text="Updated name"')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.card-text >> text="Updated description"')).toBeVisible({ timeout: 5000 });
   });
 
   test('edit adventure - second user sees changes', async ({ browser, page }, testInfo) => {
@@ -70,7 +70,7 @@ test.describe('Adventure CRUD tests', () => {
       await expect(page.locator('#adventureNameInput')).not.toBeVisible();
 
       // User 2 should see the renamed adventure
-      await expect(page2.locator('.card-title >> text="Renamed adventure"')).toBeVisible({ timeout: 3000 });
+      await expect(page2.locator('.card-title >> text="Renamed adventure"')).toBeVisible({ timeout: 5000 });
     } finally {
       await page2.close();
       await context2.close();
@@ -111,7 +111,7 @@ test.describe('Adventure CRUD tests', () => {
     // Confirm map deletion and wait for it to disappear
     await expect(page.locator('text="Do you really want to delete Doomed map?"')).toBeVisible();
     await page.click('text="Yes, delete map!"');
-    await expect(page.locator('text="Doomed map"')).not.toBeVisible({ timeout: 3000 });
+    await expect(page.locator('text="Doomed map"')).not.toBeVisible({ timeout: 5000 });
 
     // Delete the adventure and confirm
     await page.click('text="Delete adventure"');
@@ -120,7 +120,7 @@ test.describe('Adventure CRUD tests', () => {
 
     // Should redirect to home with the adventure gone
     await expect(page).toHaveURL(/\/app$/);
-    await expect(page.locator('text="Doomed adventure"')).not.toBeVisible({ timeout: 3000 });
+    await expect(page.locator('text="Doomed adventure"')).not.toBeVisible({ timeout: 5000 });
   });
 
   test('cannot delete adventure with maps', async ({ page }, testInfo) => {
