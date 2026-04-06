@@ -259,7 +259,7 @@ export async function addSprites(
       .where(and(eq(adventurePlayers.adventureId, adventureId), eq(adventurePlayers.userId, uid)))
       .limit(1);
     if (!player || player.allowed === false) {
-      throwApiError('permission-denied', 'You are not in this adventure.');
+      throwApiError('not-found', 'No such adventure');
     }
   }
 

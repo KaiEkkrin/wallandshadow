@@ -81,7 +81,8 @@ export async function assertAdventureMember(db: Db, uid: string, adventureId: st
     .limit(1);
 
   if (!playerRow) {
-    throwApiError('permission-denied', 'You are not in this adventure');
+    // Return 404 to avoid leaking whether the adventure exists (RFC 9110 §15.5.4)
+    throwApiError('not-found', 'Adventure not found');
   }
 }
 
@@ -94,9 +95,23 @@ export async function assertAdventureOwner(db: Db, uid: string, adventureId: str
   if (!row) {
     throwApiError('not-found', 'Adventure not found');
   }
-  if (row.ownerId !== uid) {
+  if (row.ownerId === uid) return;
+
+  // Check if user is at least a member — members get 403 (they know it exists),
+  // non-members get 404 to avoid leaking existence
+  const [playerRow] = await db.select({ allowed: adventurePlayers.allowed })
+    .from(adventurePlayers)
+    .where(and(
+      eq(adventurePlayers.adventureId, adventureId),
+      eq(adventurePlayers.userId, uid),
+      eq(adventurePlayers.allowed, true),
+    ))
+    .limit(1);
+
+  if (playerRow) {
     throwApiError('permission-denied', 'Only the adventure owner can perform this action');
   }
+  throwApiError('not-found', 'Adventure not found');
 }
 
 // ─── Adventure ───────────────────────────────────────────────────────────────
@@ -147,7 +162,7 @@ export async function deleteAdventure(db: Db, uid: string, adventureId: string):
     throwApiError('not-found', 'Adventure not found');
   }
   if (adventure.ownerId !== uid) {
-    throwApiError('permission-denied', 'Only the owner can delete this adventure');
+    throwApiError('not-found', 'Adventure not found');
   }
 
   // CASCADE handles maps, map_changes, adventure_players, spritesheets, invites
@@ -174,7 +189,7 @@ export async function createMap(
       throwApiError('invalid-argument', 'No such adventure');
     }
     if (adventure.ownerId !== uid) {
-      throwApiError('permission-denied', 'You do not own this adventure');
+      throwApiError('not-found', 'Adventure not found');
     }
 
     const [user] = await tx.select({ level: users.level })
@@ -247,7 +262,7 @@ export async function cloneMap(
     }
 
     if (adventure.ownerId !== uid) {
-      throwApiError('permission-denied', 'You do not own this adventure');
+      throwApiError('not-found', 'Adventure not found');
     }
 
     const [{ mapCount }] = await tx
@@ -432,7 +447,7 @@ export async function deleteMap(db: Db, uid: string, adventureId: string, mapId:
     throwApiError('not-found', 'Adventure not found');
   }
   if (adventure.ownerId !== uid) {
-    throwApiError('permission-denied', 'Only the adventure owner can delete maps');
+    throwApiError('not-found', 'Adventure not found');
   }
 
   // CASCADE handles map_changes
@@ -453,7 +468,7 @@ export async function inviteToAdventure(
     throwApiError('not-found', 'Adventure not found');
   }
   if (adventure.ownerId !== uid) {
-    throwApiError('permission-denied', 'Only the owner can create invites');
+    throwApiError('not-found', 'Adventure not found');
   }
 
   // Return a valid existing invite if one exists and is within the recreate window

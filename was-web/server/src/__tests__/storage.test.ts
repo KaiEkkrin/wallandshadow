@@ -314,11 +314,12 @@ describe('spritesheet creation (POST /api/adventures/:id/spritesheets)', () => {
     const adventureId = await createAdventure(ownerToken);
     const img = await uploadImage(ownerToken, 'Sprite');
 
+    // 404 to avoid leaking adventure existence
     const res = await apiPost(app, `/api/adventures/${adventureId}/spritesheets`, {
       geometry: '1x1',
       sources: [img.path],
     }, strangerToken);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   test('rejects more than 10 sources with 400', async () => {

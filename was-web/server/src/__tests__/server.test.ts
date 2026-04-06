@@ -444,17 +444,15 @@ describe('server integration tests', () => {
       // Post changes as owner
       await postMapChanges(app, owner.token, a1Id, m1Id, [createAddToken1(owner.uid), createAddWall1()]);
 
-      // Stranger cannot post changes
+      // Stranger cannot post changes (404 to hide existence)
       const strangerChangeRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/changes`, {
         chs: [createAddToken1(stranger.uid)],
       }, stranger.token);
-      expect(strangerChangeRes.status).toBe(403);
+      expect(strangerChangeRes.status).toBe(404);
 
-      // Stranger cannot consolidate — should get 403
+      // Stranger cannot consolidate (404 to hide existence)
       const strangerRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/consolidate`, {}, stranger.token);
-      expect(strangerRes.status).toBe(403);
-      const errText = await strangerRes.text();
-      expect(errText).toMatch(/not in this adventure/i);
+      expect(strangerRes.status).toBe(404);
 
       // Owner can consolidate
       const ownerRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/consolidate`, {}, owner.token);
