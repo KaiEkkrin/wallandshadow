@@ -21,7 +21,8 @@
   "runArgs": [
     "--shm-size=2g",
     "--userns=keep-id",
-    "--tmpfs=/tmp:rw,exec,mode=1777"
+    "--tmpfs=/tmp:rw,exec,mode=1777",
+    "--env-file=${localWorkspaceFolder}/.devcontainer/.env"
   ],
 
   // With --userns=keep-id the host UID is already mapped to the same UID inside the

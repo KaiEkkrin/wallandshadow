@@ -29,6 +29,7 @@ const All = lazy(() => import('./All'));
 const InvitePage = lazy(() => import('./Invite'));
 const Login = lazy(() => import('./Login'));
 const MapPage = lazy(() => import('./Map'));
+const OidcCallback = lazy(() => import('./OidcCallback'));
 const Shared = lazy(() => import('./Shared'));
 
 function App(props: IFirebaseProps & IRoutingProps & IAnalyticsProps) {
@@ -56,6 +57,7 @@ function App(props: IFirebaseProps & IRoutingProps & IAnalyticsProps) {
                         <Route path="/adventure/:adventureId" element={<AdventurePage />} />
                         <Route path="/adventure/:adventureId/map/:mapId" element={<MapPage />} />
                         <Route path="/invite/:inviteId" element={<InvitePage />} />
+                        <Route path="/auth/callback" element={<OidcCallback />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/shared" element={<Shared />} />
                       </Routes>

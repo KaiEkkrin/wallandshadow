@@ -9,22 +9,25 @@ import {
   index,
   uniqueIndex,
   primaryKey,
+  check,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 // Shorthand: timestamp with time zone
 const tstz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(),
-  providerSub: text('provider_sub').unique().notNull(),
-  email: text('email').notNull(),
+  providerSub: text('provider_sub'),                       // OIDC 'sub' claim — NULL for local users
+  email: text('email'),                                     // Required for local users, cached for OIDC
   name: text('name').notNull(),
   level: text('level').notNull().default('standard'),
-  // Temporary Phase 1 auth — replaced by OIDC in Phase 2
-  passwordHash: text('password_hash'),
+  passwordHash: text('password_hash'),                      // Local auth only — NULL for OIDC users
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
-  uniqueIndex('users_email_idx').on(t.email),
+  uniqueIndex('users_provider_sub_idx').on(t.providerSub).where(sql`provider_sub IS NOT NULL`),
+  uniqueIndex('users_email_idx').on(t.email).where(sql`email IS NOT NULL`),
+  check('users_identity_check', sql`provider_sub IS NOT NULL OR email IS NOT NULL`),
 ]);
 
 export const adventures = pgTable('adventures', {

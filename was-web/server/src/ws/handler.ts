@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
-import { verifyJwt } from '../auth/jwt.js';
+import { resolveTokenToUid } from '../auth/resolveToken.js';
 import { db } from '../db/connection.js';
 import { maps } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -35,7 +35,7 @@ export function createUpgradeHandler(wss: WebSocketServer, rooms: MapRoomManager
 
       let uid: string;
       try {
-        ({ uid } = await verifyJwt(token));
+        uid = await resolveTokenToUid(token);
       } catch {
         socket.destroy();
         return;

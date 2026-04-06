@@ -45,6 +45,11 @@ export default defineConfig({
     // Navigation timeout (matching pageNavigationTimeout from main.test.ts:60)
     navigationTimeout: 15000,
     actionTimeout: 10000,
+
+    // Bypass CSP to prevent interference with OIDC callback redirects.
+    // React Router's client navigation interceptor tries to prefetch the callback URL,
+    // which fails under strict CSP and consumes the single-use authorization code.
+    bypassCSP: true,
   },
 
   // Browser/device projects (matching the 8 configs from main.test.ts:44-53)
@@ -71,6 +76,7 @@ export default defineConfig({
             '--use-angle=swiftshader-webgl', // Use SwiftShader software rendering for WebGL
             '--enable-gpu',            // Enable GPU hardware acceleration
             '--ignore-gpu-blocklist',  // Bypass GPU blocklist
+            '--disable-features=SpeculationRules', // Prevent speculative prefetch consuming OAuth codes
           ],
         },
       },
@@ -85,6 +91,7 @@ export default defineConfig({
             '--use-angle=swiftshader-webgl', // Use SwiftShader software rendering for WebGL
             '--enable-gpu',            // Enable GPU hardware acceleration
             '--ignore-gpu-blocklist',  // Bypass GPU blocklist
+            '--disable-features=SpeculationRules', // Prevent speculative prefetch consuming OAuth codes
           ],
         },
       },
@@ -99,6 +106,7 @@ export default defineConfig({
             '--use-angle=swiftshader-webgl', // Use SwiftShader software rendering for WebGL
             '--enable-gpu',            // Enable GPU hardware acceleration
             '--ignore-gpu-blocklist',  // Bypass GPU blocklist
+            '--disable-features=SpeculationRules', // Prevent speculative prefetch consuming OAuth codes
           ],
         },
       },
@@ -114,6 +122,7 @@ export default defineConfig({
             '--use-angle=swiftshader-webgl', // Use SwiftShader software rendering for WebGL
             '--enable-gpu',            // Enable GPU hardware acceleration
             '--ignore-gpu-blocklist',  // Bypass GPU blocklist
+            '--disable-features=SpeculationRules', // Prevent speculative prefetch consuming OAuth codes
           ],
         },
       },
@@ -129,6 +138,7 @@ export default defineConfig({
             '--use-angle=swiftshader-webgl', // Use SwiftShader software rendering for WebGL
             '--enable-gpu',            // Enable GPU hardware acceleration
             '--ignore-gpu-blocklist',  // Bypass GPU blocklist
+            '--disable-features=SpeculationRules', // Prevent speculative prefetch consuming OAuth codes
           ],
         },
       },

@@ -55,7 +55,12 @@ authRoutes.patch('/me', authMiddleware, async (c) => {
   return c.json({ uid, name });
 });
 
+// ── Local auth (disabled when AUTH_MODE=oidc) ───────────────────────────────
+
 authRoutes.post('/register', async (c) => {
+  if (process.env.AUTH_MODE === 'oidc') {
+    return c.json({ error: 'Local registration is disabled' }, 403);
+  }
   const body = await c.req.json<{ email?: string; password?: string; name?: string }>();
   const { email: rawEmail, password, name } = body;
 
@@ -76,12 +81,10 @@ authRoutes.post('/register', async (c) => {
   }
 
   const id = uuidv7();
-  const providerSub = `local:${id}`;
   const passwordHash = await hashPassword(password);
 
   await db.insert(users).values({
     id,
-    providerSub,
     email,
     name: name.trim(),
     level: 'standard',
@@ -93,6 +96,9 @@ authRoutes.post('/register', async (c) => {
 });
 
 authRoutes.post('/login', async (c) => {
+  if (process.env.AUTH_MODE === 'oidc') {
+    return c.json({ error: 'Local login is disabled' }, 403);
+  }
   const body = await c.req.json<{ email?: string; password?: string }>();
   const { email: rawEmail, password } = body;
 

@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory';
-import { verifyJwt } from './jwt.js';
+import { resolveTokenToUid } from './resolveToken.js';
 
 export type AuthVariables = {
   uid: string;
@@ -12,7 +12,7 @@ export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(asy
   }
   const token = authHeader.slice(7);
   try {
-    const { uid } = await verifyJwt(token);
+    const uid = await resolveTokenToUid(token);
     c.set('uid', uid);
     return next();
   } catch {

@@ -434,7 +434,7 @@ export class HonoDataService implements IDataService {
     ]);
     return {
       name: me.name,
-      email: me.email,
+      email: me.email ?? '',
       level: me.level,
       adventures: adventures.map(adventureRowToSummary),
       latestMaps: readLatestMaps(this.uid),

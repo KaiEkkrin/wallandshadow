@@ -10,6 +10,7 @@ import { StatusContext } from './components/StatusContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 
 import { IUser } from '@wallandshadow/shared';
+import { isOidcEnabled, startOidcLogin } from './services/oidcAuth';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
@@ -20,6 +21,9 @@ import Tabs from 'react-bootstrap/Tabs';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getPostLoginPath } from './utils/loginRedirect';
 import { v7 as uuidv7 } from 'uuid';
+
+const oidcEnabled = isOidcEnabled();
+const oidcOnly = import.meta.env.VITE_AUTH_MODE === 'oidc';
 
 interface ILoginMessageProps {
   isVisible: boolean;
@@ -36,11 +40,11 @@ interface INewUserFormProps {
   handleClose: () => void;
   handleSignIn: (email: string, password: string) => void;
   handleSignUp: (displayName: string, email: string, password: string) => void;
-  handleGoogleSignUp: (displayName: string) => void;
-  handleGoogleSignIn: () => void;
+  handleExternalSignUp: (displayName: string) => void;
+  handleExternalSignIn: () => void;
 }
 
-function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, handleSignUp, handleGoogleSignUp, handleGoogleSignIn }: INewUserFormProps) {
+function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, handleSignUp, handleExternalSignUp, handleExternalSignIn }: INewUserFormProps) {
   const { auth } = useContext(FirebaseContext);
   const { logError } = useContext(AnalyticsContext);
 
@@ -50,7 +54,7 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordResetTarget, setPasswordResetTarget] = useState<string | undefined>(undefined);
-  const [authMethod, setAuthMethod] = useState<'email' | 'google'>('email');
+  const [authMethod, setAuthMethod] = useState<'email' | 'external'>('email');
 
   // reset the password fields, auth method, and tab when the shown status changes
   useEffect(() => {
@@ -64,12 +68,13 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
   }, [shown, initialTab]);
 
   const signInDisabled = useMemo(() => {
-    // For Google auth, only require display name for new users
-    if (authMethod === 'google') {
-      if (key === 'new') {
-        return displayName.length === 0;
-      }
-      return false; // Existing users with Google don't need anything pre-filled
+    // For external auth (OIDC redirect), no local fields to validate —
+    // the provider handles display name and credentials
+    if (authMethod === 'external') {
+      if (oidcEnabled) return false;
+      // Firebase Google flow: require display name for new users
+      if (key === 'new') return displayName.length === 0;
+      return false;
     }
 
     // For email/password auth, validate email and password
@@ -87,11 +92,11 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
   const signInText = useMemo(() => key === 'new' ? 'Sign up' : 'Sign in', [key]);
 
   const handleSave = useCallback(() => {
-    if (authMethod === 'google') {
+    if (authMethod === 'external') {
       if (key === 'new') {
-        handleGoogleSignUp(displayName);
+        handleExternalSignUp(displayName);
       } else {
-        handleGoogleSignIn();
+        handleExternalSignIn();
       }
     } else {
       if (key === 'new') {
@@ -100,7 +105,7 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
         handleSignIn(email, password);
       }
     }
-  }, [authMethod, displayName, email, key, password, handleSignIn, handleSignUp, handleGoogleSignUp, handleGoogleSignIn]);
+  }, [authMethod, displayName, email, key, password, handleSignIn, handleSignUp, handleExternalSignUp, handleExternalSignIn]);
 
   // The password reset helpers
   const handleResetPassword = useCallback(() => {
@@ -134,6 +139,9 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
     }
   }, [email, handleResetPassword, passwordResetTarget]);
 
+  // Label for the external auth radio button
+  const externalLabel = oidcEnabled ? 'External provider' : 'Google account';
+
   return (
     <Modal show={shown} onHide={handleClose}>
       <Modal.Header closeButton>
@@ -143,14 +151,6 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
         <Tabs activeKey={key} onSelect={k => setKey((k as "new" | "existing") ?? "new")} id="signIn">
           <Tab eventKey="new" title="New user">
             <Form>
-              <Form.Group>
-                <Form.Label htmlFor="nameInput">Display name</Form.Label>
-                <Form.Control id="nameInput" type="text" value={displayName}
-                  onChange={e => setDisplayName(e.target.value)} />
-                <Form.Text className="text-muted">
-                  This is the name that will be shown to other users of Wall &amp; Shadow.
-                </Form.Text>
-              </Form.Group>
               <Form.Group>
                 <Form.Label>Authentication method</Form.Label>
                 <Form.Check
@@ -163,15 +163,23 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
                 />
                 <Form.Check
                   type="radio"
-                  id="newUserGoogleRadio"
+                  id="newUserExternalRadio"
                   name="newUserAuthMethod"
-                  label="Google account"
-                  checked={authMethod === 'google'}
-                  onChange={() => setAuthMethod('google')}
+                  label={externalLabel}
+                  checked={authMethod === 'external'}
+                  onChange={() => setAuthMethod('external')}
                 />
               </Form.Group>
               {authMethod === 'email' && (
                 <>
+                  <Form.Group>
+                    <Form.Label htmlFor="nameInput">Display name</Form.Label>
+                    <Form.Control id="nameInput" type="text" value={displayName}
+                      onChange={e => setDisplayName(e.target.value)} />
+                    <Form.Text className="text-muted">
+                      This is the name that will be shown to other users of Wall &amp; Shadow.
+                    </Form.Text>
+                  </Form.Group>
                   <Form.Group>
                     <Form.Label htmlFor="newEmailInput">Email address</Form.Label>
                     <Form.Control id="newEmailInput" type="text" value={email}
@@ -211,11 +219,11 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
                 />
                 <Form.Check
                   type="radio"
-                  id="existingUserGoogleRadio"
+                  id="existingUserExternalRadio"
                   name="existingUserAuthMethod"
-                  label="Google account"
-                  checked={authMethod === 'google'}
-                  onChange={() => setAuthMethod('google')}
+                  label={externalLabel}
+                  checked={authMethod === 'external'}
+                  onChange={() => setAuthMethod('external')}
                 />
               </Form.Group>
               {authMethod === 'email' && (
@@ -325,17 +333,17 @@ function Login() {
       .catch(handleLoginError);
   }, [auth, finishLogin, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
 
-  const handleGoogleSignUp = useCallback((displayName: string) => {
+  const handleExternalSignUp = useCallback((displayName: string) => {
     setShowEmailForm(false);
     setLoginFailedVisible(false);
-    if (googleAuthProvider !== undefined) {
-      // Register the display name before the popup opens so that the profile context
-      // can apply it when the auth state change fires (which happens before our .then()
-      // callback runs, so we can't rely on calling expectNewUser inside .then()).
+    if (oidcEnabled) {
+      // OIDC redirect flow — display name is set by the provider
+      startOidcLogin().catch(handleLoginError);
+    } else if (googleAuthProvider !== undefined) {
+      // Firebase Google popup flow
       expectGoogleSignup?.(displayName);
       auth?.signInWithPopup(googleAuthProvider)
         .then(async (user) => {
-          // Also update the Firebase Auth profile so the display name is consistent
           if (user && displayName) {
             await user.updateProfile({ displayName });
           }
@@ -347,10 +355,14 @@ function Login() {
     }
   }, [auth, expectGoogleSignup, googleAuthProvider, finishLogin, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
 
-  const handleGoogleSignIn = useCallback(() => {
+  const handleExternalSignIn = useCallback(() => {
     setShowEmailForm(false);
     setLoginFailedVisible(false);
-    if (googleAuthProvider !== undefined) {
+    if (oidcEnabled) {
+      // OIDC redirect flow
+      startOidcLogin().catch(handleLoginError);
+    } else if (googleAuthProvider !== undefined) {
+      // Firebase Google popup flow
       auth?.signInWithPopup(googleAuthProvider)
         .then(handleLoginResult)
         .then(finishLogin)
@@ -359,14 +371,38 @@ function Login() {
   }, [finishLogin, auth, googleAuthProvider, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
 
   const handleSignUpClick = useCallback(() => {
-    setInitialTab("new");
-    setShowEmailForm(true);
-  }, []);
+    if (oidcOnly) {
+      startOidcLogin().catch(handleLoginError);
+    } else {
+      setInitialTab("new");
+      setShowEmailForm(true);
+    }
+  }, [handleLoginError]);
 
   const handleLoginClick = useCallback(() => {
-    setInitialTab("existing");
-    setShowEmailForm(true);
-  }, []);
+    if (oidcOnly) {
+      startOidcLogin().catch(handleLoginError);
+    } else {
+      setInitialTab("existing");
+      setShowEmailForm(true);
+    }
+  }, [handleLoginError]);
+
+  // In OIDC-only mode, show a single sign-in button
+  if (oidcOnly) {
+    return (
+      <div>
+        <Navigation />
+        <header className="App-header">
+          <div className="App-login-text">
+            Sign in to get started with Wall &amp; Shadow.
+          </div>
+          <Button onClick={handleSignUpClick}>Sign in</Button>
+          <LoginFailedMessage isVisible={loginFailedVisible} text={loginFailedText} />
+        </header>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -382,8 +418,8 @@ function Login() {
       <EmailPasswordModal shown={showEmailForm} initialTab={initialTab} handleClose={handleEmailFormClose}
         handleSignIn={handleEmailFormSignIn}
         handleSignUp={handleEmailFormSignUp}
-        handleGoogleSignUp={handleGoogleSignUp}
-        handleGoogleSignIn={handleGoogleSignIn} />
+        handleExternalSignUp={handleExternalSignUp}
+        handleExternalSignIn={handleExternalSignIn} />
     </div>
   );
 }

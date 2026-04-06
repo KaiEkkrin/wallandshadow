@@ -45,7 +45,7 @@ function HonoContextProvider(props: IContextProviderProps) {
   return (
     <FirebaseContext.Provider value={{ auth }}>
       <UserContext.Provider value={userContext}>
-        <SignInMethodsContext.Provider value={{ signInMethods: ['password'] }}>
+        <SignInMethodsContext.Provider value={{ signInMethods: auth.oidcEnabled ? ['password', 'oidc'] : ['password'] }}>
           {props.children}
         </SignInMethodsContext.Provider>
       </UserContext.Provider>
