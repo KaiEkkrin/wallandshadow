@@ -14,10 +14,11 @@ if pgrep -x minio > /dev/null 2>&1; then
     echo "🪣 MinIO already running"
 else
     echo "🪣 Starting MinIO..."
-    MINIO_ROOT_USER=wasdev MINIO_ROOT_PASSWORD=wasdevpass \
+    nohup env MINIO_ROOT_USER=wasdev MINIO_ROOT_PASSWORD=wasdevpass \
         minio server "$MINIO_DATA" \
         --address 0.0.0.0:9000 --console-address 0.0.0.0:9001 \
         > "$MINIO_DATA/minio.log" 2>&1 &
+    disown
 
     # Wait for MinIO to be ready, then configure mc alias and ensure bucket exists
     for i in $(seq 1 10); do
