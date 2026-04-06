@@ -325,7 +325,15 @@ export class HonoDataService implements IDataService {
         return undefined;
       }
 
-      case 'images':
+      case 'images': {
+        try {
+          const response = await this.api.getImages();
+          return { images: response.images.map(r => ({ name: r.name, path: r.path })), lastError: '' } as T;
+        } catch {
+          return undefined;
+        }
+      }
+
       case 'version':
       case 'mapChanges':
         return undefined;

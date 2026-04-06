@@ -32,7 +32,7 @@ function ImageCollectionItem({ image, style }: IImageCollectionItemProps) {
 
   return (
     <div style={style}>
-      <img className="App-image-collection-image" src={url} alt={image.name} />
+      {url && <img className="App-image-collection-image" src={url} alt={image.name} />}
       <p>{image.name}</p>
     </div>
   );

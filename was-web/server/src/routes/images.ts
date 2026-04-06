@@ -42,8 +42,13 @@ imageRoutes.post('/images', async (c) => {
   const name = typeof body['name'] === 'string' && body['name']
     ? body['name']
     : (file.name || 'untitled');
-  const result = await addImage(db, storage, uid, name, file.type, file);
-  return c.json(result, 201);
+  try {
+    const result = await addImage(db, storage, uid, name, file.type, file);
+    return c.json(result, 201);
+  } catch (e) {
+    logger.logError(`Failed to add image for user ${uid}`, e);
+    throw e;
+  }
 });
 
 // DELETE /images/:path — path may contain slashes, use wildcard

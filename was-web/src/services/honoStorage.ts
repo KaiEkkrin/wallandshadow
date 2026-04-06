@@ -35,8 +35,8 @@ class HonoStorageReference implements IStorageReference {
     return url;
   }
 
-  async put(file: Blob, _metadata: { contentType?: string; customMetadata?: Record<string, string> }): Promise<void> {
-    await this.api.uploadImage(file);
+  async put(file: Blob, metadata: { contentType?: string; customMetadata?: Record<string, string> }): Promise<void> {
+    await this.api.uploadImage(file, metadata?.customMetadata?.originalName);
   }
 
   async upload(_source: string, _metadata: { contentType: string }): Promise<void> {

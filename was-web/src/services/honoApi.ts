@@ -271,7 +271,10 @@ export class HonoApiClient {
   }
 
   deleteImage(path: string): Promise<void> {
-    return this.request('DELETE', `/api/images/${path}`);
+    // Storage paths are "images/{uid}/{id}" but the route is /api/images/*
+    // so strip the leading "images/" to avoid doubling it
+    const relativePath = path.replace(/^images\//, '');
+    return this.request('DELETE', `/api/images/${relativePath}`);
   }
 
   // ── Spritesheets ──────────────────────────────────────────────────────────
