@@ -170,8 +170,8 @@ export async function createNewMap(
   page: Page,
   name: string, description: string, type: string, adventureId?: string | undefined, ffa?: boolean | undefined
 ) {
-  // This tends to disappear off the bottom on phones
-  const newMap = await page.waitForSelector('text="New map"');
+  // Use a locator (not waitForSelector) to avoid stale ElementHandle after React re-renders
+  const newMap = page.locator('text="New map"');
   await newMap.scrollIntoViewIfNeeded();
   await newMap.click();
 
