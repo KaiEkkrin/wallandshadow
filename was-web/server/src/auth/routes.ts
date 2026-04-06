@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { emailIsValid, passwordIsValid } from '@wallandshadow/shared';
 import { db } from '../db/connection.js';
-import { users } from '../db/schema.js';
+import { users, adventurePlayers } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { hashPassword, verifyPassword } from './password.js';
@@ -31,6 +31,28 @@ authRoutes.get('/me', authMiddleware, async (c) => {
     name: user.name,
     level: user.level,
   });
+});
+
+// ── Update current user profile ─────────────────────────────────────────────
+
+authRoutes.patch('/me', authMiddleware, async (c) => {
+  const uid = c.get('uid');
+  const body = await c.req.json<{ name?: string }>();
+
+  if (!body.name || body.name.trim().length === 0) {
+    return c.json({ error: 'Name is required' }, 400);
+  }
+
+  const name = body.name.trim();
+
+  // Update the user's name
+  await db.update(users).set({ name }).where(eq(users.id, uid));
+
+  // Propagate to player records
+  await db.update(adventurePlayers).set({ playerName: name })
+    .where(eq(adventurePlayers.userId, uid));
+
+  return c.json({ uid, name });
 });
 
 authRoutes.post('/register', async (c) => {

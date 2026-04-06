@@ -353,6 +353,9 @@ export class HonoDataService implements IDataService {
         if (c.latestMaps !== undefined) {
           writeLatestMaps(this.uid, c.latestMaps);
         }
+        if (c.name !== undefined) {
+          await this.api.updateMe(c.name);
+        }
         return;
       }
 

@@ -1,10 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Playwright configuration for Wall & Shadow` e2e tests.
+ * Playwright configuration for Wall & Shadow e2e tests.
  *
- * Tests run against Firebase emulators and the React dev server.
- * Tests are executed serially (workers: 1) to avoid Firebase emulator race conditions.
+ * Tests run against the Hono REST API server and the Vite dev server.
+ * Tests are executed serially (workers: 1) to avoid database race conditions.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -20,7 +20,7 @@ export default defineConfig({
   fullyParallel: false, // Run tests serially to avoid Firebase emulator conflicts
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: 1, // Single worker to prevent emulator race conditions
+  workers: 1, // Single worker to prevent database race conditions
 
   // Reporter configuration
   reporter: [

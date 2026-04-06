@@ -151,6 +151,10 @@ export class HonoApiClient {
     return this.request('GET', '/api/auth/me');
   }
 
+  updateMe(name: string): Promise<{ uid: string; name: string }> {
+    return this.request('PATCH', '/api/auth/me', { name });
+  }
+
   // ── Adventures ────────────────────────────────────────────────────────────
 
   getAdventures(): Promise<AdventureRow[]> {

@@ -121,6 +121,12 @@ yarn test:server
 
 # End-to-end tests (requires dev server running)
 yarn test:e2e
+
+# E2E in interactive UI mode (opens at http://localhost:8444)
+yarn test:e2e:ui
+
+# Run a single test on a single browser
+yarn test:e2e --project chromium-desktop --grep "create account"
 ```
 
 To run server tests with lint and type-check, from `was-web/server/`:
