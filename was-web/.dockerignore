@@ -1,0 +1,43 @@
+# Dependencies (reinstalled in Docker build)
+**/node_modules
+
+# Build output (rebuilt in Docker)
+build/
+server/dist/
+
+# Git
+.git
+.gitignore
+
+# Tests
+e2e/
+unit/
+server/src/__tests__/
+**/*.test.ts
+**/test-results
+
+# Firebase (not used in new stack)
+functions/src/
+functions/lib/
+functions/node_modules/
+firebase-admin-credentials.json
+firebase-debug.log*
+firestore-debug.log*
+firestore.rules
+firestore.indexes.json
+storage.rules
+firebase.json
+firebase.test.json
+.firebaserc
+.firebase/
+
+# Dev container and environment
+.devcontainer/
+.env
+.env.*
+
+# IDE
+.vscode/
+
+# Docs
+*.md

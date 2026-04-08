@@ -1,0 +1,16 @@
+# =============================================================================
+# Ansible inventory — Wall & Shadow VPS
+# =============================================================================
+# Set the VPS IP via environment variable or edit the default below.
+#
+# Usage:
+#   VPS_IP=1.2.3.4 ansible-playbook playbook.yml -i inventory.yml
+#   ansible-playbook playbook.yml -i inventory.yml -e "vps_ip=1.2.3.4"
+# =============================================================================
+
+all:
+  hosts:
+    vps:
+      ansible_host: "{{ vps_ip | default(lookup('env', 'VPS_IP') | default('CONFIGURE_VPS_IP', true)) }}"
+      ansible_user: root
+      ansible_python_interpreter: /usr/bin/python3

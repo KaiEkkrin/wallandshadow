@@ -7,6 +7,10 @@ import packageJson from './package.json';
 
 // Get Git commit hash (first 8 characters)
 const getGitCommitHash = (): string => {
+  // Docker builds pass the hash as a build arg (no .git directory in the image)
+  if (process.env.GIT_COMMIT) {
+    return process.env.GIT_COMMIT.substring(0, 8);
+  }
   try {
     const fullHash = execSync('git rev-parse HEAD').toString().trim();
     return fullHash.substring(0, 8);

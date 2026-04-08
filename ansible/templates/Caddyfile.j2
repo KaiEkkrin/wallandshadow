@@ -1,0 +1,33 @@
+# =============================================================================
+# Caddy reverse proxy — Wall & Shadow
+# =============================================================================
+# Managed by Ansible. Do not edit directly on the VPS.
+# Source: ansible/templates/Caddyfile.j2
+#
+# Routes by hostname to the correct application container.
+# Each container serves its own static files (SPA + API + WebSocket).
+# Caddy handles TLS termination via Let's Encrypt (automatic).
+# =============================================================================
+
+{{ domain_prod }} {
+    reverse_proxy localhost:{{ app_port_prod }}
+
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
+
+{{ domain_test }} {
+    reverse_proxy localhost:{{ app_port_test }}
+
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-Robots-Tag "noindex, nofollow"
+    }
+}

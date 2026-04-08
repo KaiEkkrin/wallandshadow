@@ -1,0 +1,63 @@
+# =============================================================================
+# Kamal deployment configuration — Wall & Shadow
+# =============================================================================
+# Deploys the Hono server + React SPA as a single Docker container.
+# Two destinations: production and test (see deploy.production.yml, deploy.test.yml).
+#
+# Usage:
+#   kamal deploy -d test          # deploy to test environment
+#   kamal deploy -d production    # deploy to production
+#   kamal rollback -d production  # roll back production
+#
+# Prerequisites:
+#   - VPS provisioned and configured via Ansible (see ansible/)
+#   - PostgreSQL and Caddy running natively on the VPS
+#   - Secrets populated in .kamal/secrets (see .kamal/secrets for details)
+#   - Docker image pushed to GHCR (done by CI, or manually: docker push)
+# =============================================================================
+
+service: wallandshadow
+
+image: ghcr.io/KaiEkkrin/wallandshadow
+
+# Build context is was-web/ (contains Dockerfile, server/, packages/shared/, SPA source)
+builder:
+  context: was-web/
+  args:
+    GIT_COMMIT: <%= `git rev-parse --short HEAD`.strip %>
+
+servers:
+  web:
+    hosts:
+      - <%= ENV['VPS_IP'] || 'CONFIGURE_VPS_IP' %>
+    options:
+      # Host networking: containers bind directly to the host port (PORT env var)
+      # so they can reach PostgreSQL on localhost. Caddy reverse-proxies to the port.
+      network: host
+
+# Caddy handles TLS termination and hostname-based routing — disable kamal-proxy.
+proxy: false
+
+registry:
+  server: ghcr.io
+  username: KaiEkkrin
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+env:
+  secret:
+    - DATABASE_URL
+    - JWT_SECRET
+    - S3_ACCESS_KEY
+    - S3_SECRET_KEY
+    - OIDC_ISSUER
+  clear:
+    NODE_ENV: production
+    AUTH_MODE: oidc
+    S3_ENDPOINT: https://fsn1.your-objectstorage.com
+    S3_BUCKET: wallandshadow
+    S3_REGION: eu-central
+
+healthcheck:
+  path: /api/health
+  interval: 10

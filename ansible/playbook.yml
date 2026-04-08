@@ -1,0 +1,275 @@
+# =============================================================================
+# Wall & Shadow — VPS provisioning playbook
+# =============================================================================
+# Configures an Ubuntu Server VPS with all infrastructure services:
+#   - PostgreSQL 17 (native, systemd)
+#   - Caddy reverse proxy (native, systemd)
+#   - Docker (for Kamal-managed application containers)
+#   - ufw firewall
+#   - Unattended security upgrades
+#   - Nightly PostgreSQL backup to S3
+#   - Auto-generated secrets (passwords, JWT key)
+#
+# Usage:
+#   ansible-playbook playbook.yml -i inventory.yml
+#
+# After first run, copy the displayed secrets to GitHub Secrets.
+# See docs/CD_SETUP_CHECKLIST.md for the full setup checklist.
+# =============================================================================
+
+- name: Provision Wall & Shadow VPS
+  hosts: vps
+  become: true
+  vars_files:
+    - vars/main.yml
+
+  tasks:
+    # ── System packages ─────────────────────────────────────────────────────
+
+    - name: Install prerequisite packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - python3-psycopg2   # Required for Ansible PostgreSQL modules
+          - unattended-upgrades
+          - ufw
+        state: present
+        update_cache: true
+
+    # ── PostgreSQL apt repository ───────────────────────────────────────────
+
+    - name: Add PostgreSQL apt signing key
+      ansible.builtin.apt_key:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        state: present
+
+    - name: Add PostgreSQL apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+        state: present
+
+    - name: Install PostgreSQL {{ pg_version }}
+      ansible.builtin.apt:
+        name: "postgresql-{{ pg_version }}"
+        state: present
+        update_cache: true
+
+    # ── Caddy ───────────────────────────────────────────────────────────────
+
+    - name: Add Caddy apt signing key
+      ansible.builtin.apt_key:
+        url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+        state: present
+
+    - name: Add Caddy apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main"
+        state: present
+
+    - name: Install Caddy
+      ansible.builtin.apt:
+        name: caddy
+        state: present
+        update_cache: true
+
+    # ── Docker ──────────────────────────────────────────────────────────────
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+
+    - name: Enable Docker service
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    # ── AWS CLI (for S3 backups) ────────────────────────────────────────────
+
+    - name: Install AWS CLI
+      ansible.builtin.apt:
+        name: awscli
+        state: present
+
+    # ── Firewall ────────────────────────────────────────────────────────────
+
+    - name: Allow SSH through firewall
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+
+    - name: Allow HTTP through firewall
+      community.general.ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+
+    - name: Allow HTTPS through firewall
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+
+    - name: Enable firewall (deny all other incoming)
+      community.general.ufw:
+        state: enabled
+        default: deny
+        direction: incoming
+
+    - name: Allow all outgoing traffic
+      community.general.ufw:
+        default: allow
+        direction: outgoing
+
+    # ── SSH hardening ───────────────────────────────────────────────────────
+
+    - name: Disable SSH password authentication
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PasswordAuthentication"
+        line: "PasswordAuthentication no"
+      notify: Restart sshd
+
+    # ── Secret generation ───────────────────────────────────────────────────
+    # Secrets are generated on first run and cached locally in ansible/secrets/
+    # (gitignored). Subsequent runs reuse the cached values.
+
+    - name: Generate PostgreSQL password
+      ansible.builtin.set_fact:
+        pg_password: "{{ lookup('ansible.builtin.password', 'secrets/pg_password length=32 chars=ascii_letters,digits') }}"
+
+    - name: Generate JWT secret
+      ansible.builtin.set_fact:
+        jwt_secret: "{{ lookup('ansible.builtin.password', 'secrets/jwt_secret length=48 chars=ascii_letters,digits') }}"
+
+    # ── Secrets file on VPS ─────────────────────────────────────────────────
+
+    - name: Create secrets directory
+      ansible.builtin.file:
+        path: "{{ secrets_dir }}"
+        state: directory
+        mode: "0700"
+        owner: root
+        group: root
+
+    - name: Write secrets file
+      ansible.builtin.template:
+        src: templates/secrets.env.j2
+        dest: "{{ secrets_file }}"
+        mode: "0600"
+        owner: root
+        group: root
+
+    # ── PostgreSQL configuration ────────────────────────────────────────────
+
+    - name: Create PostgreSQL role
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: "{{ pg_user }}"
+        password: "{{ pg_password }}"
+        role_attr_flags: CREATEDB
+
+    - name: Create production database
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: "{{ pg_db_prod }}"
+        owner: "{{ pg_user }}"
+
+    - name: Create test database
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: "{{ pg_db_test }}"
+        owner: "{{ pg_user }}"
+
+    - name: Deploy pg_hba.conf
+      ansible.builtin.template:
+        src: templates/pg_hba.conf.j2
+        dest: "/etc/postgresql/{{ pg_version }}/main/pg_hba.conf"
+        owner: postgres
+        group: postgres
+        mode: "0640"
+      notify: Restart PostgreSQL
+
+    # ── Caddy configuration ─────────────────────────────────────────────────
+
+    - name: Deploy Caddyfile
+      ansible.builtin.template:
+        src: templates/Caddyfile.j2
+        dest: /etc/caddy/Caddyfile
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload Caddy
+
+    - name: Enable Caddy service
+      ansible.builtin.systemd:
+        name: caddy
+        enabled: true
+        state: started
+
+    # ── Unattended upgrades ─────────────────────────────────────────────────
+
+    - name: Enable unattended upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+        mode: "0644"
+
+    # ── Backup cron ─────────────────────────────────────────────────────────
+
+    - name: Deploy backup script
+      ansible.builtin.template:
+        src: templates/pg_backup.sh.j2
+        dest: /usr/local/bin/pg_backup.sh
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Schedule nightly backup
+      ansible.builtin.cron:
+        name: "PostgreSQL backup to S3"
+        hour: "{{ backup_hour }}"
+        minute: "{{ backup_minute }}"
+        job: "/usr/local/bin/pg_backup.sh >> /var/log/pg_backup.log 2>&1"
+        user: root
+
+    # ── Display generated secrets ───────────────────────────────────────────
+    # Copy these to GitHub Secrets after first run.
+
+    - name: Display generated secrets
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║  GENERATED SECRETS — copy these to GitHub Secrets              ║
+          ╚══════════════════════════════════════════════════════════════════╝
+
+          JWT_SECRET={{ jwt_secret }}
+          DATABASE_URL_PROD=postgresql://{{ pg_user }}:{{ pg_password }}@localhost:5432/{{ pg_db_prod }}
+          DATABASE_URL_TEST=postgresql://{{ pg_user }}:{{ pg_password }}@localhost:5432/{{ pg_db_test }}
+
+          These values are also stored on the VPS at {{ secrets_file }}
+
+  # ── Handlers ──────────────────────────────────────────────────────────────
+
+  handlers:
+    - name: Restart sshd
+      ansible.builtin.systemd:
+        name: sshd
+        state: restarted
+
+    - name: Restart PostgreSQL
+      ansible.builtin.systemd:
+        name: postgresql
+        state: restarted
+
+    - name: Reload Caddy
+      ansible.builtin.systemd:
+        name: caddy
+        state: reloaded

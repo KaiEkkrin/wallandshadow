@@ -1,0 +1,28 @@
+#!/bin/bash
+# =============================================================================
+# Wall & Shadow — PostgreSQL backup to S3
+# =============================================================================
+# Managed by Ansible. Do not edit directly on the VPS.
+# Source: ansible/templates/pg_backup.sh.j2
+#
+# Dumps the production database and uploads to S3-compatible object storage.
+# Run nightly via cron. Keeps date-stamped backups (lifecycle/cleanup is
+# configured on the bucket side).
+# =============================================================================
+
+set -euo pipefail
+
+BACKUP_FILE="/tmp/wallandshadow-$(date +%Y%m%d-%H%M%S).sql.gz"
+
+# Dump production database (uses peer auth via local socket as postgres user)
+sudo -u postgres pg_dump {{ pg_db_prod }} | gzip > "$BACKUP_FILE"
+
+# Upload to S3
+aws s3 cp "$BACKUP_FILE" \
+  "s3://{{ backup_s3_bucket }}/db/$(basename "$BACKUP_FILE")" \
+  --endpoint-url "{{ backup_s3_endpoint }}"
+
+# Clean up local file
+rm -f "$BACKUP_FILE"
+
+echo "Backup complete: $(basename "$BACKUP_FILE")"

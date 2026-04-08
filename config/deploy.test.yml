@@ -1,0 +1,12 @@
+# Kamal destination: test
+# Usage: kamal deploy -d test
+#
+# Caddy routes test.wallandshadow.com → localhost:3002
+
+env:
+  clear:
+    PORT: "3002"
+
+builder:
+  args:
+    VITE_DEPLOY_ENV: test

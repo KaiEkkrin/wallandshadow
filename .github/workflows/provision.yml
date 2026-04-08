@@ -1,0 +1,44 @@
+# =============================================================================
+# Provision VPS via Ansible
+# =============================================================================
+# Manual trigger only — infrastructure changes are intentional.
+# Configures the VPS with PostgreSQL, Caddy, Docker, firewall, backups, etc.
+#
+# Prerequisites (GitHub Secrets):
+#   SSH_PRIVATE_KEY  — SSH key for VPS access
+#   VPS_IP           — Hetzner VPS public IPv4 address
+#
+# After first run: copy the generated secrets from the workflow output to
+# GitHub Secrets. See docs/CD_SETUP_CHECKLIST.md section 16.
+# =============================================================================
+
+name: Provision VPS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
+
+      - name: Run Ansible playbook
+        working-directory: ansible
+        env:
+          VPS_IP: ${{ secrets.VPS_IP }}
+        run: ansible-playbook playbook.yml -i inventory.yml
