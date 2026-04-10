@@ -12,6 +12,7 @@
 #   S3_ACCESS_KEY        — Hetzner Object Storage access key
 #   S3_SECRET_KEY        — Hetzner Object Storage secret key
 #   OIDC_ISSUER          — Zitadel OIDC issuer URL
+#   OIDC_CLIENT_ID       — Zitadel OIDC client ID (audience for token validation)
 #   KAMAL_REGISTRY_PASSWORD — GHCR token (or use GITHUB_TOKEN)
 # =============================================================================
 
@@ -94,5 +95,6 @@ jobs:
           S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
           S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
           OIDC_ISSUER: ${{ secrets.OIDC_ISSUER }}
+          OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: kamal deploy -d test --version ${{ github.sha }}

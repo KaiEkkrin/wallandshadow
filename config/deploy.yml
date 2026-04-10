@@ -51,6 +51,7 @@ env:
     - S3_ACCESS_KEY
     - S3_SECRET_KEY
     - OIDC_ISSUER
+    - OIDC_CLIENT_ID
   clear:
     NODE_ENV: production
     AUTH_MODE: oidc

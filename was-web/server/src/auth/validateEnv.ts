@@ -21,6 +21,10 @@ export function validateAuthEnv(): void {
     errors.push('OIDC_ISSUER is required in production when AUTH_MODE=oidc');
   }
 
+  if (!process.env.OIDC_CLIENT_ID) {
+    errors.push('OIDC_CLIENT_ID is required in production when AUTH_MODE=oidc');
+  }
+
   if (errors.length > 0) {
     throw new Error(`Auth configuration errors:\n  - ${errors.join('\n  - ')}`);
   }

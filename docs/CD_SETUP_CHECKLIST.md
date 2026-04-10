@@ -144,7 +144,7 @@ destinations: `kamal deploy -d production` and `kamal deploy -d test`.
   - [ ] `proxy` configuration (health check path `/api/health`)
   - [ ] `env.secret` list (values come from `.kamal/secrets` — see section 16):
         `DATABASE_URL`, `JWT_SECRET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`,
-        `OIDC_ISSUER`
+        `OIDC_ISSUER`, `OIDC_CLIENT_ID`
   - [ ] `env.clear` for non-secret env vars: `S3_ENDPOINT`, `S3_BUCKET`,
         `S3_REGION`, `NODE_ENV=production`, `AUTH_MODE=oidc`, `PORT`
   - [ ] `accessories` for OIDC provider (if containerised)
@@ -181,7 +181,7 @@ is a separate manual trigger (or auto after test passes).
 - [ ] GitHub Secrets are already populated (section 16) — verify the deploy
       workflow can read: `SSH_PRIVATE_KEY`, `DATABASE_URL_PROD`,
       `DATABASE_URL_TEST`, `JWT_SECRET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`,
-      `OIDC_ISSUER`
+      `OIDC_ISSUER`, `OIDC_CLIENT_ID`
 - [ ] Consider a GitHub Environment (`production`) with required reviewers
       for manual approval before deploy
 - [ ] Decide whether to gate deploys on the web app CI passing too
@@ -310,6 +310,7 @@ JWT_SECRET=$JWT_SECRET
 S3_ACCESS_KEY=$S3_ACCESS_KEY
 S3_SECRET_KEY=$S3_SECRET_KEY
 OIDC_ISSUER=$OIDC_ISSUER
+OIDC_CLIENT_ID=$OIDC_CLIENT_ID
 ```
 
 For local Kamal runs, create `.kamal/secrets.local` (gitignored):

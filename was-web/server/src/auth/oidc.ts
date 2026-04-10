@@ -18,13 +18,13 @@ export interface OidcVerifier {
  * Accepts an optional jwks parameter for testing (inject a local key set
  * instead of fetching from a remote URL).
  */
-export function createOidcVerifier(issuer: string, jwks?: JWTVerifyGetKey): OidcVerifier {
+export function createOidcVerifier(issuer: string, audience: string, jwks?: JWTVerifyGetKey): OidcVerifier {
   const keySet = jwks ?? createRemoteJWKSet(new URL(`${issuer}/oauth/v2/keys`));
 
   return {
     issuer,
     async verify(token: string): Promise<OidcClaims> {
-      const { payload } = await jwtVerify(token, keySet, { issuer });
+      const { payload } = await jwtVerify(token, keySet, { issuer, audience });
       if (!payload.sub) {
         throw new Error('OIDC token missing sub claim');
       }
@@ -45,8 +45,10 @@ export function getOidcVerifier(): OidcVerifier | undefined {
   if (_overridden) return _verifier;
   const issuer = process.env.OIDC_ISSUER;
   if (!issuer) return undefined;
+  const audience = process.env.OIDC_CLIENT_ID;
+  if (!audience) return undefined;
   if (!_verifier || _verifier.issuer !== issuer) {
-    _verifier = createOidcVerifier(issuer);
+    _verifier = createOidcVerifier(issuer, audience);
   }
   return _verifier;
 }

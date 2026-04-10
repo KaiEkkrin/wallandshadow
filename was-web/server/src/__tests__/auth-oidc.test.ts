@@ -8,6 +8,7 @@ import { apiGet, registerUser } from './helpers.js';
 import './setup.js';
 
 const TEST_ISSUER = 'https://test-oidc.example.com';
+const TEST_AUDIENCE = 'test-client-id';
 
 let privateKey: CryptoKey;
 let app: ReturnType<typeof createApp>;
@@ -24,7 +25,7 @@ beforeAll(async () => {
   const jwks = createLocalJWKSet({ keys: [pubJwk] });
 
   // Inject the test verifier so the middleware uses our local keys
-  setOidcVerifier(createOidcVerifier(TEST_ISSUER, jwks));
+  setOidcVerifier(createOidcVerifier(TEST_ISSUER, TEST_AUDIENCE, jwks));
 
   app = createApp();
 });
@@ -41,6 +42,7 @@ async function signOidcToken(claims: {
   return new SignJWT({ ...claims })
     .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
     .setIssuer(TEST_ISSUER)
+    .setAudience(TEST_AUDIENCE)
     .setIssuedAt()
     .setExpirationTime('1h')
     .sign(privateKey);
@@ -124,10 +126,24 @@ describe('OIDC authentication', () => {
     expect(res.status).toBe(401);
   });
 
+  test('OIDC token with wrong audience is rejected', async () => {
+    const badToken = await new SignJWT({ sub: 'aud-test-user' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer(TEST_ISSUER)
+      .setAudience('wrong-client-id')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(privateKey);
+
+    const res = await apiGet(app, '/api/auth/me', badToken);
+    expect(res.status).toBe(401);
+  });
+
   test('OIDC token with wrong issuer falls through to local verification (and fails)', async () => {
     const token = await new SignJWT({ sub: 'wrong-issuer-user' })
       .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
       .setIssuer('https://wrong-issuer.example.com')
+      .setAudience(TEST_AUDIENCE)
       .setIssuedAt()
       .setExpirationTime('1h')
       .sign(privateKey);
