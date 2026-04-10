@@ -15,7 +15,8 @@ export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(asy
     const uid = await resolveTokenToUid(token);
     c.set('uid', uid);
     return next();
-  } catch {
+  } catch (e) {
+    console.warn('Auth middleware: token rejected:', e instanceof Error ? e.message : e);
     return c.json({ error: 'Unauthorized' }, 401);
   }
 });
