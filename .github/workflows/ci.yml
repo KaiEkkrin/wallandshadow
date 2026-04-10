@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [legacy-firebase]
   pull_request:
-    branches: [main]
+    branches: [legacy-firebase]
 
 # Least-privilege permissions: only read access to repository contents
 # See: https://docs.github.com/en/actions/security-guides/automatic-token-authentication
