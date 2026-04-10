@@ -31,9 +31,18 @@ mkdir -p "$DEVCONTAINER_DIR/.claude"
 mkdir -p "$HOME/.cache"
 
 # Create symlinks from home directory to workspace
-# Use -f to force in case they already exist from a rebuild
 # Use $HOME instead of /home/node for Podman rootless compatibility
 # (updateRemoteUserUID may remap the node user's UID, but HOME stays /home/node)
+#
+# IMPORTANT: The Claude CLI installer (Dockerfile) creates ~/.claude as a real
+# directory during the image build. ln -sfn cannot replace a directory — it creates
+# the symlink *inside* the directory instead. We must remove any real directory
+# first so the symlink points where we expect. Same precaution for ~/.config.
+for dir in "$HOME/.claude" "$HOME/.config"; do
+    if [ -d "$dir" ] && [ ! -L "$dir" ]; then
+        rm -rf "$dir"
+    fi
+done
 ln -sfn "$DEVCONTAINER_DIR/.cache/firebase" "$HOME/.cache/firebase"
 ln -sfn "$DEVCONTAINER_DIR/.config" "$HOME/.config"
 ln -sfn "$DEVCONTAINER_DIR/.claude" "$HOME/.claude"
