@@ -4,9 +4,9 @@ This project contains the source code for [Wall & Shadow](https://wallandshadow.
 
 Wall & Shadow is a lightweight VTT (virtual tabletop) focused on providing a fast, on-the-fly battle map creation experience. It's aimed at groups who might:
 
-* run homebrew campaigns;
-* have unruly players who do unexpected things;
-* run sandbox adventures in which anything could happen.
+- run homebrew campaigns;
+- have unruly players who do unexpected things;
+- run sandbox adventures in which anything could happen.
 
 I originally built it in 2020 while I was unemployed. Since then the VTT space has become a lot more crowded, but most offerings focus on providing a polished experience given pre-built assets or lots of preparation, not the fast improvisation that I want :).
 
@@ -21,12 +21,14 @@ For contributing to development I would strongly recommend Linux, either nativel
 ## Tech Stack
 
 **Current (Firebase):**
+
 - **React 18** + TypeScript + Vite
 - **Firebase v11** (Firestore, Functions, Auth, Hosting, Storage)
 - **Three.js** for 3D map rendering
 - **Bootstrap 5** with react-bootstrap
 
 **New self-hosted stack (in progress):**
+
 - **Hono** + TypeScript API server (`was-web/server/`)
 - **PostgreSQL 17** + Drizzle ORM
 - **MinIO** for object storage
@@ -135,28 +137,28 @@ Inside the project, create a new **Application**:
 
 **OIDC Settings** (on the application's configuration page):
 
-| Setting | Value |
-|---|---|
-| **Response Type** | Code |
-| **Grant Type** | Authorization Code |
-| **Application Type** | User Agent |
-| **Auth Method** | None (PKCE) |
+| Setting              | Value              |
+| -------------------- | ------------------ |
+| **Response Type**    | Code               |
+| **Grant Type**       | Authorization Code |
+| **Application Type** | User Agent         |
+| **Auth Method**      | None (PKCE)        |
 
 **Redirect URIs** — add all origins where the app runs:
 
-| Environment | URI |
-|---|---|
-| Vite dev server | `http://localhost:5000/auth/callback` |
-| Firebase Hosting emulator | `http://localhost:3400/auth/callback` |
-| Production | `https://your-domain.com/auth/callback` |
+| Environment               | URI                                     |
+| ------------------------- | --------------------------------------- |
+| Vite dev server           | `http://localhost:5000/auth/callback`   |
+| Firebase Hosting emulator | `http://localhost:3400/auth/callback`   |
+| Production                | `https://your-domain.com/auth/callback` |
 
 **Post Logout Redirect URIs** — same origins, pointing to the login page:
 
-| Environment | URI |
-|---|---|
-| Vite dev server | `http://localhost:5000/login` |
-| Firebase Hosting emulator | `http://localhost:3400/login` |
-| Production | `https://your-domain.com/login` |
+| Environment               | URI                             |
+| ------------------------- | ------------------------------- |
+| Vite dev server           | `http://localhost:5000/login`   |
+| Firebase Hosting emulator | `http://localhost:3400/login`   |
+| Production                | `https://your-domain.com/login` |
 
 Note the **Client ID** from the application page — you'll need it for the environment variables below.
 
@@ -252,94 +254,6 @@ yarn tsc --noEmit
 yarn lint
 yarn test
 ```
-
-## Infrastructure Bootstrap
-
-The self-hosted stack runs on Hetzner Cloud. Infrastructure is provisioned with OpenTofu (VPS, volume, static IP, firewall) and configured with Ansible (PostgreSQL, Caddy, Docker, backups). Both run from a single GitHub Actions workflow.
-
-### One-time setup (the only ClickOps)
-
-These steps create the credentials that OpenTofu and Ansible need. Do them once.
-
-**1. Hetzner Cloud API token**
-
-- Log in to [Hetzner Cloud Console](https://console.hetzner.cloud/)
-- Select or create a project
-- Go to **Security** > **API Tokens** > **Generate API Token** (Read/Write)
-- Save as GitHub Secret: `HCLOUD_TOKEN`
-
-**2. Hetzner Object Storage credentials**
-
-- In the Cloud Console, go to **Object Storage** > **Manage credentials**
-- Generate an access key / secret key pair
-- Save as GitHub Secrets: `HCLOUD_S3_ACCESS_KEY`, `HCLOUD_S3_SECRET_KEY`
-
-**3. Create the OpenTofu state bucket**
-
-OpenTofu stores its state in an S3 bucket. This one bucket must exist before the first run — OpenTofu manages everything else.
-
-```bash
-# Install the AWS CLI if you don't have it
-# Configure it with your Hetzner S3 credentials:
-aws configure
-# AWS Access Key ID: <your HCLOUD_S3_ACCESS_KEY>
-# AWS Secret Access Key: <your HCLOUD_S3_SECRET_KEY>
-# Default region: eu-central
-# Default output format: json
-
-# Create the state bucket (update endpoint to match your DC)
-aws s3 mb s3://wallandshadow-tfstate \
-  --endpoint-url https://fsn1.your-objectstorage.com
-
-# Also create the application buckets
-aws s3 mb s3://wallandshadow-prod \
-  --endpoint-url https://fsn1.your-objectstorage.com
-aws s3 mb s3://wallandshadow-test \
-  --endpoint-url https://fsn1.your-objectstorage.com
-aws s3 mb s3://wallandshadow-backups \
-  --endpoint-url https://fsn1.your-objectstorage.com
-```
-
-**4. SSH key pair**
-
-```bash
-ssh-keygen -t ed25519 -C "wallandshadow-deploy" -f ~/.ssh/wallandshadow_deploy
-# Save the private key as GitHub Secret: SSH_PRIVATE_KEY
-# The public key is derived automatically by the provision workflow
-```
-
-**5. Update placeholder values**
-
-Edit `infra/main.tf` and `ansible/vars/main.yml` — replace `fsn1.your-objectstorage.com` with your actual Hetzner Object Storage endpoint. Update `config/deploy.yml` S3 settings similarly.
-
-**6. OIDC provider** (when ready for auth)
-
-- Set up Zitadel (see [Zitadel OIDC Setup](#zitadel-oidc-setup) above)
-- Save as GitHub Secrets: `OIDC_ISSUER`, `OIDC_CLIENT_ID`
-
-### GitHub Secrets summary
-
-| Secret | Source | Used by |
-|---|---|---|
-| `HCLOUD_TOKEN` | Hetzner Cloud Console | Provision workflow (OpenTofu) |
-| `SSH_PRIVATE_KEY` | You generate once | Provision + deploy workflows |
-| `HCLOUD_S3_ACCESS_KEY` | Hetzner Cloud Console | Provision workflow (state backend + Ansible) |
-| `HCLOUD_S3_SECRET_KEY` | Hetzner Cloud Console | Provision workflow (state backend + Ansible) |
-| `VPS_IP` | First provision run output | Deploy workflows |
-| `OIDC_ISSUER` | Zitadel instance | Deploy workflows |
-| `OIDC_CLIENT_ID` | Zitadel application | Deploy workflows |
-
-`DATABASE_URL`, `JWT_SECRET`, and `S3_ACCESS_KEY`/`S3_SECRET_KEY` are **not** GitHub Secrets — they live on the VPS (written by Ansible) and are fetched by deploy workflows via SSH.
-
-### Running the provision workflow
-
-1. Go to **Actions** > **Provision Infrastructure** > **Run workflow**
-2. OpenTofu creates the VPS, volume, static IP, and firewall
-3. Ansible configures PostgreSQL (data on the volume), Caddy, Docker, backups
-4. On first run: copy the displayed `VPS_IP` to GitHub Secrets
-5. Point your DNS A records at the VPS IP (only needed once — the IP is static)
-
-Subsequent runs are safe to re-run (both OpenTofu and Ansible are idempotent).
 
 ## Deployment (Firebase — Legacy)
 

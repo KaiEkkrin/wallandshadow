@@ -34,7 +34,7 @@ pgdata_mount: "/mnt/pgdata"
 # provision workflow (originally GitHub Secrets).
 # s3_access_key: set via -e
 # s3_secret_key: set via -e
-s3_endpoint: "https://fsn1.your-objectstorage.com"
+s3_endpoint: "https://hel1.your-objectstorage.com"
 s3_bucket_backups: "wallandshadow-backups"
 s3_bucket_prod: "wallandshadow-prod"
 s3_bucket_test: "wallandshadow-test"

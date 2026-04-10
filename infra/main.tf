@@ -21,7 +21,7 @@ terraform {
     # Hetzner Object Storage S3 endpoint — update to match your DC location.
     # Falkenstein: fsn1, Nuremberg: nbg1, Helsinki: hel1
     endpoints = {
-      s3 = "https://fsn1.your-objectstorage.com"
+      s3 = "https://hel1.your-objectstorage.com"
     }
 
     # Hetzner S3 is not AWS — disable AWS-specific checks

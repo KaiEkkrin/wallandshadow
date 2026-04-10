@@ -55,7 +55,7 @@ env:
   clear:
     NODE_ENV: production
     AUTH_MODE: oidc
-    S3_ENDPOINT: https://fsn1.your-objectstorage.com
+    S3_ENDPOINT: https://hel1.your-objectstorage.com
     S3_BUCKET: wallandshadow
     S3_REGION: eu-central
 

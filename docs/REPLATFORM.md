@@ -11,22 +11,22 @@ off Firebase and onto a portable, containerised server stack.
 
 ## Decisions
 
-| Concern | Decision | Rationale |
-|---|---|---|
-| Database | PostgreSQL (self-managed on VPS) | Ubiquitous, excellent JSON support for change documents, CASCADE constraints replace `recursiveDelete()` |
-| HTTP API server | Node.js + Hono (TypeScript) | Reuses existing Functions logic; Hono is runtime-agnostic (portable to Bun/Deno/CF Workers) |
-| Real-time transport | WebSockets via `ws` library, surfaced through Hono's `upgradeWebSocket` | Needed for ephemeral features (pings, measurements); also used for map change broadcast |
-| Object storage | MinIO (local dev) + Hetzner Object Storage (production) | S3-compatible; same client code in both environments |
-| Auth | External European OIDC provider (Zitadel or Hanko — TBD); server is an OIDC client only | Avoids building token issuance, refresh, OAuth2 flows ourselves; provider handles Google federation and future passkeys |
-| Email/password accounts | Retained for migrated accounts and local dev; no new production signups | Existing users keep access; no email infrastructure needed (password reset via admin endpoint only) |
-| Google accounts | Retained as legacy; federated through the chosen OIDC provider | Users continue to sign in with Google but the app only talks to the provider |
-| Static serving | Caddy | Auto-HTTPS via Let's Encrypt; reverse-proxies `/api/*` to Node.js server |
-| Local dev orchestration | Podman Compose | Replaces `firebase emulators:start`; no Java dependency |
-| CI | GitHub Actions → GitHub Container Registry | Free container registry; images are multi-arch |
-| Deployment | Kamal (SSH-based, zero-downtime) | Maximum portability; move to any VPS with no tooling changes |
-| Hosting | Hetzner Cloud VPS + Hetzner Object Storage | Best EU value; S3-compatible storage; German company, GDPR-native |
-| Analytics | Dropped initially; server request logs sufficient at current scale | Traffic is low, most users are known personally; can add Plausible later if needed |
-| Language (server) | TypeScript now; Rust later (separate phase) | Too much risk to combine Firebase migration with language change |
+| Concern                 | Decision                                                                                | Rationale                                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Database                | PostgreSQL (self-managed on VPS)                                                        | Ubiquitous, excellent JSON support for change documents, CASCADE constraints replace `recursiveDelete()`                |
+| HTTP API server         | Node.js + Hono (TypeScript)                                                             | Reuses existing Functions logic; Hono is runtime-agnostic (portable to Bun/Deno/CF Workers)                             |
+| Real-time transport     | WebSockets via `ws` library, surfaced through Hono's `upgradeWebSocket`                 | Needed for ephemeral features (pings, measurements); also used for map change broadcast                                 |
+| Object storage          | MinIO (local dev) + Hetzner Object Storage (production)                                 | S3-compatible; same client code in both environments                                                                    |
+| Auth                    | External European OIDC provider (Zitadel or Hanko — TBD); server is an OIDC client only | Avoids building token issuance, refresh, OAuth2 flows ourselves; provider handles Google federation and future passkeys |
+| Email/password accounts | Retained for migrated accounts and local dev; no new production signups                 | Existing users keep access; no email infrastructure needed (password reset via admin endpoint only)                     |
+| Google accounts         | Retained as legacy; federated through the chosen OIDC provider                          | Users continue to sign in with Google but the app only talks to the provider                                            |
+| Static serving          | Caddy                                                                                   | Auto-HTTPS via Let's Encrypt; reverse-proxies `/api/*` to Node.js server                                                |
+| Local dev orchestration | Podman Compose                                                                          | Replaces `firebase emulators:start`; no Java dependency                                                                 |
+| CI                      | GitHub Actions → GitHub Container Registry                                              | Free container registry; images are multi-arch                                                                          |
+| Deployment              | Kamal (SSH-based, zero-downtime)                                                        | Maximum portability; move to any VPS with no tooling changes                                                            |
+| Hosting                 | Hetzner Cloud VPS + Hetzner Object Storage                                              | Best EU value; S3-compatible storage; German company, GDPR-native                                                       |
+| Analytics               | Dropped initially; server request logs sufficient at current scale                      | Traffic is low, most users are known personally; can add Plausible later if needed                                      |
+| Language (server)       | TypeScript now; Rust later (separate phase)                                             | Too much risk to combine Firebase migration with language change                                                        |
 
 ---
 
@@ -65,11 +65,11 @@ off Firebase and onto a portable, containerised server stack.
 Each map session is a WebSocket room (`/ws/maps/:mapId`). Message types split cleanly
 into persistent and ephemeral:
 
-| Message type | Direction | Persisted? | Description |
-|---|---|---|---|
-| `change` | client → server → broadcast | Yes (PostgreSQL) | Map feature/token changes |
-| `ping` | client → server → broadcast | No | "Look here" point on map |
-| `measurement` | client → server → broadcast | No | Drag-to-measure line, shown live to all clients |
+| Message type  | Direction                   | Persisted?       | Description                                     |
+| ------------- | --------------------------- | ---------------- | ----------------------------------------------- |
+| `change`      | client → server → broadcast | Yes (PostgreSQL) | Map feature/token changes                       |
+| `ping`        | client → server → broadcast | No               | "Look here" point on map                        |
+| `measurement` | client → server → broadcast | No               | Drag-to-measure line, shown live to all clients |
 
 Ephemeral messages (ping, measurement) are forwarded immediately with no database write.
 Map changes are persisted first, then broadcast to the room.
@@ -106,12 +106,12 @@ provider rather than directly to Google. The app only needs one trusted issuer.
 
 ### Candidates
 
-| Provider | Country | Self-hostable | Notable |
-|---|---|---|---|
-| **Zitadel** | Switzerland 🇨🇭 | Yes (single binary/container) | Strong OIDC support, Google federation, passkeys, generous cloud free tier, Apache 2.0 |
-| **Hanko** | Germany 🇩🇪 | Yes (Docker) | Passkey-first design, 10k MAU free tier on cloud, modern DX |
-| **Ory** | Germany 🇩🇪 | Yes (multiple services) | Most flexible, but operationally complex (Hydra + Kratos + Oathkeeper) |
-| **Authentik** | Open source | Yes only (no SaaS) | Mature enterprise IdP, heavier, best for complex org requirements |
+| Provider      | Country        | Self-hostable                 | Notable                                                                                |
+| ------------- | -------------- | ----------------------------- | -------------------------------------------------------------------------------------- |
+| **Zitadel**   | Switzerland 🇨🇭 | Yes (single binary/container) | Strong OIDC support, Google federation, passkeys, generous cloud free tier, Apache 2.0 |
+| **Hanko**     | Germany 🇩🇪     | Yes (Docker)                  | Passkey-first design, 10k MAU free tier on cloud, modern DX                            |
+| **Ory**       | Germany 🇩🇪     | Yes (multiple services)       | Most flexible, but operationally complex (Hydra + Kratos + Oathkeeper)                 |
+| **Authentik** | Open source    | Yes only (no SaaS)            | Mature enterprise IdP, heavier, best for complex org requirements                      |
 
 **Current leaning: Zitadel or Hanko.** Both run as a single container locally (added to
 Compose) and in production. Zitadel is more complete for federation; Hanko has a better
@@ -119,11 +119,11 @@ passkey-first story for the future. Decision deferred until Phase 2 evaluation.
 
 ### Account Strategy
 
-| Account type | New signups (prod)? | Migration path |
-|---|---|---|
-| Email/password | **No** — existing accounts only | Migrated into provider; password reset via admin endpoint (no email server) |
-| Google | Yes, via provider federation | Already works through provider; label as legacy once better option exists |
-| Passkey / provider-native | **Yes** — the future default | Users adopt when they choose; no forced migration |
+| Account type              | New signups (prod)?             | Migration path                                                              |
+| ------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
+| Email/password            | **No** — existing accounts only | Migrated into provider; password reset via admin endpoint (no email server) |
+| Google                    | Yes, via provider federation    | Already works through provider; label as legacy once better option exists   |
+| Passkey / provider-native | **Yes** — the future default    | Users adopt when they choose; no forced migration                           |
 
 The long-term goal is for all accounts to be native to the chosen European provider,
 with Google and email/password marked legacy. Migration is self-service: user logs in
@@ -142,57 +142,57 @@ mock upstream).
 
 ### Firebase Services → Replacements
 
-| Firebase Service | Usage | Replacement |
-|---|---|---|
-| **Firestore** | Primary database + real-time map sync via `onSnapshot` | PostgreSQL + WebSocket broadcast |
-| **Cloud Functions** | Callable API (`interact` verb dispatch + `addSprites`) | Hono HTTP routes |
-| **Auth** | Email/password + Google OAuth | European OIDC provider (server is OIDC client); provider federates Google sign-in |
-| **Cloud Storage** | User images + spritesheets | Hetzner Object Storage (S3) |
-| **Hosting** | React SPA + static landing page | Caddy |
-| **Analytics** | Optional opt-in event tracking | TBD (Plausible candidate) |
+| Firebase Service    | Usage                                                  | Replacement                                                                       |
+| ------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| **Firestore**       | Primary database + real-time map sync via `onSnapshot` | PostgreSQL + WebSocket broadcast                                                  |
+| **Cloud Functions** | Callable API (`interact` verb dispatch + `addSprites`) | Hono HTTP routes                                                                  |
+| **Auth**            | Email/password + Google OAuth                          | European OIDC provider (server is OIDC client); provider federates Google sign-in |
+| **Cloud Storage**   | User images + spritesheets                             | Hetzner Object Storage (S3)                                                       |
+| **Hosting**         | React SPA + static landing page                        | Caddy                                                                             |
+| **Analytics**       | Optional opt-in event tracking                         | TBD (Plausible candidate)                                                         |
 
 ### Firebase Functions → Full REST API
 
 Firebase used a "client drives the database" model: clients wrote directly to Firestore
 (security rules enforced auth), and Functions only handled operations too complex for
-direct writes. The new server replaces both the Functions *and* the Firestore client
+direct writes. The new server replaces both the Functions _and_ the Firestore client
 writes with a conventional REST API. All persistent operations are mediated by the server;
 no client writes directly to the database.
 
 The Firebase Functions verbs map directly to the new routes:
 
-| Current verb | New route | Notes |
-|---|---|---|
-| `createAdventure` | `POST /api/adventures` | |
-| `createMap` | `POST /api/adventures/:id/maps` | |
-| `cloneMap` | `POST /api/adventures/:id/maps/:id/clone` | |
-| `consolidateMapChanges` | `POST /api/adventures/:id/maps/:id/consolidate` | |
-| `inviteToAdventure` | `POST /api/adventures/:id/invites` | |
-| `joinAdventure` | `POST /api/invites/:id/join` | |
-| `deleteImage` | `DELETE /api/images/:path` | |
-| `deleteMap` | `DELETE /api/adventures/:id/maps/:id` | |
-| `deleteAdventure` | `DELETE /api/adventures/:id` | |
-| `addSprites` | `POST /api/adventures/:id/spritesheets` | |
+| Current verb            | New route                                       | Notes |
+| ----------------------- | ----------------------------------------------- | ----- |
+| `createAdventure`       | `POST /api/adventures`                          |       |
+| `createMap`             | `POST /api/adventures/:id/maps`                 |       |
+| `cloneMap`              | `POST /api/adventures/:id/maps/:id/clone`       |       |
+| `consolidateMapChanges` | `POST /api/adventures/:id/maps/:id/consolidate` |       |
+| `inviteToAdventure`     | `POST /api/adventures/:id/invites`              |       |
+| `joinAdventure`         | `POST /api/invites/:id/join`                    |       |
+| `deleteImage`           | `DELETE /api/images/:path`                      |       |
+| `deleteMap`             | `DELETE /api/adventures/:id/maps/:id`           |       |
+| `deleteAdventure`       | `DELETE /api/adventures/:id`                    |       |
+| `addSprites`            | `POST /api/adventures/:id/spritesheets`         |       |
 
 The direct Firestore writes (no Functions equivalent) become these new routes:
 
-| Current Firestore write | New route | Notes |
-|---|---|---|
-| `adventures/{id}` update | `PATCH /api/adventures/:id` | name, description, imagePath |
-| `adventures/{id}/maps/{id}` update | `PATCH /api/adventures/:id/maps/:id` | name, description, imagePath, ffa |
-| `adventures/{id}/players/{uid}` upsert | `PATCH /api/adventures/:id/players/:uid` | allowed (block/unblock), characters |
-| `adventures/{id}/players/{uid}` delete | `DELETE /api/adventures/:id/players/me` | leave adventure |
-| `adventures/{id}/maps/{id}/changes` add | `POST /api/adventures/:id/maps/:id/changes` | write incremental change |
+| Current Firestore write                 | New route                                   | Notes                               |
+| --------------------------------------- | ------------------------------------------- | ----------------------------------- |
+| `adventures/{id}` update                | `PATCH /api/adventures/:id`                 | name, description, imagePath        |
+| `adventures/{id}/maps/{id}` update      | `PATCH /api/adventures/:id/maps/:id`        | name, description, imagePath, ffa   |
+| `adventures/{id}/players/{uid}` upsert  | `PATCH /api/adventures/:id/players/:uid`    | allowed (block/unblock), characters |
+| `adventures/{id}/players/{uid}` delete  | `DELETE /api/adventures/:id/players/me`     | leave adventure                     |
+| `adventures/{id}/maps/{id}/changes` add | `POST /api/adventures/:id/maps/:id/changes` | write incremental change            |
 
 Read endpoints (Firestore listeners → REST queries):
 
-| Current Firestore listener/get | New route |
-|---|---|
-| `adventures/` query (profile summary) | `GET /api/adventures` |
-| `adventures/{id}` get | `GET /api/adventures/:id` |
-| `adventures/{id}/maps/` query | `GET /api/adventures/:id/maps` |
-| `adventures/{id}/maps/{id}` get | `GET /api/adventures/:id/maps/:id` |
-| `adventures/{id}/players/` query | `GET /api/adventures/:id/players` |
+| Current Firestore listener/get        | New route                          |
+| ------------------------------------- | ---------------------------------- |
+| `adventures/` query (profile summary) | `GET /api/adventures`              |
+| `adventures/{id}` get                 | `GET /api/adventures/:id`          |
+| `adventures/{id}/maps/` query         | `GET /api/adventures/:id/maps`     |
+| `adventures/{id}/maps/{id}` get       | `GET /api/adventures/:id/maps/:id` |
+| `adventures/{id}/players/` query      | `GET /api/adventures/:id/players`  |
 
 The Storage upload trigger (`onUpload`) becomes an explicit upload endpoint:
 `POST /api/images` — validates MIME type, writes to S3, records in PostgreSQL.
@@ -208,12 +208,12 @@ layer stays thin (transport + pub/sub only, no business logic).
 The current system uses Firestore `onSnapshot` listeners on the `changes/` subcollection.
 The new system uses a WebSocket connection per map session:
 
-| Current (Firestore) | New (WebSocket) |
-|---|---|
-| `onSnapshot(changesRef, ...)` | `new WebSocket('/ws/maps/:id')` |
-| Document added to `changes/` | `message` event with `type: 'change'` |
+| Current (Firestore)            | New (WebSocket)                       |
+| ------------------------------ | ------------------------------------- |
+| `onSnapshot(changesRef, ...)`  | `new WebSocket('/ws/maps/:id')`       |
+| Document added to `changes/`   | `message` event with `type: 'change'` |
 | `changes/base` update (resync) | `message` event with `type: 'resync'` |
-| Unsubscribe function | `ws.close()` |
+| Unsubscribe function           | `ws.close()`                          |
 
 The change data format (the `chs[]` array of typed change objects) stays identical.
 Only the transport layer changes.
@@ -348,25 +348,25 @@ services:
   storage:
     image: minio/minio
     command: server /data --console-address :9001
-    ports: ["9000:9000", "9001:9001"]  # API + web UI
+    ports: ["9000:9000", "9001:9001"] # API + web UI
 
   auth:
     # Zitadel or Hanko — TBD. Both publish official Docker images.
     # Pre-seeded with test users and Google federation mock for local dev.
-    image: ghcr.io/zitadel/zitadel:latest  # example
+    image: ghcr.io/zitadel/zitadel:latest # example
     ports: ["8082:8080"]
     depends_on: [db]
 
   api:
     build: ./server
-    command: tsx watch src/index.ts  # hot reload
+    command: tsx watch src/index.ts # hot reload
     environment:
       - DATABASE_URL
       - S3_ENDPOINT
       - S3_BUCKET
-      - OIDC_ISSUER=http://localhost:8082  # validates JWTs from local auth container
+      - OIDC_ISSUER=http://localhost:8082 # validates JWTs from local auth container
     depends_on: [db, storage, auth]
-    ports: ["8080:8080"]  # HTTP + WebSocket on same port
+    ports: ["8080:8080"] # HTTP + WebSocket on same port
 
   web:
     # Vite dev server for hot-reload frontend development
@@ -374,6 +374,7 @@ services:
 ```
 
 Dev ports:
+
 - API + WebSocket: http://localhost:8080 / ws://localhost:8080
 - Auth provider UI: http://localhost:8082
 - MinIO web UI: http://localhost:9001
@@ -406,6 +407,7 @@ jobs:
 ### Production Deployment (Kamal)
 
 Kamal deploys over SSH to the VPS. Key features:
+
 - Zero-downtime blue/green container swap
 - Health check before routing traffic to new container
 - Instant rollback (`kamal rollback`)
@@ -425,9 +427,16 @@ proxy:
   host: wallandshadow.example.com
 
 env:
-  secret: [DATABASE_URL, JWT_SECRET, S3_ACCESS_KEY, S3_SECRET_KEY, GOOGLE_CLIENT_SECRET]
+  secret:
+    [
+      DATABASE_URL,
+      JWT_SECRET,
+      S3_ACCESS_KEY,
+      S3_SECRET_KEY,
+      GOOGLE_CLIENT_SECRET,
+    ]
   clear:
-    S3_ENDPOINT: https://fsn1.your-objectstorage.com
+    S3_ENDPOINT: https://hel1.your-objectstorage.com
     S3_BUCKET: wallandshadow
 ```
 
@@ -439,12 +448,12 @@ env:
 
 ### Compute
 
-| Resource | Spec | Cost (approx.) |
-|---|---|---|
-| VPS (CPX21) | 3 vCPU, 4GB RAM | ~€7-8/month |
-| Hetzner Object Storage | 1TB included | ~€5-7/month |
-| IPv4 address | Included | — |
-| **Total** | | **~€12-15/month** |
+| Resource               | Spec            | Cost (approx.)    |
+| ---------------------- | --------------- | ----------------- |
+| VPS (CPX21)            | 3 vCPU, 4GB RAM | ~€7-8/month       |
+| Hetzner Object Storage | 1TB included    | ~€5-7/month       |
+| IPv4 address           | Included        | —                 |
+| **Total**              |                 | **~€12-15/month** |
 
 Note: Hetzner announced ~30% price increases effective April 2026. Costs above reflect
 post-increase estimates.
@@ -457,12 +466,12 @@ French, EU-only, with data centres in Paris, Amsterdam, and Warsaw.
 
 ### Alternative Providers Considered
 
-| Provider | Notes |
-|---|---|
-| **Scaleway** | French, managed PostgreSQL available, slightly higher cost, good alternative |
-| **OVHcloud** | UK + EU DCs, no-egress-fee storage, more complex pricing, decent fallback |
-| **Fly.io** | Good DX, EU regions (London/Amsterdam/Frankfurt), no object storage offering, pricier |
-| **Render** | Managed platform, Frankfurt region, compute tier pricing too high for this workload |
+| Provider     | Notes                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------- |
+| **Scaleway** | French, managed PostgreSQL available, slightly higher cost, good alternative          |
+| **OVHcloud** | UK + EU DCs, no-egress-fee storage, more complex pricing, decent fallback             |
+| **Fly.io**   | Good DX, EU regions (London/Amsterdam/Frankfurt), no object storage offering, pricier |
+| **Render**   | Managed platform, Frankfurt region, compute tier pricing too high for this workload   |
 
 ---
 
