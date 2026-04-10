@@ -36,3 +36,6 @@ yarn-error.log*
 
 # firebase admin credentials for emulators (but not the symlink in public/)
 /firebase-admin-credentials.json
+
+# future non-firebase work
+/server
