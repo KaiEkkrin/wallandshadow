@@ -1,8 +1,19 @@
 #!/bin/bash
 
 # Start PostgreSQL (idempotent — skips if already running)
+# pg_ctl status checks the PID in postmaster.pid, but after a container rebuild the
+# PID may have been reused by a different process (e.g. VS Code's node). Detect this
+# by verifying the process is actually postgres, and clean up the stale PID file if not.
 if pg_ctl -D "$PGDATA" status > /dev/null 2>&1; then
-    echo "🐘 PostgreSQL already running"
+    PG_PID=$(head -1 "$PGDATA/postmaster.pid" 2>/dev/null)
+    if [ -n "$PG_PID" ] && [ -e "/proc/$PG_PID/exe" ] && \
+       readlink "/proc/$PG_PID/exe" | grep -q postgres; then
+        echo "🐘 PostgreSQL already running"
+    else
+        echo "🐘 Stale PostgreSQL PID file detected, cleaning up..."
+        rm -f "$PGDATA/postmaster.pid"
+        pg_ctl -D "$PGDATA" -l "$PGDATA/postgresql.log" -w start
+    fi
 else
     echo "🐘 Starting PostgreSQL..."
     pg_ctl -D "$PGDATA" -l "$PGDATA/postgresql.log" -w start
