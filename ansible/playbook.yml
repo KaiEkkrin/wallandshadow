@@ -10,11 +10,13 @@
 #   - Nightly PostgreSQL backup to S3
 #   - Auto-generated secrets (passwords, JWT key)
 #
-# Usage:
-#   ansible-playbook playbook.yml -i inventory.yml
+# Usage (standalone):
+#   ansible-playbook playbook.yml -i inventory.yml \
+#     -e volume_id=12345678 \
+#     -e s3_access_key=... -e s3_secret_key=...
 #
-# After first run, copy the displayed secrets to GitHub Secrets.
-# See docs/CD_SETUP_CHECKLIST.md for the full setup checklist.
+# Normally run by the provision.yml GitHub Actions workflow, which passes
+# OpenTofu outputs and S3 credentials automatically.
 # =============================================================================
 
 - name: Provision Wall & Shadow VPS
@@ -135,6 +137,34 @@
         line: "PasswordAuthentication no"
       notify: Restart sshd
 
+    # ── Volume mount (PostgreSQL data) ──────────────────────────────────────
+    # Volume is provisioned by OpenTofu. volume_id is passed as an extra-var.
+    # Device path uses the stable by-id name that survives reboots.
+
+    - name: Create volume mount point
+      ansible.builtin.file:
+        path: "{{ pgdata_mount }}"
+        state: directory
+        mode: "0700"
+      when: volume_id is defined and volume_id != ''
+
+    - name: Mount volume at {{ pgdata_mount }}
+      ansible.builtin.mount:
+        path: "{{ pgdata_mount }}"
+        src: "/dev/disk/by-id/scsi-0HC_Volume_{{ volume_id }}"
+        fstype: ext4
+        opts: discard,nofail,defaults
+        state: mounted
+      when: volume_id is defined and volume_id != ''
+
+    - name: Set volume ownership for postgres
+      ansible.builtin.file:
+        path: "{{ pgdata_mount }}"
+        owner: postgres
+        group: postgres
+        mode: "0700"
+      when: volume_id is defined and volume_id != ''
+
     # ── Secret generation ───────────────────────────────────────────────────
     # Secrets are generated on first run and cached locally in ansible/secrets/
     # (gitignored). Subsequent runs reuse the cached values.
@@ -164,6 +194,55 @@
         mode: "0600"
         owner: root
         group: root
+
+    # ── PostgreSQL data directory on volume ─────────────────────────────────
+    # If a volume is attached, move the PostgreSQL data directory to it.
+    # Idempotent: skips if data already exists on the volume.
+
+    - name: Check if PostgreSQL data exists on volume
+      ansible.builtin.stat:
+        path: "{{ pgdata_mount }}/main/PG_VERSION"
+      register: pgdata_on_volume
+      when: volume_id is defined and volume_id != ''
+
+    - name: Stop PostgreSQL for data migration to volume
+      ansible.builtin.systemd:
+        name: postgresql
+        state: stopped
+      when:
+        - volume_id is defined and volume_id != ''
+        - not (pgdata_on_volume.stat.exists | default(false))
+
+    - name: Copy PostgreSQL data to volume
+      ansible.builtin.command:
+        cmd: "rsync -av /var/lib/postgresql/{{ pg_version }}/main/ {{ pgdata_mount }}/main/"
+      when:
+        - volume_id is defined and volume_id != ''
+        - not (pgdata_on_volume.stat.exists | default(false))
+
+    - name: Set volume data directory ownership
+      ansible.builtin.file:
+        path: "{{ pgdata_mount }}/main"
+        owner: postgres
+        group: postgres
+        recurse: true
+      when: volume_id is defined and volume_id != ''
+
+    - name: Point PostgreSQL data_directory to volume
+      ansible.builtin.lineinfile:
+        path: "/etc/postgresql/{{ pg_version }}/main/postgresql.conf"
+        regexp: "^data_directory"
+        line: "data_directory = '{{ pgdata_mount }}/main'"
+      notify: Restart PostgreSQL
+      when: volume_id is defined and volume_id != ''
+
+    - name: Start PostgreSQL after data migration
+      ansible.builtin.systemd:
+        name: postgresql
+        state: started
+      when:
+        - volume_id is defined and volume_id != ''
+        - not (pgdata_on_volume.stat.exists | default(false))
 
     # ── PostgreSQL configuration ────────────────────────────────────────────
 
@@ -240,21 +319,18 @@
         job: "/usr/local/bin/pg_backup.sh >> /var/log/pg_backup.log 2>&1"
         user: root
 
-    # ── Display generated secrets ───────────────────────────────────────────
-    # Copy these to GitHub Secrets after first run.
+    # ── Display status ──────────────────────────────────────────────────────
 
-    - name: Display generated secrets
+    - name: Display provisioning summary
       ansible.builtin.debug:
         msg: |
           ╔══════════════════════════════════════════════════════════════════╗
-          ║  GENERATED SECRETS — copy these to GitHub Secrets              ║
+          ║  Provisioning complete                                          ║
           ╚══════════════════════════════════════════════════════════════════╝
 
-          JWT_SECRET={{ jwt_secret }}
-          DATABASE_URL_PROD=postgresql://{{ pg_user }}:{{ pg_password }}@localhost:5432/{{ pg_db_prod }}
-          DATABASE_URL_TEST=postgresql://{{ pg_user }}:{{ pg_password }}@localhost:5432/{{ pg_db_test }}
-
-          These values are also stored on the VPS at {{ secrets_file }}
+          Secrets file: {{ secrets_file }}
+          Deploy workflows fetch DATABASE_URL, JWT_SECRET, and S3 creds
+          from the VPS via SSH — no manual secret copying needed.
 
   # ── Handlers ──────────────────────────────────────────────────────────────
 

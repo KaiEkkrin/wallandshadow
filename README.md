@@ -253,9 +253,97 @@ yarn lint
 yarn test
 ```
 
-## Deployment
+## Infrastructure Bootstrap
 
-For production deployment instructions, see **[DEPLOY.md](DEPLOY.md)**.
+The self-hosted stack runs on Hetzner Cloud. Infrastructure is provisioned with OpenTofu (VPS, volume, static IP, firewall) and configured with Ansible (PostgreSQL, Caddy, Docker, backups). Both run from a single GitHub Actions workflow.
+
+### One-time setup (the only ClickOps)
+
+These steps create the credentials that OpenTofu and Ansible need. Do them once.
+
+**1. Hetzner Cloud API token**
+
+- Log in to [Hetzner Cloud Console](https://console.hetzner.cloud/)
+- Select or create a project
+- Go to **Security** > **API Tokens** > **Generate API Token** (Read/Write)
+- Save as GitHub Secret: `HCLOUD_TOKEN`
+
+**2. Hetzner Object Storage credentials**
+
+- In the Cloud Console, go to **Object Storage** > **Manage credentials**
+- Generate an access key / secret key pair
+- Save as GitHub Secrets: `HCLOUD_S3_ACCESS_KEY`, `HCLOUD_S3_SECRET_KEY`
+
+**3. Create the OpenTofu state bucket**
+
+OpenTofu stores its state in an S3 bucket. This one bucket must exist before the first run — OpenTofu manages everything else.
+
+```bash
+# Install the AWS CLI if you don't have it
+# Configure it with your Hetzner S3 credentials:
+aws configure
+# AWS Access Key ID: <your HCLOUD_S3_ACCESS_KEY>
+# AWS Secret Access Key: <your HCLOUD_S3_SECRET_KEY>
+# Default region: eu-central
+# Default output format: json
+
+# Create the state bucket (update endpoint to match your DC)
+aws s3 mb s3://wallandshadow-tfstate \
+  --endpoint-url https://fsn1.your-objectstorage.com
+
+# Also create the application buckets
+aws s3 mb s3://wallandshadow-prod \
+  --endpoint-url https://fsn1.your-objectstorage.com
+aws s3 mb s3://wallandshadow-test \
+  --endpoint-url https://fsn1.your-objectstorage.com
+aws s3 mb s3://wallandshadow-backups \
+  --endpoint-url https://fsn1.your-objectstorage.com
+```
+
+**4. SSH key pair**
+
+```bash
+ssh-keygen -t ed25519 -C "wallandshadow-deploy" -f ~/.ssh/wallandshadow_deploy
+# Save the private key as GitHub Secret: SSH_PRIVATE_KEY
+# The public key is derived automatically by the provision workflow
+```
+
+**5. Update placeholder values**
+
+Edit `infra/main.tf` and `ansible/vars/main.yml` — replace `fsn1.your-objectstorage.com` with your actual Hetzner Object Storage endpoint. Update `config/deploy.yml` S3 settings similarly.
+
+**6. OIDC provider** (when ready for auth)
+
+- Set up Zitadel (see [Zitadel OIDC Setup](#zitadel-oidc-setup) above)
+- Save as GitHub Secrets: `OIDC_ISSUER`, `OIDC_CLIENT_ID`
+
+### GitHub Secrets summary
+
+| Secret | Source | Used by |
+|---|---|---|
+| `HCLOUD_TOKEN` | Hetzner Cloud Console | Provision workflow (OpenTofu) |
+| `SSH_PRIVATE_KEY` | You generate once | Provision + deploy workflows |
+| `HCLOUD_S3_ACCESS_KEY` | Hetzner Cloud Console | Provision workflow (state backend + Ansible) |
+| `HCLOUD_S3_SECRET_KEY` | Hetzner Cloud Console | Provision workflow (state backend + Ansible) |
+| `VPS_IP` | First provision run output | Deploy workflows |
+| `OIDC_ISSUER` | Zitadel instance | Deploy workflows |
+| `OIDC_CLIENT_ID` | Zitadel application | Deploy workflows |
+
+`DATABASE_URL`, `JWT_SECRET`, and `S3_ACCESS_KEY`/`S3_SECRET_KEY` are **not** GitHub Secrets — they live on the VPS (written by Ansible) and are fetched by deploy workflows via SSH.
+
+### Running the provision workflow
+
+1. Go to **Actions** > **Provision Infrastructure** > **Run workflow**
+2. OpenTofu creates the VPS, volume, static IP, and firewall
+3. Ansible configures PostgreSQL (data on the volume), Caddy, Docker, backups
+4. On first run: copy the displayed `VPS_IP` to GitHub Secrets
+5. Point your DNS A records at the VPS IP (only needed once — the IP is static)
+
+Subsequent runs are safe to re-run (both OpenTofu and Ansible are idempotent).
+
+## Deployment (Firebase — Legacy)
+
+For Firebase deployment instructions, see **[DEPLOY.md](DEPLOY.md)**.
 
 Quick deploy (after initial setup):
 

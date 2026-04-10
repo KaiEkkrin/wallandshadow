@@ -8,8 +8,15 @@
 #   2. Trigger this workflow manually from GitHub Actions UI
 #   3. Monitor the deployment via Kamal logs
 #
-# Prerequisites: same GitHub Secrets as deploy-server-test.yml, plus:
-#   DATABASE_URL_PROD — PostgreSQL connection string (production database)
+# Secrets flow:
+#   - VPS_IP, SSH_PRIVATE_KEY, OIDC_*: from GitHub Secrets (static)
+#   - DATABASE_URL, JWT_SECRET, S3_*: fetched from VPS at deploy time
+#
+# Prerequisites (GitHub Secrets):
+#   SSH_PRIVATE_KEY       — SSH key for VPS access
+#   VPS_IP                — Hetzner VPS public IPv4 address
+#   OIDC_ISSUER           — Zitadel OIDC issuer URL
+#   OIDC_CLIENT_ID        — Zitadel OIDC client ID
 #
 # Consider adding required reviewers to the "production" GitHub Environment.
 # =============================================================================
@@ -74,13 +81,14 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
 
+      - name: Fetch secrets from VPS
+        run: |
+          ssh root@${{ secrets.VPS_IP }} cat /etc/wallandshadow/secrets >> "$GITHUB_ENV"
+          echo "DATABASE_URL=$(ssh root@${{ secrets.VPS_IP }} grep ^DATABASE_URL_PROD /etc/wallandshadow/secrets | cut -d= -f2-)" >> "$GITHUB_ENV"
+
       - name: Deploy to production
         env:
           VPS_IP: ${{ secrets.VPS_IP }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
-          S3_SECRET_KEY: ${{ secrets.S3_SECRET_KEY }}
           OIDC_ISSUER: ${{ secrets.OIDC_ISSUER }}
           OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
