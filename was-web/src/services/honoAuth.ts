@@ -12,14 +12,15 @@ export class HonoUser implements IUser {
   readonly email: string | null;
   readonly displayName: string;
   readonly emailMd5: string | null;
-  readonly emailVerified = true;
+  readonly emailVerified: boolean;
   readonly providerId: string;
 
-  constructor(uid: string, email: string | null, name: string, providerId: string = 'password') {
+  constructor(uid: string, email: string | null, name: string, emailVerified: boolean, providerId: string = 'password') {
     this.uid = uid;
     this.email = email;
     this.displayName = name;
     this.emailMd5 = email ? md5(email.trim().toLowerCase()) : null;
+    this.emailVerified = emailVerified;
     this.providerId = providerId;
   }
 
@@ -89,7 +90,7 @@ export class HonoAuth implements IAuth {
       const token = getOidcBearerToken(oidcUser);
       this.api.setToken(token);
       const me = await this.api.getMe();
-      return new HonoUser(me.uid, me.email, me.name, 'oidc');
+      return new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'oidc');
     } catch {
       return null;
     }
@@ -115,7 +116,7 @@ export class HonoAuth implements IAuth {
     this.api.setToken(token);
     try {
       const me = await this.api.getMe();
-      return new HonoUser(me.uid, me.email, me.name, 'password');
+      return new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'password');
     } catch {
       this.clearSession();
       return null;
@@ -130,7 +131,7 @@ export class HonoAuth implements IAuth {
     this.api.setToken(accessToken);
     try {
       const me = await this.api.getMe();
-      const user = new HonoUser(me.uid, me.email, me.name, 'oidc');
+      const user = new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'oidc');
       this.fireListeners(user);
     } catch (e) {
       this.api.setToken(null);
@@ -141,7 +142,7 @@ export class HonoAuth implements IAuth {
   async createUserWithEmailAndPassword(email: string, password: string, displayName: string): Promise<IUser | null> {
     const { token, uid } = await this.api.register(email, password, displayName);
     this.storeLocalToken(token);
-    const user = new HonoUser(uid, email, displayName, 'password');
+    const user = new HonoUser(uid, email, displayName, false, 'password');
     this.fireListeners(user);
     return user;
   }
@@ -158,7 +159,7 @@ export class HonoAuth implements IAuth {
     const { token } = await this.api.login(email, password);
     this.storeLocalToken(token);
     const me = await this.api.getMe();
-    const user = new HonoUser(me.uid, me.email, me.name, 'password');
+    const user = new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'password');
     this.fireListeners(user);
     return user;
   }

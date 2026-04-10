@@ -17,6 +17,7 @@ authRoutes.get('/me', authMiddleware, async (c) => {
   const [user] = await db.select({
     id: users.id,
     email: users.email,
+    emailVerified: users.emailVerified,
     name: users.name,
     level: users.level,
   }).from(users).where(eq(users.id, uid)).limit(1);
@@ -28,6 +29,7 @@ authRoutes.get('/me', authMiddleware, async (c) => {
   return c.json({
     uid: user.id,
     email: user.email,
+    emailVerified: user.emailVerified,
     name: user.name,
     level: user.level,
   });

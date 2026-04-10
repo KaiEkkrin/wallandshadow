@@ -85,10 +85,6 @@ test.describe('Basic tests', () => {
     await Util.signIn(page, user, deviceName);
     await Util.ensureNavbarExpanded(page, deviceName);
     await expect(page.locator(`.dropdown >> text=${editedName}`)).toBeVisible();
-
-    // With Hono backend, user is always verified immediately
-    await expect(page.locator(`[title="${editedName} (Verified)"]`)).toBeVisible();
-    await Util.takeScreenshot(page, browserName, deviceName, 'create-account-verified');
   });
 
   test.describe('Two-context tests', () => {

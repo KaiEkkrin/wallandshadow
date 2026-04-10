@@ -231,6 +231,11 @@ function NavLogin({ expanded }: { expanded: boolean }) {
     [signInMethods]
   );
 
+  const isOidcUser = useMemo(
+    () => user?.providerId === 'oidc',
+    [user]
+  );
+
   const displayName = useMemo(
     () => profile?.name ?? user?.displayName ?? "",
     [profile, user]
@@ -311,37 +316,6 @@ function NavLogin({ expanded }: { expanded: boolean }) {
     }
   }, [user]);
 
-  // We'll let users re-send their email verification once per login
-  const [canResendEmailVerification, setCanResendEmailVerification] = useState(false);
-
-  useEffect(() => {
-    if (user?.emailVerified === false) {
-      setCanResendEmailVerification(true);
-    } else {
-      setCanResendEmailVerification(false);
-    }
-  }, [user]);
-
-  const handleResendEmailVerification = useCallback(() => {
-    setCanResendEmailVerification(false);
-    user?.sendEmailVerification()
-      .then(() => statusContext.toasts.next({
-        id: uuidv7(),
-        record: { title: "Email/password login", message: "A verification email has been sent to " + user?.email }
-      }))
-      .catch(e => logError("Resend email verification error", e));
-  }, [logError, setCanResendEmailVerification, statusContext, user]);
-
-  const resendVerificationItem = useMemo(() => {
-    if (canResendEmailVerification === true) {
-      return (
-        <Dropdown.Item onClick={handleResendEmailVerification}>Re-send email verification</Dropdown.Item>
-      );
-    } else {
-      return undefined;
-    }
-  }, [canResendEmailVerification, handleResendEmailVerification]);
-
   // We show the profile button as a dropdown only if there are further things to drop
   // down from it
   const profileButton = useMemo(() => {
@@ -356,7 +330,6 @@ function NavLogin({ expanded }: { expanded: boolean }) {
           <Dropdown.Menu align={!expanded ? "end" : undefined}>
             <Dropdown.Item onClick={handleEditProfile}>Edit profile</Dropdown.Item>
             <Dropdown.Item onClick={handleChangePassword}>Change password</Dropdown.Item>
-            {resendVerificationItem}
           </Dropdown.Menu>
         </Dropdown>
       );
@@ -371,7 +344,7 @@ function NavLogin({ expanded }: { expanded: boolean }) {
     }
   }, [
     displayName, expanded, handleChangePassword, handleEditProfile, isPasswordUser,
-    resendVerificationItem, verifiedIcon
+    verifiedIcon
   ]);
 
   const handleChangePasswordSave = useCallback((oldPassword: string, newPassword: string) => {
@@ -406,9 +379,12 @@ function NavLogin({ expanded }: { expanded: boolean }) {
             <Form.Group>
               <Form.Label htmlFor="nameInput">Display name</Form.Label>
               <Form.Control id="nameInput" type="text" maxLength={30} value={editDisplayName}
+                disabled={isOidcUser}
                 onChange={e => setEditDisplayName(e.target.value)} />
               <Form.Text className="text-muted">
-                This is the name that will be shown to other users of Wall &amp; Shadow.
+                {isOidcUser
+                  ? 'Your display name is managed by your login provider. To change it, update your name there.'
+                  : 'This is the name that will be shown to other users of Wall & Shadow.'}
               </Form.Text>
             </Form.Group>
             <Form.Group>

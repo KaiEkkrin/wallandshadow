@@ -6,7 +6,6 @@ import { FirebaseContext } from './components/FirebaseContext';
 import Navigation from './components/Navigation';
 import * as Policy from '@wallandshadow/shared';
 import { ProfileContext } from './components/ProfileContext';
-import { StatusContext } from './components/StatusContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 
 import { IUser } from '@wallandshadow/shared';
@@ -20,8 +19,6 @@ import Tabs from 'react-bootstrap/Tabs';
 
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getPostLoginPath } from './utils/loginRedirect';
-import { v7 as uuidv7 } from 'uuid';
-
 const oidcEnabled = isOidcEnabled();
 const oidcOnly = import.meta.env.VITE_AUTH_MODE === 'oidc';
 
@@ -257,7 +254,6 @@ function Login() {
   const { auth, googleAuthProvider } = useContext(FirebaseContext);
   const { profile, expectNewUser, expectGoogleSignup } = useContext(ProfileContext);
   const { logError } = useContext(AnalyticsContext);
-  const { toasts } = useContext(StatusContext);
   const navigate = useNavigate();
 
   useDocumentTitle('Login');
@@ -274,7 +270,7 @@ function Login() {
     }
   }, [profile, setLoginFailedVisible]);
 
-  const handleLoginResult = useCallback(async (user: IUser | null | undefined, sendEmailVerification?: boolean | undefined) => {
+  const handleLoginResult = useCallback(async (user: IUser | null | undefined) => {
     if (user === undefined) {
       throw Error("Undefined auth context or user");
     }
@@ -284,18 +280,8 @@ function Login() {
       return false;
     }
 
-    if (sendEmailVerification === true) {
-      if (!user.emailVerified) {
-        await user.sendEmailVerification();
-        toasts.next({
-          id: uuidv7(),
-          record: { title: "Email/password login", message: "A verification email has been sent to " + user.email }
-        });
-      }
-    }
-
     return true;
-  }, [setLoginFailedVisible, toasts]);
+  }, [setLoginFailedVisible]);
 
   const location = useLocation();
   const finishLogin = useCallback((success: boolean) => {
@@ -319,7 +305,7 @@ function Login() {
     setLoginFailedVisible(false);
     expectNewUser?.(email, displayName);
     auth?.createUserWithEmailAndPassword(email, password, displayName)
-      .then(u => handleLoginResult(u, true))
+      .then(u => handleLoginResult(u))
       .then(finishLogin)
       .catch(handleLoginError);
   }, [auth, expectNewUser, finishLogin, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);

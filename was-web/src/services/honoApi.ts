@@ -10,6 +10,7 @@ export interface AuthResponse {
 export interface MeResponse {
   uid: string;
   email: string | null;
+  emailVerified: boolean;
   name: string;
   level: UserLevel;
 }

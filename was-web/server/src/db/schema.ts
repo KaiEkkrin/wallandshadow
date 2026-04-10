@@ -20,13 +20,16 @@ export const users = pgTable('users', {
   id: uuid('id').primaryKey(),
   providerSub: text('provider_sub'),                       // OIDC 'sub' claim — NULL for local users
   email: text('email'),                                     // Required for local users, cached for OIDC
+  emailVerified: boolean('email_verified').notNull().default(false),
   name: text('name').notNull(),
   level: text('level').notNull().default('standard'),
   passwordHash: text('password_hash'),                      // Local auth only — NULL for OIDC users
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('users_provider_sub_idx').on(t.providerSub).where(sql`provider_sub IS NOT NULL`),
-  uniqueIndex('users_email_idx').on(t.email).where(sql`email IS NOT NULL`),
+  // Email uniqueness only for local accounts (provider_sub IS NULL).
+  // OIDC users are identified by provider_sub; their email is a cached display field.
+  uniqueIndex('users_email_local_idx').on(t.email).where(sql`email IS NOT NULL AND provider_sub IS NULL`),
   check('users_identity_check', sql`provider_sub IS NOT NULL OR email IS NOT NULL`),
 ]);
 

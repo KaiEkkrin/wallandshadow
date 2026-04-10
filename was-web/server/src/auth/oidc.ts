@@ -3,6 +3,7 @@ import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 export interface OidcClaims {
   sub: string;
   email?: string;
+  emailVerified?: boolean;
   name?: string;
 }
 
@@ -31,6 +32,7 @@ export function createOidcVerifier(issuer: string, audience: string, jwks?: JWTV
       return {
         sub: payload.sub,
         email: typeof payload.email === 'string' ? payload.email : undefined,
+        emailVerified: typeof payload.email_verified === 'boolean' ? payload.email_verified : undefined,
         name: typeof payload.name === 'string' ? payload.name : undefined,
       };
     },
