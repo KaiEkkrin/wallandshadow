@@ -31,6 +31,7 @@ jobs:
   # ── Stage 1: Provision cloud resources ────────────────────────────────────
   opentofu:
     runs-on: ubuntu-latest
+    environment: hetzner
     outputs:
       vps_ip: ${{ steps.output.outputs.vps_ip }}
       volume_id: ${{ steps.output.outputs.volume_id }}
@@ -99,6 +100,7 @@ jobs:
   ansible:
     needs: opentofu
     runs-on: ubuntu-latest
+    environment: hetzner
 
     steps:
       - uses: actions/checkout@v4
