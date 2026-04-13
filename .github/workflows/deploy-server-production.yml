@@ -85,11 +85,7 @@ jobs:
           ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
 
       - name: Fetch secrets from VPS
-        run: |
-          ssh root@${{ secrets.VPS_IP }} cat /etc/wallandshadow/secrets \
-            | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' \
-            >> "$GITHUB_ENV"
-          echo "DATABASE_URL=$(ssh root@${{ secrets.VPS_IP }} grep ^DATABASE_URL_PROD /etc/wallandshadow/secrets | cut -d= -f2-)" >> "$GITHUB_ENV"
+        run: .github/scripts/fetch-vps-secrets.sh "${{ secrets.VPS_IP }}" DATABASE_URL_PROD
 
       - name: Deploy to production
         env:
