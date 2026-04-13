@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useContext } from 'react';
 
-import { IProfile } from '../data/profile';
+import { IProfile, IDataReference } from '@wallandshadow/shared';
 
 import { AnalyticsContext } from './AnalyticsContext';
 import { ProfileContext } from './ProfileContext';
 import { UserContext } from './UserContext';
 import { IContextProviderProps } from './interfaces';
 import { ensureProfile } from '../services/extensions';
-import { IDataReference } from '../services/interfaces';
 
 // This provides the profile context, and can be wrapped around individual components
 // for unit testing.

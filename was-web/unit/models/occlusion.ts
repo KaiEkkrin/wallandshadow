@@ -1,1 +1,1 @@
-../../src/models/occlusion.ts
+export * from '@wallandshadow/shared';

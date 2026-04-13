@@ -1,0 +1,124 @@
+# =============================================================================
+# Provision infrastructure via OpenTofu + Ansible
+# =============================================================================
+# Manual trigger only — infrastructure changes are intentional.
+#
+# Two-stage pipeline:
+#   1. OpenTofu: provisions Hetzner Cloud resources (VPS, volume, static IP, firewall)
+#   2. Ansible:  configures VPS contents (PostgreSQL, Caddy, Docker, backups, secrets)
+#
+# OpenTofu outputs (VPS IP, volume ID) feed directly into Ansible — no manual
+# copy-paste of generated values.
+#
+# Prerequisites (GitHub Secrets):
+#   HCLOUD_TOKEN          — Hetzner Cloud API token
+#   SSH_PRIVATE_KEY       — SSH key for VPS access
+#   HCLOUD_S3_ACCESS_KEY  — Hetzner Object Storage access key (state backend + app)
+#   HCLOUD_S3_SECRET_KEY  — Hetzner Object Storage secret key (state backend + app)
+#
+# First-time setup: see README.md "Infrastructure Bootstrap" section.
+# =============================================================================
+
+name: Provision Infrastructure
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Stage 1: Provision cloud resources ────────────────────────────────────
+  opentofu:
+    runs-on: ubuntu-latest
+    outputs:
+      vps_ip: ${{ steps.output.outputs.vps_ip }}
+      volume_id: ${{ steps.output.outputs.volume_id }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.9"
+
+      - name: Derive SSH public key
+        id: ssh_pubkey
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > /tmp/ssh_key
+          chmod 600 /tmp/ssh_key
+          SSH_PUBLIC_KEY=$(ssh-keygen -y -f /tmp/ssh_key)
+          rm /tmp/ssh_key
+          echo "value=$SSH_PUBLIC_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: OpenTofu init
+        working-directory: infra
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.HCLOUD_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.HCLOUD_S3_SECRET_KEY }}
+        run: tofu init
+
+      - name: OpenTofu plan
+        working-directory: infra
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.HCLOUD_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.HCLOUD_S3_SECRET_KEY }}
+        run: tofu plan -var="ssh_public_key=${{ steps.ssh_pubkey.outputs.value }}" -out=tfplan
+
+      - name: OpenTofu apply
+        working-directory: infra
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.HCLOUD_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.HCLOUD_S3_SECRET_KEY }}
+        run: tofu apply tfplan
+
+      - name: Capture outputs
+        id: output
+        working-directory: infra
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.HCLOUD_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.HCLOUD_S3_SECRET_KEY }}
+        run: |
+          echo "vps_ip=$(tofu output -raw vps_ip)" >> "$GITHUB_OUTPUT"
+          echo "volume_id=$(tofu output -raw volume_id)" >> "$GITHUB_OUTPUT"
+
+      - name: Display VPS IP
+        run: |
+          echo "╔══════════════════════════════════════════════════════════════════╗"
+          echo "║  VPS IP: ${{ steps.output.outputs.vps_ip }}"
+          echo "║  Volume: ${{ steps.output.outputs.volume_id }}"
+          echo "║                                                                  "
+          echo "║  If this is the first run, add VPS_IP to GitHub Secrets:         "
+          echo "║  VPS_IP=${{ steps.output.outputs.vps_ip }}"
+          echo "╚══════════════════════════════════════════════════════════════════╝"
+
+  # ── Stage 2: Configure VPS contents ───────────────────────────────────────
+  ansible:
+    needs: opentofu
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ needs.opentofu.outputs.vps_ip }} >> ~/.ssh/known_hosts
+
+      - name: Run Ansible playbook
+        working-directory: ansible
+        env:
+          VPS_IP: ${{ needs.opentofu.outputs.vps_ip }}
+        run: |
+          ansible-playbook playbook.yml -i inventory.yml \
+            -e "volume_id=${{ needs.opentofu.outputs.volume_id }}" \
+            -e "s3_access_key=${{ secrets.HCLOUD_S3_ACCESS_KEY }}" \
+            -e "s3_secret_key=${{ secrets.HCLOUD_S3_SECRET_KEY }}"

@@ -1,0 +1,991 @@
+import { describe, test, expect } from 'vitest';
+import { MapType, ChangeCategory, ChangeType } from '@wallandshadow/shared';
+import type { TokenAdd, WallAdd } from '@wallandshadow/shared';
+import { createApp } from '../app.js';
+import {
+  registerUser,
+  apiGet,
+  apiPost,
+  apiPatch,
+  apiDelete,
+  apiUploadImage,
+  TINY_PNG,
+  postMapChanges,
+  getBaseChange,
+  countMapChanges,
+  createAddToken1,
+  createMoveToken1,
+  createAddWall1,
+} from './helpers.js';
+
+const app = createApp();
+
+// ─── Local helpers ────────────────────────────────────────────────────────────
+
+async function createAdventure(token: string, name = 'Adventure One', description = 'First adventure'): Promise<string> {
+  const res = await apiPost(app, '/api/adventures', { name, description }, token);
+  expect(res.status).toBe(201);
+  const { id } = (await res.json()) as { id: string };
+  return id;
+}
+
+async function createMap(
+  token: string,
+  adventureId: string,
+  name = 'Map One',
+  description = 'First map',
+  ty: MapType = MapType.Square,
+  ffa = false,
+): Promise<string> {
+  const res = await apiPost(app, `/api/adventures/${adventureId}/maps`, { name, description, ty, ffa }, token);
+  expect(res.status).toBe(201);
+  const { id } = (await res.json()) as { id: string };
+  return id;
+}
+
+async function consolidate(token: string, adventureId: string, mapId: string): Promise<void> {
+  const res = await apiPost(app, `/api/adventures/${adventureId}/maps/${mapId}/consolidate`, {}, token);
+  expect(res.status).toBe(204);
+}
+
+function verifyBaseChange(base: ReturnType<typeof getBaseChange> extends Promise<infer T> ? T : never, uid: string, expectedX: number) {
+  expect(base).not.toBeUndefined();
+  expect(base!.chs).toHaveLength(2);
+
+  const tokenRecord = base!.chs.find(ch => ch.cat === ChangeCategory.Token) as TokenAdd | undefined;
+  expect(tokenRecord?.ty).toBe(ChangeType.Add);
+  expect((tokenRecord as TokenAdd).feature.id).toBe('token1');
+  expect((tokenRecord as TokenAdd).feature.position.x).toBe(expectedX);
+  expect((tokenRecord as TokenAdd).feature.position.y).toBe(3);
+
+  const wallRecord = base!.chs.find(ch => ch.cat === ChangeCategory.Wall) as WallAdd | undefined;
+  expect(wallRecord?.ty).toBe(ChangeType.Add);
+  expect((wallRecord as WallAdd).feature.position.x).toBe(0);
+  expect((wallRecord as WallAdd).feature.position.y).toBe(0);
+  expect((wallRecord as WallAdd).feature.colour).toBe(0);
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+describe('server integration tests', () => {
+
+  // ── Adventures and maps (basic CRUD) ─────────────────────────────────────
+
+  describe('adventures and maps', () => {
+    test('create and delete adventures and maps', async () => {
+      const { token, uid } = await registerUser(app, 'Owner');
+
+      // Create two adventures
+      const a1Id = await createAdventure(token, 'Adventure One', 'First adventure');
+      const a2Id = await createAdventure(token, 'Adventure Two', 'Second adventure');
+      expect(a1Id).not.toBe(a2Id);
+
+      // Verify both via GET /api/adventures
+      const listRes = await apiGet(app, '/api/adventures', token);
+      expect(listRes.status).toBe(200);
+      const list = (await listRes.json()) as { id: string; name: string }[];
+      expect(list.some(a => a.id === a1Id && a.name === 'Adventure One')).toBe(true);
+      expect(list.some(a => a.id === a2Id && a.name === 'Adventure Two')).toBe(true);
+
+      // Verify a1 details via GET /api/adventures/:id
+      const a1Res = await apiGet(app, `/api/adventures/${a1Id}`, token);
+      expect(a1Res.status).toBe(200);
+      const a1 = (await a1Res.json()) as { id: string; name: string; owner: string };
+      expect(a1.name).toBe('Adventure One');
+      expect(a1.owner).toBe(uid);
+
+      // Create a map in each adventure
+      const m1Id = await createMap(token, a1Id, 'Map One', 'First map', MapType.Square, false);
+      const m2Id = await createMap(token, a2Id, 'Map Two', 'Second map', MapType.Hex, true);
+
+      // Verify maps via GET /api/adventures/:id/maps
+      const mapsRes = await apiGet(app, `/api/adventures/${a1Id}/maps`, token);
+      expect(mapsRes.status).toBe(200);
+      const mapList = (await mapsRes.json()) as { id: string; name: string; ty: string }[];
+      expect(mapList).toHaveLength(1);
+      expect(mapList[0].id).toBe(m1Id);
+      expect(mapList[0].ty).toBe(MapType.Square);
+
+      // Verify single map via GET /api/adventures/:id/maps/:mapId
+      const m2Res = await apiGet(app, `/api/adventures/${a2Id}/maps/${m2Id}`, token);
+      expect(m2Res.status).toBe(200);
+      const m2 = (await m2Res.json()) as { id: string; name: string; ty: string; ffa: boolean };
+      expect(m2.name).toBe('Map Two');
+      expect(m2.ty).toBe(MapType.Hex);
+      expect(m2.ffa).toBe(true);
+
+      // Delete map 1
+      const delMapRes = await apiDelete(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
+      expect(delMapRes.status).toBe(204);
+
+      // Map 1 should now 404
+      const m1Gone = await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
+      expect(m1Gone.status).toBe(404);
+
+      // Adventure 2 and map 2 still exist
+      const m2Still = await apiGet(app, `/api/adventures/${a2Id}/maps/${m2Id}`, token);
+      expect(m2Still.status).toBe(200);
+
+      // Delete adventure 2
+      const delAdvRes = await apiDelete(app, `/api/adventures/${a2Id}`, token);
+      expect(delAdvRes.status).toBe(204);
+
+      // Adventure 2 should be gone from list
+      const listRes2 = await apiGet(app, '/api/adventures', token);
+      const list2 = (await listRes2.json()) as { id: string }[];
+      expect(list2.some(a => a.id === a2Id)).toBe(false);
+    });
+  });
+
+  // ── CRUD — update and leave ───────────────────────────────────────────────
+
+  describe('CRUD', () => {
+    test('update adventure and map metadata', async () => {
+      const { token } = await registerUser(app, 'Owner');
+      const aId = await createAdventure(token, 'Original Name', 'Original desc');
+      const mId = await createMap(token, aId, 'Map Name', 'Map desc', MapType.Square, false);
+
+      // Patch adventure
+      const patchAdvRes = await apiPatch(app, `/api/adventures/${aId}`, { name: 'Updated Name', description: 'Updated desc' }, token);
+      expect(patchAdvRes.status).toBe(204);
+
+      const advRes = await apiGet(app, `/api/adventures/${aId}`, token);
+      const adv = (await advRes.json()) as { name: string; description: string };
+      expect(adv.name).toBe('Updated Name');
+      expect(adv.description).toBe('Updated desc');
+
+      // Patch map
+      const patchMapRes = await apiPatch(app, `/api/adventures/${aId}/maps/${mId}`, { name: 'New Map Name', ffa: true }, token);
+      expect(patchMapRes.status).toBe(204);
+
+      const mapRes = await apiGet(app, `/api/adventures/${aId}/maps/${mId}`, token);
+      const m = (await mapRes.json()) as { name: string; ffa: boolean };
+      expect(m.name).toBe('New Map Name');
+      expect(m.ffa).toBe(true);
+    });
+
+    test('update player allowed status and characters', async () => {
+      const owner = await registerUser(app, 'Owner');
+      const player = await registerUser(app, 'Player');
+
+      const aId = await createAdventure(owner.token);
+
+      // Player joins via invite
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Verify player is in the list
+      const playersRes = await apiGet(app, `/api/adventures/${aId}/players`, owner.token);
+      expect(playersRes.status).toBe(200);
+      const players = (await playersRes.json()) as { playerId: string; allowed: boolean; playerName: string }[];
+      const playerEntry = players.find(p => p.playerId === player.uid);
+      expect(playerEntry).toBeDefined();
+      expect(playerEntry?.allowed).toBe(true);
+
+      // Owner blocks the player
+      const patchRes = await apiPatch(app, `/api/adventures/${aId}/players/${player.uid}`, { allowed: false }, owner.token);
+      expect(patchRes.status).toBe(204);
+
+      // Verify player is now blocked
+      const playersRes2 = await apiGet(app, `/api/adventures/${aId}/players`, owner.token);
+      const players2 = (await playersRes2.json()) as { playerId: string; allowed: boolean }[];
+      const playerEntry2 = players2.find(p => p.playerId === player.uid);
+      expect(playerEntry2?.allowed).toBe(false);
+    });
+
+    test('player can leave an adventure', async () => {
+      const owner = await registerUser(app, 'Owner');
+      const player = await registerUser(app, 'Player');
+
+      const aId = await createAdventure(owner.token);
+
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player leaves
+      const leaveRes = await apiDelete(app, `/api/adventures/${aId}/players/me`, player.token);
+      expect(leaveRes.status).toBe(204);
+
+      // Player should no longer appear in the players list
+      const playersRes = await apiGet(app, `/api/adventures/${aId}/players`, owner.token);
+      const players = (await playersRes.json()) as { playerId: string }[];
+      expect(players.some(p => p.playerId === player.uid)).toBe(false);
+
+      // Adventure should no longer appear in player's adventure list
+      const listRes = await apiGet(app, '/api/adventures', player.token);
+      const list = (await listRes.json()) as { id: string }[];
+      expect(list.some(a => a.id === aId)).toBe(false);
+    });
+
+    test('non-owner cannot patch adventure or map', async () => {
+      const owner = await registerUser(app, 'Owner');
+      const player = await registerUser(app, 'Player');
+
+      const aId = await createAdventure(owner.token);
+      const mId = await createMap(owner.token, aId);
+
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player cannot patch adventure
+      const patchAdvRes = await apiPatch(app, `/api/adventures/${aId}`, { name: 'Hacked' }, player.token);
+      expect(patchAdvRes.status).toBe(403);
+
+      // Player cannot patch map
+      const patchMapRes = await apiPatch(app, `/api/adventures/${aId}/maps/${mId}`, { name: 'Hacked' }, player.token);
+      expect(patchMapRes.status).toBe(403);
+    });
+  });
+
+  // ── Consolidation ────────────────────────────────────────────────────────
+
+  async function testConsolidate(moveCount: number) {
+    const { token, uid } = await registerUser(app);
+    const a1Id = await createAdventure(token);
+    const m1Id = await createMap(token, a1Id, 'Map One', 'First map', MapType.Hex);
+
+    // Post changes via REST endpoint
+    await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid)]);
+    for (let i = 0; i < moveCount; ++i) {
+      await postMapChanges(app, token, a1Id, m1Id, [createMoveToken1(i)]);
+    }
+    await postMapChanges(app, token, a1Id, m1Id, [createAddWall1()]);
+
+    // Verify incremental rows exist
+    const incrementalCount = await countMapChanges(m1Id);
+    expect(incrementalCount).toBe(2 + moveCount);
+
+    // Consolidate
+    await consolidate(token, a1Id, m1Id);
+
+    // Only one base change should remain
+    const base = await getBaseChange(m1Id);
+    const totalAfter = await countMapChanges(m1Id);
+    expect(totalAfter).toBe(1);
+    verifyBaseChange(base, uid, moveCount);
+
+    // Consolidate again with more moves (tests consolidation with existing base change)
+    for (let i = moveCount; i < moveCount * 2; ++i) {
+      await postMapChanges(app, token, a1Id, m1Id, [createMoveToken1(i)]);
+    }
+    await consolidate(token, a1Id, m1Id);
+
+    const base2 = await getBaseChange(m1Id);
+    const totalAfter2 = await countMapChanges(m1Id);
+    expect(totalAfter2).toBe(1);
+    verifyBaseChange(base2, uid, moveCount * 2);
+  }
+
+  describe('consolidation', () => {
+    test('consolidate 1 move', () => testConsolidate(1));
+    test('consolidate 2 moves', () => testConsolidate(2));
+    test('consolidate 10 moves', () => testConsolidate(10));
+    test('consolidate 200 moves', () => testConsolidate(200), 120000);
+    test('consolidate 600 moves', () => testConsolidate(600), 300000);
+  });
+
+  // ── Invites ──────────────────────────────────────────────────────────────
+
+  describe('invites', () => {
+    test('join an adventure via invite', async () => {
+      const owner = await registerUser(app, 'Owner');
+      const user = await registerUser(app, 'User 1');
+
+      const a1Id = await createAdventure(owner.token);
+      await createMap(owner.token, a1Id);
+
+      // Create an invite
+      const inviteRes = await apiPost(app, `/api/adventures/${a1Id}/invites`, {}, owner.token);
+      expect(inviteRes.status).toBe(200);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      expect(inviteId).toBeTruthy();
+
+      // User joins via invite
+      const joinRes = await apiPost(app, `/api/invites/${inviteId}/join`, {}, user.token);
+      expect(joinRes.status).toBe(200);
+      const { adventureId } = (await joinRes.json()) as { adventureId: string };
+      expect(adventureId).toBe(a1Id);
+
+      // Verify via players list
+      const playersRes = await apiGet(app, `/api/adventures/${a1Id}/players`, owner.token);
+      const players = (await playersRes.json()) as { playerId: string; allowed: boolean; playerName: string }[];
+      const playerEntry = players.find(p => p.playerId === user.uid);
+      expect(playerEntry?.allowed).toBe(true);
+      expect(playerEntry?.playerName).toBe('User 1');
+
+      // Joining again should be idempotent
+      const joinRes2 = await apiPost(app, `/api/invites/${inviteId}/join`, {}, user.token);
+      expect(joinRes2.status).toBe(200);
+    });
+
+    test('invites expire', async () => {
+      const owner = await registerUser(app, 'Owner');
+      const user1 = await registerUser(app, 'User 1');
+      const user2 = await registerUser(app, 'User 2');
+
+      const a1Id = await createAdventure(owner.token);
+
+      const testPolicy = { timeUnit: 'second', recreate: 2, expiry: 3, deletion: 15 };
+
+      // Create invite with short expiry
+      const inviteRes = await apiPost(app, `/api/adventures/${a1Id}/invites`, { policy: testPolicy }, owner.token);
+      expect(inviteRes.status).toBe(200);
+      const { inviteId: invite } = (await inviteRes.json()) as { inviteId: string };
+
+      // Re-issuing immediately should return the same invite
+      const inviteRes2 = await apiPost(app, `/api/adventures/${a1Id}/invites`, { policy: testPolicy }, owner.token);
+      const { inviteId: invite2 } = (await inviteRes2.json()) as { inviteId: string };
+      expect(invite2).toBe(invite);
+
+      // User 1 can join with the current invite
+      const join1Res = await apiPost(app, `/api/invites/${invite}/join`, { policy: testPolicy }, user1.token);
+      expect(join1Res.status).toBe(200);
+
+      // Wait for the invite to expire
+      await new Promise(r => setTimeout(r, 4000));
+
+      // User 2 cannot join with the expired invite
+      const join2Res = await apiPost(app, `/api/invites/${invite}/join`, { policy: testPolicy }, user2.token);
+      expect(join2Res.status).toBe(408);
+
+      // User 2 should not have been added as a player
+      const playersRes = await apiGet(app, `/api/adventures/${a1Id}/players`, owner.token);
+      const players = (await playersRes.json()) as { playerId: string }[];
+      expect(players.some(p => p.playerId === user2.uid)).toBe(false);
+
+      // Owner creates a new invite
+      const inviteRes3 = await apiPost(app, `/api/adventures/${a1Id}/invites`, { policy: testPolicy }, owner.token);
+      const { inviteId: invite3 } = (await inviteRes3.json()) as { inviteId: string };
+      expect(invite3).not.toBe(invite);
+
+      // User 2 can now join with the new invite
+      const join3Res = await apiPost(app, `/api/invites/${invite3}/join`, { policy: testPolicy }, user2.token);
+      expect(join3Res.status).toBe(200);
+      const { adventureId } = (await join3Res.json()) as { adventureId: string };
+      expect(adventureId).toBe(a1Id);
+    }, 10000);
+  });
+
+  // ── Clone map ────────────────────────────────────────────────────────────
+
+  describe('clone', () => {
+    test('clone a map', async () => {
+      const moveCount = 5;
+      const { token, uid } = await registerUser(app, 'Owner');
+      const a1Id = await createAdventure(token);
+
+      const m1Id = await createMap(token, a1Id, 'Map One', 'First map', MapType.Hex, false);
+
+      // Clone the map before any changes (empty clone)
+      const cloneRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/clone`, {
+        name: 'Clone of Map One',
+        description: 'First map cloned',
+      }, token);
+      expect(cloneRes.status).toBe(201);
+      const { id: m2Id } = (await cloneRes.json()) as { id: string };
+      expect(m2Id).not.toBe(m1Id);
+
+      // Verify clone metadata via GET
+      const m1Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
+      const m2Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m2Id}`, token);
+      const m1 = (await m1Res.json()) as { ty: string; ffa: boolean };
+      const m2 = (await m2Res.json()) as { name: string; description: string; ty: string; ffa: boolean };
+      expect(m2.name).toBe('Clone of Map One');
+      expect(m2.description).toBe('First map cloned');
+      expect(m2.ty).toBe(m1.ty);
+      expect(m2.ffa).toBe(m1.ffa);
+
+      // Add changes to the original via REST
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid)]);
+      for (let i = 0; i < moveCount; ++i) {
+        await postMapChanges(app, token, a1Id, m1Id, [createMoveToken1(i)]);
+      }
+      await postMapChanges(app, token, a1Id, m1Id, [createAddWall1()]);
+
+      // Clone the map again (with changes)
+      const clone2Res = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/clone`, {
+        name: 'Second clone',
+        description: 'First map cloned with changes',
+      }, token);
+      expect(clone2Res.status).toBe(201);
+      const { id: m3Id } = (await clone2Res.json()) as { id: string };
+
+      const m3Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m3Id}`, token);
+      const m3 = (await m3Res.json()) as { name: string; ty: string };
+      expect(m3.name).toBe('Second clone');
+      expect(m3.ty).toBe(m1.ty);
+
+      // Both original and second clone should have same consolidated base change
+      const m1Base = await getBaseChange(m1Id);
+      const m3Base = await getBaseChange(m3Id);
+      verifyBaseChange(m1Base, uid, moveCount);
+      verifyBaseChange(m3Base, uid, moveCount);
+
+      // First (empty) clone should have no changes
+      const m2ChangeCount = await countMapChanges(m2Id);
+      expect(m2ChangeCount).toBe(0);
+    });
+  });
+
+  // ── Permissions ──────────────────────────────────────────────────────────
+
+  describe('permissions', () => {
+    test('non-member cannot consolidate or post changes; owner and player can', async () => {
+      const owner = await registerUser(app, 'Owner');
+      const stranger = await registerUser(app, 'Stranger');
+      const player = await registerUser(app, 'Player');
+
+      const a1Id = await createAdventure(owner.token);
+      const m1Id = await createMap(owner.token, a1Id, 'Map One', 'First map', MapType.Square);
+
+      // Post changes as owner
+      await postMapChanges(app, owner.token, a1Id, m1Id, [createAddToken1(owner.uid), createAddWall1()]);
+
+      // Stranger cannot post changes (404 to hide existence)
+      const strangerChangeRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/changes`, {
+        chs: [createAddToken1(stranger.uid)],
+      }, stranger.token);
+      expect(strangerChangeRes.status).toBe(404);
+
+      // Stranger cannot consolidate (404 to hide existence)
+      const strangerRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/consolidate`, {}, stranger.token);
+      expect(strangerRes.status).toBe(404);
+
+      // Owner can consolidate
+      const ownerRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/consolidate`, {}, owner.token);
+      expect(ownerRes.status).toBe(204);
+      const base = await getBaseChange(m1Id);
+      expect(base).not.toBeUndefined();
+
+      // Player joins via invite
+      const inviteRes = await apiPost(app, `/api/adventures/${a1Id}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player can post changes
+      await postMapChanges(app, player.token, a1Id, m1Id, [createMoveToken1(0)]);
+
+      // Player can also consolidate
+      const playerRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/consolidate`, {}, player.token);
+      expect(playerRes.status).toBe(204);
+    });
+  });
+
+  // ── Cascade deletion ─────────────────────────────────────────────────────
+
+  describe('cascade deletion', () => {
+    test('deleteMap purges the changes subcollection', async () => {
+      const { token, uid } = await registerUser(app);
+      const a1Id = await createAdventure(token);
+      const m1Id = await createMap(token, a1Id);
+
+      // Post changes and consolidate
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid)]);
+      for (let i = 0; i < 3; ++i) {
+        await postMapChanges(app, token, a1Id, m1Id, [createMoveToken1(i)]);
+      }
+      await postMapChanges(app, token, a1Id, m1Id, [createAddWall1()]);
+      await consolidate(token, a1Id, m1Id);
+
+      // Verify we have exactly 1 consolidated change
+      expect(await countMapChanges(m1Id)).toBe(1);
+
+      // Delete the map
+      const res = await apiDelete(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
+      expect(res.status).toBe(204);
+
+      // Map should 404
+      const mapRes = await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
+      expect(mapRes.status).toBe(404);
+
+      // Changes should be gone (FK CASCADE from maps)
+      expect(await countMapChanges(m1Id)).toBe(0);
+    });
+
+    test('deleteMap leaves other maps in the same adventure untouched', async () => {
+      const { token, uid } = await registerUser(app);
+      const a1Id = await createAdventure(token);
+      const m1Id = await createMap(token, a1Id, 'Map One', '', MapType.Square);
+      const m2Id = await createMap(token, a1Id, 'Map Two', '', MapType.Hex);
+
+      // Post and consolidate both maps
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid), createAddWall1()]);
+      await postMapChanges(app, token, a1Id, m2Id, [createAddToken1(uid), createAddWall1()]);
+      await consolidate(token, a1Id, m1Id);
+      await consolidate(token, a1Id, m2Id);
+
+      // Delete map 1 only
+      const res = await apiDelete(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
+      expect(res.status).toBe(204);
+
+      // Map 1 should 404
+      expect((await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token)).status).toBe(404);
+      expect(await countMapChanges(m1Id)).toBe(0);
+
+      // Map 2 should still exist with its changes
+      const m2Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m2Id}`, token);
+      expect(m2Res.status).toBe(200);
+      const m2 = (await m2Res.json()) as { name: string };
+      expect(m2.name).toBe('Map Two');
+
+      const m2Base = await getBaseChange(m2Id);
+      expect(m2Base).not.toBeUndefined();
+      expect(m2Base!.chs).toHaveLength(2); // token + wall
+    });
+
+    test('deleting the original map leaves its clone intact', async () => {
+      const moveCount = 5;
+      const { token, uid } = await registerUser(app);
+      const a1Id = await createAdventure(token);
+      const m1Id = await createMap(token, a1Id, 'Map One', '', MapType.Hex);
+
+      // Add changes to the original via REST
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid)]);
+      for (let i = 0; i < moveCount; ++i) {
+        await postMapChanges(app, token, a1Id, m1Id, [createMoveToken1(i)]);
+      }
+      await postMapChanges(app, token, a1Id, m1Id, [createAddWall1()]);
+
+      // Clone (cloneMap consolidates then copies the base change)
+      const cloneRes = await apiPost(app, `/api/adventures/${a1Id}/maps/${m1Id}/clone`, {
+        name: 'Clone of Map One',
+      }, token);
+      expect(cloneRes.status).toBe(201);
+      const { id: m2Id } = (await cloneRes.json()) as { id: string };
+
+      // Both original and clone should have the same state
+      verifyBaseChange(await getBaseChange(m1Id), uid, moveCount);
+      verifyBaseChange(await getBaseChange(m2Id), uid, moveCount);
+
+      // Delete the original
+      const delRes = await apiDelete(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token);
+      expect(delRes.status).toBe(204);
+
+      // Original is gone
+      expect((await apiGet(app, `/api/adventures/${a1Id}/maps/${m1Id}`, token)).status).toBe(404);
+      expect(await countMapChanges(m1Id)).toBe(0);
+
+      // Clone still exists with correct state
+      const m2Res = await apiGet(app, `/api/adventures/${a1Id}/maps/${m2Id}`, token);
+      expect(m2Res.status).toBe(200);
+      const m2 = (await m2Res.json()) as { name: string };
+      expect(m2.name).toBe('Clone of Map One');
+      verifyBaseChange(await getBaseChange(m2Id), uid, moveCount);
+    });
+
+    test('deleteAdventure cascades to all maps and their changes', async () => {
+      const { token, uid } = await registerUser(app);
+      const a1Id = await createAdventure(token);
+      const m1Id = await createMap(token, a1Id, 'Map One', '', MapType.Square);
+      const m2Id = await createMap(token, a1Id, 'Map Two', '', MapType.Hex);
+
+      // Post and consolidate both
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid), createAddWall1()]);
+      await postMapChanges(app, token, a1Id, m2Id, [createAddToken1(uid)]);
+      await consolidate(token, a1Id, m1Id);
+      await consolidate(token, a1Id, m2Id);
+
+      // Delete the adventure
+      const res = await apiDelete(app, `/api/adventures/${a1Id}`, token);
+      expect(res.status).toBe(204);
+
+      // Adventure should not appear in list
+      const listRes = await apiGet(app, '/api/adventures', token);
+      const list = (await listRes.json()) as { id: string }[];
+      expect(list.some(a => a.id === a1Id)).toBe(false);
+
+      // All changes should be gone
+      expect(await countMapChanges(m1Id)).toBe(0);
+      expect(await countMapChanges(m2Id)).toBe(0);
+    });
+
+    test('deleteAdventure leaves other adventures untouched', async () => {
+      const { token, uid } = await registerUser(app);
+      const a1Id = await createAdventure(token, 'Adventure One');
+      const a2Id = await createAdventure(token, 'Adventure Two');
+
+      const m1Id = await createMap(token, a1Id, 'Map One', '', MapType.Square);
+      const m2Id = await createMap(token, a2Id, 'Map Two', '', MapType.Hex);
+
+      // Post and consolidate both
+      await postMapChanges(app, token, a1Id, m1Id, [createAddToken1(uid), createAddWall1()]);
+      await postMapChanges(app, token, a2Id, m2Id, [createAddToken1(uid)]);
+      await consolidate(token, a1Id, m1Id);
+      await consolidate(token, a2Id, m2Id);
+
+      // Delete adventure 1
+      const res = await apiDelete(app, `/api/adventures/${a1Id}`, token);
+      expect(res.status).toBe(204);
+
+      expect(await countMapChanges(m1Id)).toBe(0);
+
+      // Adventure 2, map 2, and its changes should be intact
+      const a2Res = await apiGet(app, `/api/adventures/${a2Id}`, token);
+      expect(a2Res.status).toBe(200);
+      const a2 = (await a2Res.json()) as { name: string };
+      expect(a2.name).toBe('Adventure Two');
+
+      const m2Res = await apiGet(app, `/api/adventures/${a2Id}/maps/${m2Id}`, token);
+      expect(m2Res.status).toBe(200);
+
+      const m2Base = await getBaseChange(m2Id);
+      expect(m2Base).not.toBeUndefined();
+      expect(m2Base!.chs).toHaveLength(1); // token only
+    });
+  });
+
+  // ── GET /api/auth/me ─────────────────────────────────────────────────────
+
+  describe('GET /api/auth/me', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/auth/me');
+      expect(res.status).toBe(401);
+    });
+
+    test('returns user info after registration', async () => {
+      const { token } = await registerUser(app, 'Alice', 'alice@example.com');
+      const res = await apiGet(app, '/api/auth/me', token);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { uid: string; email: string; name: string; level: string };
+      expect(body.uid).toBeTruthy();
+      expect(body.email).toBe('alice@example.com');
+      expect(body.name).toBe('Alice');
+      expect(body.level).toBe('standard');
+    });
+
+    test('returns user info after login', async () => {
+      const email = `me-login-${Date.now()}@example.com`;
+      await registerUser(app, 'Bob', email, 'TestPass1');
+
+      // Login
+      const loginRes = await app.request('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: 'TestPass1' }),
+      });
+      expect(loginRes.status).toBe(200);
+      const { token } = (await loginRes.json()) as { token: string };
+
+      const res = await apiGet(app, '/api/auth/me', token);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { uid: string; email: string; name: string; level: string };
+      expect(body.email).toBe(email);
+      expect(body.name).toBe('Bob');
+    });
+  });
+
+  // ── GET /api/invites/:id ─────────────────────────────────────────────────
+
+  describe('GET /api/invites/:id', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/invites/nonexistent');
+      expect(res.status).toBe(401);
+    });
+
+    test('returns 404 for nonexistent invite', async () => {
+      const { token } = await registerUser(app);
+      const res = await apiGet(app, '/api/invites/00000000-0000-0000-0000-000000000000', token);
+      expect(res.status).toBe(404);
+    });
+
+    test('returns invite details', async () => {
+      const owner = await registerUser(app, 'InviteOwner');
+      const viewer = await registerUser(app, 'Viewer');
+
+      const aId = await createAdventure(owner.token, 'Test Adventure', 'desc');
+
+      // Create an invite
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      expect(inviteRes.status).toBe(200);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+
+      // Any authenticated user can view invite details
+      const res = await apiGet(app, `/api/invites/${inviteId}`, viewer.token);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        id: string;
+        adventureId: string;
+        adventureName: string;
+        ownerName: string;
+        expiresAt: string;
+      };
+      expect(body.id).toBe(inviteId);
+      expect(body.adventureId).toBe(aId);
+      expect(body.adventureName).toBe('Test Adventure');
+      expect(body.ownerName).toBe('InviteOwner');
+      expect(body.expiresAt).toBeTruthy();
+    });
+  });
+
+  // ── GET /api/images/download ──────────────────────────────────────────────
+
+  describe('GET /api/images/download', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/images/download?path=images/foo');
+      expect(res.status).toBe(401);
+    });
+
+    test('returns 400 without path query parameter', async () => {
+      const { token } = await registerUser(app);
+      const res = await apiGet(app, '/api/images/download', token);
+      expect(res.status).toBe(400);
+    });
+
+    test('returns presigned URL for a valid path', async () => {
+      const { token } = await registerUser(app);
+      // Upload an image first
+      const uploadRes = await apiUploadImage(app, token, TINY_PNG, 'test.png', 'image/png', 'Test Image');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      // Get download URL
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, token);
+      expect(res.status).toBe(200);
+      const { url } = (await res.json()) as { url: string };
+      expect(url).toBeTruthy();
+      expect(typeof url).toBe('string');
+    });
+
+    test('denies download of another user\'s image without shared adventure', async () => {
+      const owner = await registerUser(app);
+      const stranger = await registerUser(app);
+
+      // Owner uploads an image
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'private.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      // Stranger tries to download it
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, stranger.token);
+      expect(res.status).toBe(404);
+    });
+
+    test('adventure member can download adventure cover image', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      // Owner uploads image and creates adventure with it as cover
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'cover.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      await apiPatch(app, `/api/adventures/${aId}`, { imagePath }, owner.token);
+
+      // Invite player
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player can download the cover image
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(res.status).toBe(200);
+    });
+
+    test('adventure member can download map background image', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      // Owner uploads image and creates adventure + map with it
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'bg.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      const mId = await createMap(owner.token, aId);
+      await apiPatch(app, `/api/adventures/${aId}/maps/${mId}`, { imagePath }, owner.token);
+
+      // Invite player
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player can download the map image
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(res.status).toBe(200);
+    });
+
+    test('non-member denied for adventure cover image', async () => {
+      const owner = await registerUser(app);
+      const stranger = await registerUser(app);
+
+      // Owner uploads image and creates adventure with it
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'cover.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      await apiPatch(app, `/api/adventures/${aId}`, { imagePath }, owner.token);
+
+      // Stranger cannot download the cover image (404 to avoid leaking existence)
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, stranger.token);
+      expect(res.status).toBe(404);
+    });
+
+    test('rejects unrecognised path format', async () => {
+      const { token } = await registerUser(app);
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent('arbitrary/key')}`, token);
+      expect(res.status).toBe(404);
+    });
+
+    test('blocked player denied download', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      // Owner uploads image and creates adventure with it
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'cover.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      await apiPatch(app, `/api/adventures/${aId}`, { imagePath }, owner.token);
+
+      // Invite player then block them
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+      await apiPatch(app, `/api/adventures/${aId}/players/${player.uid}`, { allowed: false }, owner.token);
+
+      // Blocked player cannot download (404 to avoid leaking existence)
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(res.status).toBe(404);
+    });
+
+    test('adventure member can download spritesheet image', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      // Owner uploads source images for the spritesheet
+      const upload1 = await apiUploadImage(app, owner.token, TINY_PNG, 's1.png', 'image/png');
+      expect(upload1.status).toBe(201);
+      const { path: src1 } = (await upload1.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+
+      // Create spritesheet
+      const sheetRes = await apiPost(app, `/api/adventures/${aId}/spritesheets`, {
+        geometry: '1x1',
+        sources: [src1],
+      }, owner.token);
+      expect(sheetRes.status).toBe(200);
+      const { sprites } = (await sheetRes.json()) as { sprites: { id: string }[] };
+      const sheetId = sprites[0].id;
+
+      // Invite player
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Player can download the spritesheet
+      const spritePath = `sprites/${sheetId}.png`;
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(spritePath)}`, player.token);
+      expect(res.status).toBe(200);
+    });
+
+    test('non-member denied for spritesheet download', async () => {
+      const owner = await registerUser(app);
+      const stranger = await registerUser(app);
+
+      // Owner uploads source image and creates adventure + spritesheet
+      const upload1 = await apiUploadImage(app, owner.token, TINY_PNG, 's1.png', 'image/png');
+      expect(upload1.status).toBe(201);
+      const { path: src1 } = (await upload1.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      const sheetRes = await apiPost(app, `/api/adventures/${aId}/spritesheets`, {
+        geometry: '1x1',
+        sources: [src1],
+      }, owner.token);
+      expect(sheetRes.status).toBe(200);
+      const { sprites } = (await sheetRes.json()) as { sprites: { id: string }[] };
+      const sheetId = sprites[0].id;
+
+      // Stranger cannot download the spritesheet (404 to avoid leaking existence)
+      const spritePath = `sprites/${sheetId}.png`;
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(spritePath)}`, stranger.token);
+      expect(res.status).toBe(404);
+    });
+
+    test('returns 404 for non-existent spritesheet', async () => {
+      const { token } = await registerUser(app);
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent('sprites/00000000-0000-0000-0000-000000000000.png')}`, token);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── GET /api/adventures/:id/spritesheets ──────────────────────────────────
+
+  describe('GET /api/adventures/:id/spritesheets', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/adventures/fake/spritesheets');
+      expect(res.status).toBe(401);
+    });
+
+    test('returns empty array for adventure with no spritesheets', async () => {
+      const { token } = await registerUser(app);
+      const aId = await createAdventure(token, 'No Sprites Adventure');
+      const res = await apiGet(app, `/api/adventures/${aId}/spritesheets`, token);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as unknown[];
+      expect(body).toEqual([]);
+    });
+  });
+
+  // ── GET /api/adventures/:id/maps/:mapId/changes ───────────────────────────
+
+  describe('GET /api/adventures/:id/maps/:mapId/changes', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/adventures/fake/maps/fake/changes');
+      expect(res.status).toBe(401);
+    });
+
+    test('returns empty base and incrementals for new map', async () => {
+      const { token } = await registerUser(app);
+      const aId = await createAdventure(token);
+      const mId = await createMap(token, aId);
+
+      const res = await apiGet(app, `/api/adventures/${aId}/maps/${mId}/changes`, token);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { base: unknown; incremental: unknown[] };
+      expect(body.base).toBeNull();
+      expect(body.incremental).toEqual([]);
+    });
+
+    test('returns base and incrementals after changes and consolidation', async () => {
+      const { token, uid } = await registerUser(app);
+      const aId = await createAdventure(token);
+      const mId = await createMap(token, aId);
+
+      // Post some changes
+      await postMapChanges(app, token, aId, mId, [createAddToken1(uid), createAddWall1()]);
+      await postMapChanges(app, token, aId, mId, [createMoveToken1(0)]);
+
+      // Before consolidation: no base, 2 incrementals
+      const res1 = await apiGet(app, `/api/adventures/${aId}/maps/${mId}/changes`, token);
+      expect(res1.status).toBe(200);
+      const body1 = (await res1.json()) as { base: unknown; incremental: { id: string; changes: unknown }[] };
+      expect(body1.base).toBeNull();
+      expect(body1.incremental).toHaveLength(2);
+
+      // Consolidate
+      await consolidate(token, aId, mId);
+
+      // After consolidation: base exists, no incrementals
+      const res2 = await apiGet(app, `/api/adventures/${aId}/maps/${mId}/changes`, token);
+      expect(res2.status).toBe(200);
+      const body2 = (await res2.json()) as { base: unknown; incremental: unknown[] };
+      expect(body2.base).not.toBeNull();
+      expect(body2.incremental).toEqual([]);
+    });
+
+    test('returns 404 for nonexistent map', async () => {
+      const { token } = await registerUser(app);
+      const aId = await createAdventure(token);
+      const res = await apiGet(app, `/api/adventures/${aId}/maps/00000000-0000-0000-0000-000000000000/changes`, token);
+      expect(res.status).toBe(404);
+    });
+  });
+});

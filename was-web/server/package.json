@@ -1,0 +1,43 @@
+{
+  "name": "@wallandshadow/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsup",
+    "start:prod": "node dist/index.js",
+    "test": "vitest --config vitest.config.ts run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:push:test": "DATABASE_URL=postgresql://was:wasdev@localhost:5432/wallandshadow_test drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/s3-request-presigner": "^3.0.0",
+    "@hono/node-server": "^1.19.13",
+    "@wallandshadow/shared": "*",
+    "bcrypt": "^5.1.1",
+    "dayjs": "^1.8.36",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.12",
+    "jose": "^6.0.0",
+    "pg": "^8.13.0",
+    "uuid": "^11.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/ws": "^8.5.0",
+    "drizzle-kit": "^0.31.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

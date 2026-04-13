@@ -1,6 +1,12 @@
 # environment file
 .env
 
+# Ansible generated secrets cache (passwords, JWT key)
+ansible/secrets/
+
+# Kamal local secrets (for running kamal deploy from your machine)
+.kamal/secrets.local
+
 # user home directory in Docker container
 /.usercache/.bash_history
 /.usercache/.cache
@@ -11,6 +17,3 @@
 /.usercache/.pki
 /.usercache/.yarn
 /.usercache/.yarnrc
-
-# Other stuff
-.claude

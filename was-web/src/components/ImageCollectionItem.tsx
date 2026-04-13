@@ -4,7 +4,7 @@ import * as React from 'react';
 import { AnalyticsContext } from './AnalyticsContext';
 import { UserContext } from './UserContext';
 
-import { IImage } from '../data/image';
+import { IImage } from '@wallandshadow/shared';
 
 import { from } from 'rxjs';
 
@@ -32,7 +32,7 @@ function ImageCollectionItem({ image, style }: IImageCollectionItemProps) {
 
   return (
     <div style={style}>
-      <img className="App-image-collection-image" src={url} alt={image.name} />
+      {url && <img className="App-image-collection-image" src={url} alt={image.name} />}
       <p>{image.name}</p>
     </div>
   );

@@ -1,1 +1,1 @@
-../../src/data/sprite.ts
+export * from '@wallandshadow/shared';

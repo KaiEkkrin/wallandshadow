@@ -6,9 +6,9 @@ Guidance for Claude Code when working with this repository.
 
 Wall & Shadow - Virtual tabletop (VTT) web app for running tabletop RPG sessions online. Real-time collaborative map editing, token management, game state sharing.
 
-**Stack**: React + TypeScript + Firebase (Firestore, Functions, Auth, Hosting, Storage) + Three.js + Vite
+**Stack**: React + TypeScript + Firebase (legacy) + Three.js + Vite. Migrating to self-hosted: PostgreSQL + Hono + WebSockets + S3-compatible storage.
 
-**Status**: Revived with modern toolchain (Node.js 20, React 18, Vite, Firebase v11)
+**Status**: Active replatforming from Firebase to self-hosted stack. See [Replatforming](#replatforming) and @docs/REPLATFORM.md.
 
 ## Directory Structure
 
@@ -18,9 +18,19 @@ was-web/
 │   ├── components/          # React components and UI
 │   ├── data/                # TypeScript domain models
 │   ├── models/              # Business logic, state machines, Three.js rendering
-│   ├── services/            # Firebase integration, data access
+│   ├── services/            # Data access (legacy Firebase + new Hono implementations)
 │   └── *.tsx                # Top-level pages (Home, Map, Adventure, Login)
-├── functions/               # Firebase Cloud Functions
+├── server/                  # New Hono API server
+│   ├── src/
+│   │   ├── routes/          # Hono route handlers
+│   │   ├── services/        # Business logic + storage
+│   │   ├── db/              # Drizzle schema + migrations
+│   │   ├── auth/            # Auth middleware (Phase 1: local JWT)
+│   │   ├── ws/              # WebSocket handlers
+│   │   └── errors.ts        # Structured API errors
+│   └── drizzle/             # SQL migration files
+├── packages/shared/         # @wallandshadow/shared - types + logic shared between web/server/functions
+├── functions/               # Firebase Cloud Functions (legacy)
 ├── public/                  # Static assets
 ├── e2e/                     # Playwright tests
 ├── unit/                    # Vitest tests
@@ -28,7 +38,7 @@ was-web/
 └── app.html                 # React SPA (all app routes)
 ```
 
-Where code files need to be shared between Functions and Web projects, symbolic links from inside the functions/ directory point to the real files in the src/ directory.
+Code shared between web, server, and functions lives in `packages/shared/` (Yarn workspace `@wallandshadow/shared`). Import from `@wallandshadow/shared` — do not use symlinks.
 
 ## Development Commands
 
@@ -114,6 +124,45 @@ See @DEPLOY.md for comprehensive deployment instructions.
 - Call `dispose()` on all objects when done
 - Three.js leaks GPU memory if not disposed
 
+## Code Quality
+
+### Type Safety
+
+- Avoid `any` and `as` casts. Prefer `unknown` + type guards when the type is uncertain.
+- Use discriminated unions for exhaustive checking (`switch` with `never` default).
+- Let TypeScript infer where it can; add explicit types at function boundaries and exports.
+
+### Error Handling
+
+- **All errors must be logged.** Error level if unrecoverable, Warning level if recoverable. Both client and server.
+- **Surface failures, don't hide them.** A visible error leads to a bug report and a fix. A swallowed error hides bugs. Do not catch-and-ignore or silently retry.
+- **Server**: Return structured error responses via `throwApiError()` (`server/src/errors.ts`). Log unexpected errors at Error level before returning 500.
+- **Client**: Bubble API errors to the user (toast, error boundary, inline message). Log to console with context.
+
+### Hono / Server
+
+- Validate all inputs at the route boundary. Do not trust client data past the handler.
+- Keep route handlers thin: validate → call service → return response. Business logic in `server/src/services/`.
+- Use typed middleware for auth context.
+
+### React
+
+- `useMemo` / `useCallback` only when there is a measured performance problem. Do not pre-optimise.
+- Clean up effects: return cleanup functions from `useEffect`. Abort in-flight fetches on unmount.
+
+### Testing
+
+- Test behaviour, not implementation details. Assert on outputs and side effects.
+- Server integration tests run against real PostgreSQL and MinIO — no mocks for data stores.
+- Cover error paths: bad input returns the right status code, auth failures are rejected.
+- **E2E tests**: Include terse step-by-step narrative comments (e.g. `// Open the edit modal and change the name`). Unlike application code, Playwright tests benefit from WHAT comments because selectors alone don't convey the user-facing intent of each step.
+
+### General
+
+- Keep functions small and focused. Extract when a function does two unrelated things.
+- Prefer explicit over clever. Code is read far more than it is written.
+- No dead code. Delete unused functions, commented-out blocks, and obsolete imports.
+
 ## Critical Gotchas
 
 **Change Tracking**: All map changes must go through `mapChangeTracker.ts`. Direct Firestore writes break real-time sync.
@@ -191,6 +240,36 @@ Defined in `data/coord.ts`:
 
 See @docs/ARCHITECTURE.md for detailed architecture documentation.
 
+## Replatforming
+
+The project is migrating from Firebase to a self-hosted, containerised stack. Firebase remains live during migration. Full plan in @docs/REPLATFORM.md.
+
+### New Stack
+
+- **Database**: PostgreSQL 17 + Drizzle ORM
+- **API server**: Hono (TypeScript) — `was-web/server/`
+- **Real-time**: WebSockets + PostgreSQL LISTEN/NOTIFY
+- **Object storage**: MinIO (dev) / Hetzner Object Storage (prod), S3-compatible
+- **Auth**: External OIDC provider (Zitadel or Hanko, TBD); Phase 1 uses local JWT
+- **Static serving**: Caddy (reverse proxy + auto-HTTPS)
+- **Deployment**: Kamal (SSH-based, zero-downtime) to Hetzner Cloud VPS
+
+### Server Development
+
+Commands from `was-web/server/`:
+
+```bash
+yarn dev              # Start with hot reload (tsx watch), port 3000
+yarn test             # Integration tests against real PostgreSQL
+yarn lint             # Lint server code
+yarn db:push          # Push schema to dev database
+yarn db:push:test     # Push schema to test database
+yarn db:generate      # Generate migration from schema changes
+yarn db:migrate       # Run pending migrations
+```
+
+Temporary workarounds for incomplete phases are marked `// TODO Phase N:` in the code.
+
 ## Common Tasks
 
 ### Add Map Feature Type
@@ -238,4 +317,6 @@ See @docs/DEVELOPER_GUIDE.md for comprehensive development workflows.
 - @docs/ARCHITECTURE.md - Detailed architecture, rendering pipeline, data layer
 - @docs/DEVELOPER_GUIDE.md - Development workflows, testing, debugging
 - @docs/GOTCHAS.md - Critical warnings and troubleshooting
+- @docs/REPLATFORM.md - Replatforming plan: Firebase → self-hosted stack
+- @docs/CLIENT_MIGRATION.md - Client wiring plan for Hono server
 - @.devcontainer/README.md - Dev container setup

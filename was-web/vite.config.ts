@@ -7,6 +7,10 @@ import packageJson from './package.json';
 
 // Get Git commit hash (first 8 characters)
 const getGitCommitHash = (): string => {
+  // Docker builds pass the hash as a build arg (no .git directory in the image)
+  if (process.env.GIT_COMMIT) {
+    return process.env.GIT_COMMIT.substring(0, 8);
+  }
   try {
     const fullHash = execSync('git rev-parse HEAD').toString().trim();
     return fullHash.substring(0, 8);
@@ -18,6 +22,7 @@ const getGitCommitHash = (): string => {
 
 const gitCommitHash = getGitCommitHash();
 const versionString = `v${packageJson.version}+${gitCommitHash}`;
+
 
 // Get deployment environment (production, test, or development)
 const getDeployEnvironment = (): 'production' | 'test' | 'development' => {
@@ -122,17 +127,47 @@ const processAppHtml = () => ({
 
 export default defineConfig({
   plugins: [react(), copyLandingPage(), processAppHtml(), copyRobotsTxt()],
+  resolve: {
+    alias: {
+      '@wallandshadow/shared': resolve(__dirname, 'packages/shared/src/index.ts'),
+    },
+  },
   define: {
     __GIT_COMMIT__: JSON.stringify(gitCommitHash),
+    // Injected at compile/dev time so honoWebSocket.ts can connect directly to the
+    // Hono server for WebSocket, bypassing the Vite proxy (which is unreliable for
+    // WebSocket upgrades on Linux). Empty string in production (same origin).
+    __HONO_WS_BASE__: JSON.stringify(
+      process.env.VITE_BACKEND === 'hono'
+        ? (process.env.VITE_HONO_WS_URL || 'http://localhost:3000')
+        : ''
+    ),
   },
   server: {
     port: 5000,
+    // Force IPv4 — VS Code port forwarding doesn't reliably handle IPv6
+    // WebSocket upgrades, and Node.js defaults to :: (IPv6) on Linux.
+    host: '0.0.0.0',
+    hmr: {
+      // Explicit localhost so the HMR WebSocket client in the browser connects
+      // to ws://localhost:5000/ rather than ws://0.0.0.0:5000/ (which Firefox rejects).
+      host: 'localhost',
+    },
     proxy: {
       // Replaces setupProxy.js - proxy Firebase reserved URLs to emulator
       '/__': {
         target: 'http://localhost:3400',
         changeOrigin: true,
       },
+      // When using the Hono backend, proxy /api requests to the Hono server.
+      // WebSocket goes directly to the Hono server (see __HONO_WS_BASE__ above)
+      // because Vite's ws proxy is unreliable on Linux.
+      ...(process.env.VITE_BACKEND === 'hono' ? {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+      } : {}),
     },
   },
   build: {

@@ -1,4 +1,4 @@
-import { IGridGeometry } from "./gridGeometry";
+import { IGridGeometry } from "@wallandshadow/shared";
 import { RedrawFlag } from "./redrawFlag";
 
 // A helpful basis for anything that we draw with Three, and

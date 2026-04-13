@@ -1,6 +1,4 @@
-import { IGridGeometry } from './gridGeometry';
-import { GridCoord, GridEdge, coordString, edgeString } from '../data/coord';
-import { FeatureDictionary, IFeature, IFeatureDictionary } from '../data/feature';
+import { IGridGeometry, GridCoord, GridEdge, coordString, edgeString, FeatureDictionary, IFeature, IFeatureDictionary } from '@wallandshadow/shared';
 
 import * as THREE from 'three';
 import fluent from 'fluent-iterable';

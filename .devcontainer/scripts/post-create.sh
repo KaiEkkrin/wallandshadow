@@ -31,9 +31,18 @@ mkdir -p "$DEVCONTAINER_DIR/.claude"
 mkdir -p "$HOME/.cache"
 
 # Create symlinks from home directory to workspace
-# Use -f to force in case they already exist from a rebuild
 # Use $HOME instead of /home/node for Podman rootless compatibility
 # (updateRemoteUserUID may remap the node user's UID, but HOME stays /home/node)
+#
+# IMPORTANT: The Claude CLI installer (Dockerfile) creates ~/.claude as a real
+# directory during the image build. ln -sfn cannot replace a directory — it creates
+# the symlink *inside* the directory instead. We must remove any real directory
+# first so the symlink points where we expect. Same precaution for ~/.config.
+for dir in "$HOME/.claude" "$HOME/.config"; do
+    if [ -d "$dir" ] && [ ! -L "$dir" ]; then
+        rm -rf "$dir"
+    fi
+done
 ln -sfn "$DEVCONTAINER_DIR/.cache/firebase" "$HOME/.cache/firebase"
 ln -sfn "$DEVCONTAINER_DIR/.config" "$HOME/.config"
 ln -sfn "$DEVCONTAINER_DIR/.claude" "$HOME/.claude"
@@ -78,6 +87,17 @@ else
 fi
 echo ""
 
+# Install server dependencies
+echo "📦 Installing server dependencies..."
+cd /workspaces/wallandshadow/was-web/server
+if [ -f "yarn.lock" ]; then
+    echo "   Using yarn.lock for deterministic install..."
+    yarn install --frozen-lockfile || yarn install
+else
+    yarn install
+fi
+echo ""
+
 # Install Firebase Functions dependencies
 echo "📦 Installing Firebase Functions dependencies..."
 cd /workspaces/wallandshadow/was-web/functions
@@ -93,6 +113,40 @@ echo ""
 echo "🎭 Installing Playwright browsers..."
 cd /workspaces/wallandshadow/was-web
 npx playwright install || echo "   Note: Playwright browser installation failed (non-critical)"
+echo ""
+
+# Initialise PostgreSQL (runs once; data persists in .devcontainer/.pgdata/)
+echo "🐘 Setting up PostgreSQL..."
+if [ ! -f "$PGDATA/PG_VERSION" ]; then
+    echo "   Initialising database cluster..."
+    initdb -D "$PGDATA" --auth=trust --username=postgres --encoding=UTF8 --locale=C.UTF-8
+
+    # Use TCP only (no Unix socket needed); keeps the setup simple.
+    # Disable Unix socket entirely so pg_ctl doesn't try to create a lock file
+    # in /var/run/postgresql (which the node user cannot write to).
+    echo "listen_addresses = 'localhost'" >> "$PGDATA/postgresql.conf"
+    echo "port = 5432" >> "$PGDATA/postgresql.conf"
+    echo "unix_socket_directories = ''" >> "$PGDATA/postgresql.conf"
+
+    # Start temporarily to create the app user and database
+    pg_ctl -D "$PGDATA" -l "$PGDATA/postgresql.log" -w start
+
+    psql -h localhost -U postgres -c "CREATE USER was WITH PASSWORD 'wasdev';"
+    createdb -h localhost -U postgres --owner=was wallandshadow
+    createdb -h localhost -U postgres --owner=was wallandshadow_test
+
+    pg_ctl -D "$PGDATA" -w stop
+    echo "   ✅ PostgreSQL cluster created (user: was, databases: wallandshadow, wallandshadow_test)"
+else
+    echo "   ✅ PostgreSQL cluster already initialised"
+fi
+echo ""
+
+# Create MinIO data directory (runs once; data persists across rebuilds)
+echo "🪣 Setting up MinIO..."
+MINIO_DATA="/workspaces/wallandshadow/.devcontainer/.minio-data"
+mkdir -p "$MINIO_DATA"
+echo "   ✅ MinIO data directory ready"
 echo ""
 
 # Firebase setup
@@ -119,8 +173,13 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "📚 Quick Start Guide"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  Start development server:"
+echo "  Start Firebase dev server (existing stack):"
 echo "    cd was-web && yarn start"
+echo ""
+echo "  Connect to PostgreSQL:"
+echo "    psql -h localhost -U was wallandshadow"
+echo ""
+echo "  MinIO console: http://localhost:9001 (wasdev / wasdevpass)"
 echo ""
 echo "  Run unit tests:"
 echo "    cd was-web && yarn test:unit"

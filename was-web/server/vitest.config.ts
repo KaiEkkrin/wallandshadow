@@ -1,0 +1,24 @@
+import { defineConfig } from 'vitest/config';
+import path from 'path';
+
+export default defineConfig({
+  test: {
+    root: path.resolve(__dirname, 'src/__tests__'),
+    globals: true,
+    environment: 'node',
+    include: ['**/*.test.ts'],
+    setupFiles: [path.resolve(__dirname, 'src/__tests__/setup.ts')],
+    testTimeout: 30000,
+    // Tests share a database — no parallel execution
+    fileParallelism: false,
+    // Use a separate database so tests don't destroy dev data
+    env: {
+      DATABASE_URL: 'postgresql://was:wasdev@localhost:5432/wallandshadow_test',
+    },
+  },
+  resolve: {
+    alias: {
+      '@wallandshadow/shared': path.resolve(__dirname, '../packages/shared/src/index.ts'),
+    },
+  },
+});

@@ -1,1 +1,0 @@
-../../../src/data/policy.ts

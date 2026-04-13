@@ -1,26 +1,27 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Playwright configuration for Wall & Shadow` e2e tests.
+ * Playwright configuration for Wall & Shadow e2e tests.
  *
- * Tests run against Firebase emulators and the React dev server.
- * Tests are executed serially (workers: 1) to avoid Firebase emulator race conditions.
+ * Tests run against the Hono REST API server and the Vite dev server.
+ * Each test is fully isolated (unique users via UUID emails) so tests
+ * run in parallel across 50% of available CPU cores.
  */
 export default defineConfig({
   testDir: './e2e',
   testMatch: '*.test.ts',
 
-  // Timeout settings (matching original Jest setup from main.test.ts:58-60)
+  // Timeout settings — slightly generous to account for parallel load
   timeout: 180000, // longTestTimeout - some tests take a while
   expect: {
-    timeout: 8000, // pageTimeout - individual assertions
+    timeout: 10000, // individual assertions (bumped from 8s for parallel load)
   },
 
   // Test execution configuration
-  fullyParallel: false, // Run tests serially to avoid Firebase emulator conflicts
+  fullyParallel: !process.env.CI, // Parallel locally (isolated via unique users), serial in CI
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: 1, // Single worker to prevent emulator race conditions
+  workers: process.env.CI ? 1 : '50%', // Serial in CI, 50% of cores locally
 
   // Reporter configuration
   reporter: [
@@ -42,8 +43,13 @@ export default defineConfig({
     trace: 'retain-on-failure',
 
     // Navigation timeout (matching pageNavigationTimeout from main.test.ts:60)
-    navigationTimeout: 12000,
-    actionTimeout: 8000,
+    navigationTimeout: 15000,
+    actionTimeout: 10000,
+
+    // Bypass CSP to prevent interference with OIDC callback redirects.
+    // React Router's client navigation interceptor tries to prefetch the callback URL,
+    // which fails under strict CSP and consumes the single-use authorization code.
+    bypassCSP: true,
   },
 
   // Browser/device projects (matching the 8 configs from main.test.ts:44-53)
@@ -70,6 +76,7 @@ export default defineConfig({
             '--use-angle=swiftshader-webgl', // Use SwiftShader software rendering for WebGL
             '--enable-gpu',            // Enable GPU hardware acceleration
             '--ignore-gpu-blocklist',  // Bypass GPU blocklist
+            '--disable-features=SpeculationRules', // Prevent speculative prefetch consuming OAuth codes
           ],
         },
       },
@@ -84,6 +91,7 @@ export default defineConfig({
             '--use-angle=swiftshader-webgl', // Use SwiftShader software rendering for WebGL
             '--enable-gpu',            // Enable GPU hardware acceleration
             '--ignore-gpu-blocklist',  // Bypass GPU blocklist
+            '--disable-features=SpeculationRules', // Prevent speculative prefetch consuming OAuth codes
           ],
         },
       },
@@ -98,6 +106,7 @@ export default defineConfig({
             '--use-angle=swiftshader-webgl', // Use SwiftShader software rendering for WebGL
             '--enable-gpu',            // Enable GPU hardware acceleration
             '--ignore-gpu-blocklist',  // Bypass GPU blocklist
+            '--disable-features=SpeculationRules', // Prevent speculative prefetch consuming OAuth codes
           ],
         },
       },
@@ -113,6 +122,7 @@ export default defineConfig({
             '--use-angle=swiftshader-webgl', // Use SwiftShader software rendering for WebGL
             '--enable-gpu',            // Enable GPU hardware acceleration
             '--ignore-gpu-blocklist',  // Bypass GPU blocklist
+            '--disable-features=SpeculationRules', // Prevent speculative prefetch consuming OAuth codes
           ],
         },
       },
@@ -128,6 +138,7 @@ export default defineConfig({
             '--use-angle=swiftshader-webgl', // Use SwiftShader software rendering for WebGL
             '--enable-gpu',            // Enable GPU hardware acceleration
             '--ignore-gpu-blocklist',  // Bypass GPU blocklist
+            '--disable-features=SpeculationRules', // Prevent speculative prefetch consuming OAuth codes
           ],
         },
       },

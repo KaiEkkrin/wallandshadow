@@ -2,16 +2,7 @@ import { vi } from 'vitest';
 import { MapColouring } from './colouring';
 import { HexGridGeometry } from './hexGridGeometry';
 import { MapChangeTracker } from './mapChangeTracker';
-import { ChangeType, ChangeCategory, TokenAdd, TokenMove, WallRemove, WallAdd } from '../data/change';
-import { trackChanges, IChangeTracker } from '../data/changeTracking';
-import { GridEdge, GridCoord, coordString, edgeString } from '../data/coord';
-import { FeatureDictionary, IFeature, StripedArea } from '../data/feature';
-import { IdDictionary } from '../data/identified';
-import { IMapImage } from '../data/image';
-import { MapType } from '../data/map';
-import { IAnnotation } from '../data/annotation';
-import { SimpleTokenDrawing, Tokens } from '../data/tokens';
-import { getTokenGeometry } from '../data/tokenGeometry';
+import { ChangeType, ChangeCategory, TokenAdd, TokenMove, WallRemove, WallAdd, trackChanges, IChangeTracker, GridEdge, GridCoord, coordString, edgeString, FeatureDictionary, IFeature, StripedArea, IdDictionary, IMapImage, MapType, IAnnotation, SimpleTokenDrawing, Tokens, getTokenGeometry } from '@wallandshadow/shared';
 
 const ownerUid = "owner";
 const uid1 = "uid1";

@@ -1,1 +1,1 @@
-../../src/data/profile.ts
+export * from '@wallandshadow/shared';

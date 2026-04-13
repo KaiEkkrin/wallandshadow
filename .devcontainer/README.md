@@ -1,6 +1,8 @@
 # Wall & Shadow Dev Container
 
-Complete development environment for Wall & Shadow with Node.js 22, Firebase Emulator Suite, and optional GPU support for Playwright/WebGL tests.
+Complete development environment for Wall & Shadow with Node.js 22, PostgreSQL 17, MinIO, Firebase Emulator Suite, and optional GPU support for Playwright/WebGL tests.
+
+Both the existing Firebase stack and the new self-hosted stack (PostgreSQL + Hono API + MinIO) run inside the same container — no external Compose setup needed.
 
 ## Prerequisites
 
@@ -81,7 +83,20 @@ This compiles the TypeScript Functions to JavaScript. The emulator cannot run wi
 
 ### Start Developing
 
-Once setup is complete:
+**PostgreSQL and MinIO start automatically** when the container starts. No setup needed.
+
+#### New stack (Hono API server)
+
+Once `was-web/server/` exists:
+
+```bash
+cd was-web/server
+yarn tsx watch src/index.ts   # hot reload on port 3000
+```
+
+Environment variables (`DATABASE_URL`, `S3_ENDPOINT`, etc.) are pre-configured.
+
+#### Existing Firebase stack
 
 ```bash
 cd was-web
@@ -168,6 +183,34 @@ groups
 
 ## Service Endpoints
 
+### New Stack (auto-started on container launch)
+
+| Service              | URL                        | Credentials          |
+| -------------------- | -------------------------- | -------------------- |
+| **Hono API Server**  | http://localhost:3000      | start manually (see below) |
+| **PostgreSQL**       | localhost:5432             | user: `was`, pass: `wasdev`, dbs: `wallandshadow` (dev), `wallandshadow_test` (tests) |
+| **MinIO API**        | http://localhost:9000      | — |
+| **MinIO Console**    | http://localhost:9001      | `wasdev` / `wasdevpass` |
+
+The `DATABASE_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY` environment variables are pre-set in the container for use by the new server.
+
+Connect to PostgreSQL directly:
+
+```bash
+psql -h localhost -U was wallandshadow
+# or using the env var:
+psql "$DATABASE_URL"
+```
+
+Run the Hono API server (once `was-web/server/` exists):
+
+```bash
+cd was-web/server
+yarn tsx watch src/index.ts
+```
+
+### Firebase Stack (start manually)
+
 | Service         | URL                   | Description                                                    |
 | --------------- | --------------------- | -------------------------------------------------------------- |
 | **React App**   | http://localhost:3400 | Main web application (Firebase Hosting emulator - recommended) |
@@ -190,11 +233,22 @@ cd was-web
 # Unit tests (watch mode)
 yarn test:unit
 
+# Server integration tests (uses wallandshadow_test database)
+yarn test:server
+
 # E2E tests (requires dev server running in another terminal)
 yarn test:e2e
 
 # All tests
 yarn test
+```
+
+After changing the database schema (`was-web/server/src/db/schema.ts`), push to both databases:
+
+```bash
+cd was-web/server
+yarn db:push            # dev database
+yarn db:push:test       # test database
 ```
 
 ### Building for Production
@@ -276,6 +330,17 @@ yarn start
 ```
 
 If `firebase-admin-credentials.json` is missing, follow Step 2 in the Quick Start section above.
+
+### Test Database Missing (existing dev containers)
+
+If your dev container was created before the test database was added to `post-create.sh`,
+create it manually (one-time):
+
+```bash
+psql -h localhost -U postgres -c "CREATE DATABASE wallandshadow_test OWNER was;"
+cd was-web/server
+yarn db:push:test
+```
 
 ### Firebase Emulators Won't Start
 

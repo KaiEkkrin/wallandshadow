@@ -1,0 +1,12 @@
+# Kamal destination: production
+# Usage: kamal deploy -d production
+#
+# Caddy routes wallandshadow.com → localhost:3001
+
+env:
+  clear:
+    PORT: "3001"
+
+builder:
+  args:
+    VITE_DEPLOY_ENV: production

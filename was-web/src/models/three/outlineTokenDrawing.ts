@@ -1,7 +1,5 @@
-import { coordString, edgeString, GridCoord, GridEdge, GridVertex, vertexString } from "../../data/coord";
-import { IFeature, IToken } from "../../data/feature";
-import { BaseTokenDrawing, ITokenFace, ITokenFillEdge, ITokenFillVertex } from "../../data/tokens";
-import { IGridGeometry } from "../gridGeometry";
+import { coordString, edgeString, GridCoord, GridEdge, GridVertex, vertexString, IFeature, IToken, BaseTokenDrawing, ITokenFace, ITokenFillEdge, ITokenFillVertex, IGridGeometry } from '@wallandshadow/shared';
+import { BaseTokenDrawingWithText } from '../../data/tokenTexts';
 import { IInstancedFeatureObject } from "./instancedFeatureObject";
 import { InstancedFeatures } from "./instancedFeatures";
 import { RedrawFlag } from "../redrawFlag";
@@ -10,7 +8,6 @@ import { TokenTexts } from "./tokenTexts";
 
 import fluent from "fluent-iterable";
 import * as THREE from 'three';
-import { BaseTokenDrawingWithText } from "../../data/tokenTexts";
 
 // #118: This module provides functionality for drawing outline tokens.
 // To do this, we paint the token areas into their own token texture, and then

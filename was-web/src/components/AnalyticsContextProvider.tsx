@@ -3,7 +3,7 @@ import { useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import { FirebaseContext } from './FirebaseContext';
 import { AnalyticsContext } from './AnalyticsContext';
 import { IAnalyticsProps, IContextProviderProps } from './interfaces';
-import { IAnalytics } from '../services/interfaces';
+import { IAnalytics } from '@wallandshadow/shared';
 
 const enabledKey = "analyticsEnabled";
 
