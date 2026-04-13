@@ -9,8 +9,11 @@
 # Build context: was-web/ (set via Kamal builder.context)
 #
 # Required build args:
-#   VITE_DEPLOY_ENV  — "production" or "test" (controls SPA title prefix, robots.txt, noindex)
-#   GIT_COMMIT       — git commit hash (injected into SPA version string)
+#   VITE_DEPLOY_ENV       — "production" or "test" (controls SPA title prefix, robots.txt, noindex)
+#   VITE_BACKEND          — "hono" for self-hosted deployments (falls back to Firebase if unset)
+#   VITE_OIDC_ISSUER      — Zitadel OIDC issuer URL (baked into SPA bundle)
+#   VITE_OIDC_CLIENT_ID   — Zitadel OIDC client ID (baked into SPA bundle)
+#   GIT_COMMIT            — git commit hash (injected into SPA version string)
 #
 # Required runtime env vars:
 #   DATABASE_URL     — PostgreSQL connection string
@@ -45,9 +48,15 @@ RUN yarn install --frozen-lockfile
 FROM deps AS build-spa
 
 ARG VITE_DEPLOY_ENV=production
+ARG VITE_BACKEND=hono
+ARG VITE_OIDC_ISSUER
+ARG VITE_OIDC_CLIENT_ID
 ARG GIT_COMMIT=unknown
 
 ENV VITE_DEPLOY_ENV=${VITE_DEPLOY_ENV}
+ENV VITE_BACKEND=${VITE_BACKEND}
+ENV VITE_OIDC_ISSUER=${VITE_OIDC_ISSUER}
+ENV VITE_OIDC_CLIENT_ID=${VITE_OIDC_CLIENT_ID}
 ENV GIT_COMMIT=${GIT_COMMIT}
 
 # Copy SPA source

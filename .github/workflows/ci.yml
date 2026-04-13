@@ -1,10 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    paths:
+      - 'was-web/**'
+      - '.github/workflows/ci.yml'
+  workflow_call:
 
 # Least-privilege permissions: only read access to repository contents
 # See: https://docs.github.com/en/actions/security-guides/automatic-token-authentication

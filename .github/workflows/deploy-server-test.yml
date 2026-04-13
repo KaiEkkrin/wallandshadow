@@ -13,7 +13,7 @@
 #   SSH_PRIVATE_KEY       — SSH key for VPS access (same key used by Ansible)
 #   VPS_IP                — Hetzner VPS public IPv4 address
 #   OIDC_ISSUER           — Zitadel OIDC issuer URL
-#   OIDC_CLIENT_ID        — Zitadel OIDC client ID
+#   OIDC_TEST_CLIENT_ID   — Zitadel OIDC client ID
 # =============================================================================
 
 name: Deploy Server (Test)
@@ -37,11 +37,14 @@ permissions:
   packages: write
 
 jobs:
-  test:
+  ci-web:
+    uses: ./.github/workflows/ci.yml
+
+  ci-server:
     uses: ./.github/workflows/ci-server.yml
 
   build-and-deploy:
-    needs: test
+    needs: [ci-web, ci-server]
     runs-on: ubuntu-latest
     environment: hetzner
 
@@ -68,6 +71,9 @@ jobs:
             ghcr.io/kaiEkkrin/wallandshadow:latest
           build-args: |
             VITE_DEPLOY_ENV=test
+            VITE_BACKEND=hono
+            VITE_OIDC_ISSUER=${{ secrets.OIDC_ISSUER }}
+            VITE_OIDC_CLIENT_ID=${{ secrets.OIDC_TEST_CLIENT_ID }}
             GIT_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -96,6 +102,6 @@ jobs:
         env:
           VPS_IP: ${{ secrets.VPS_IP }}
           OIDC_ISSUER: ${{ secrets.OIDC_ISSUER }}
-          OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
+          OIDC_CLIENT_ID: ${{ secrets.OIDC_TEST_CLIENT_ID }}
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: kamal deploy -d test --version ${{ github.sha }}

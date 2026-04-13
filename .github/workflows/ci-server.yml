@@ -1,18 +1,13 @@
 name: CI Server
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'was-web/server/**'
-      - 'was-web/packages/shared/**'
-      - '.github/workflows/ci-server.yml'
   pull_request:
     branches: [main]
     paths:
       - 'was-web/server/**'
       - 'was-web/packages/shared/**'
       - '.github/workflows/ci-server.yml'
+  workflow_call:
 
 # Least-privilege permissions: only read access to repository contents
 permissions:
