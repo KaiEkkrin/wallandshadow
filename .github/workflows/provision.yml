@@ -34,6 +34,7 @@ jobs:
     environment: hetzner
     outputs:
       vps_ip: ${{ steps.output.outputs.vps_ip }}
+      vps_ipv6: ${{ steps.output.outputs.vps_ipv6 }}
       volume_id: ${{ steps.output.outputs.volume_id }}
 
     steps:
@@ -84,16 +85,19 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HCLOUD_S3_SECRET_KEY }}
         run: |
           echo "vps_ip=$(tofu output -raw vps_ip)" >> "$GITHUB_OUTPUT"
+          echo "vps_ipv6=$(tofu output -raw vps_ipv6)" >> "$GITHUB_OUTPUT"
           echo "volume_id=$(tofu output -raw volume_id)" >> "$GITHUB_OUTPUT"
 
       - name: Display VPS IP
         run: |
           echo "╔══════════════════════════════════════════════════════════════════╗"
-          echo "║  VPS IP: ${{ steps.output.outputs.vps_ip }}"
-          echo "║  Volume: ${{ steps.output.outputs.volume_id }}"
+          echo "║  VPS IPv4: ${{ steps.output.outputs.vps_ip }}"
+          echo "║  VPS IPv6: ${{ steps.output.outputs.vps_ipv6 }}"
+          echo "║  Volume:   ${{ steps.output.outputs.volume_id }}"
           echo "║                                                                  "
-          echo "║  If this is the first run, add VPS_IP to GitHub Secrets:         "
-          echo "║  VPS_IP=${{ steps.output.outputs.vps_ip }}"
+          echo "║  DNS records for test.wallandshadow.com:                         "
+          echo "║    A    ${{ steps.output.outputs.vps_ip }}"
+          echo "║    AAAA ${{ steps.output.outputs.vps_ipv6 }}"
           echo "╚══════════════════════════════════════════════════════════════════╝"
 
   # ── Stage 2: Configure VPS contents ───────────────────────────────────────

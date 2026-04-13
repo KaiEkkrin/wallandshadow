@@ -37,7 +37,7 @@ jobs:
   build-and-deploy:
     needs: test
     runs-on: ubuntu-latest
-    environment: production
+    environment: hetzner
 
     steps:
       - uses: actions/checkout@v4

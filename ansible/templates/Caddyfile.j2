@@ -9,6 +9,10 @@
 # Caddy handles TLS termination via Let's Encrypt (automatic).
 # =============================================================================
 
+{
+    email admin@wallandshadow.com
+}
+
 {{ domain_prod }} {
     reverse_proxy localhost:{{ app_port_prod }}
 

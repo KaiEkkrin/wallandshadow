@@ -132,6 +132,46 @@
         - /tmp/aws
       when: aws_cli_check.rc != 0
 
+    # ── S3 bucket CORS ──────────────────────────────────────────────────────
+    # The browser fetches images directly from Hetzner Object Storage via
+    # presigned URLs. Three.js TextureLoader sets crossOrigin='anonymous', so
+    # the bucket must return CORS headers allowing the app's domain.
+
+    - name: Ensure config directory exists for CORS policies
+      ansible.builtin.file:
+        path: "{{ secrets_dir }}"
+        state: directory
+        mode: "0700"
+        owner: root
+        group: root
+
+    - name: Render CORS policy for each app bucket
+      ansible.builtin.template:
+        src: bucket_cors.json.j2
+        dest: "{{ secrets_dir }}/cors-{{ item.bucket }}.json"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - { bucket: "{{ s3_bucket_prod }}", cors_origin: "{{ domain_prod }}" }
+        - { bucket: "{{ s3_bucket_test }}", cors_origin: "{{ domain_test }}" }
+
+    - name: Apply CORS policy to each app bucket
+      ansible.builtin.command:
+        cmd: >-
+          aws s3api put-bucket-cors
+          --bucket {{ item.bucket }}
+          --cors-configuration file://{{ secrets_dir }}/cors-{{ item.bucket }}.json
+          --endpoint-url {{ s3_endpoint }}
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ s3_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ s3_secret_key }}"
+        AWS_DEFAULT_REGION: "hel1"
+      loop:
+        - { bucket: "{{ s3_bucket_prod }}" }
+        - { bucket: "{{ s3_bucket_test }}" }
+      changed_when: true
+
     # ── Firewall ────────────────────────────────────────────────────────────
 
     - name: Allow SSH through firewall
