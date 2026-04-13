@@ -21,6 +21,7 @@ functions/src/
 functions/lib/
 functions/node_modules/
 firebase-admin-credentials.json
+public/firebase-admin-credentials.json
 firebase-debug.log*
 firestore-debug.log*
 firestore.rules
