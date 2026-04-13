@@ -23,6 +23,7 @@ image: ghcr.io/KaiEkkrin/wallandshadow
 # Build context is was-web/ (contains Dockerfile, server/, packages/shared/, SPA source)
 builder:
   context: was-web/
+  arch: amd64
   args:
     GIT_COMMIT: <%= `git rev-parse --short HEAD`.strip %>
 
