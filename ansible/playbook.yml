@@ -92,10 +92,45 @@
 
     # ── AWS CLI (for S3 backups) ────────────────────────────────────────────
 
-    - name: Install AWS CLI
+    - name: Install AWS CLI dependencies
       ansible.builtin.apt:
-        name: awscli
+        name:
+          - unzip
+          - curl
         state: present
+
+    - name: Check if AWS CLI is already installed
+      ansible.builtin.command: /usr/local/bin/aws --version
+      register: aws_cli_check
+      changed_when: false
+      failed_when: false
+
+    - name: Download AWS CLI v2 installer
+      ansible.builtin.get_url:
+        url: "https://awscli.amazonaws.com/awscli-exe-linux-{{ ansible_architecture }}.zip"
+        dest: /tmp/awscliv2.zip
+        mode: "0644"
+      when: aws_cli_check.rc != 0
+
+    - name: Unarchive AWS CLI v2 installer
+      ansible.builtin.unarchive:
+        src: /tmp/awscliv2.zip
+        dest: /tmp
+        remote_src: true
+      when: aws_cli_check.rc != 0
+
+    - name: Install AWS CLI v2
+      ansible.builtin.command: /tmp/aws/install
+      when: aws_cli_check.rc != 0
+
+    - name: Clean up AWS CLI installer
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/awscliv2.zip
+        - /tmp/aws
+      when: aws_cli_check.rc != 0
 
     # ── Firewall ────────────────────────────────────────────────────────────
 
