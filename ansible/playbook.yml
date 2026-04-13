@@ -152,6 +152,8 @@
         owner: root
         group: root
         mode: "0600"
+      vars:
+        cors_origin: "{{ item.cors_origin }}"
       loop:
         - { bucket: "{{ s3_bucket_prod }}", cors_origin: "{{ domain_prod }}" }
         - { bucket: "{{ s3_bucket_test }}", cors_origin: "{{ domain_test }}" }
