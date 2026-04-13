@@ -58,8 +58,8 @@ jobs:
           context: was-web/
           push: true
           tags: |
-            ghcr.io/kaiEkkrin/wallandshadow:${{ github.sha }}
-            ghcr.io/kaiEkkrin/wallandshadow:production-latest
+            ghcr.io/kaiekkrin/wallandshadow:${{ github.sha }}
+            ghcr.io/kaiekkrin/wallandshadow:production-latest
           build-args: |
             VITE_DEPLOY_ENV=production
             VITE_BACKEND=hono

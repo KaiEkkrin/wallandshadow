@@ -67,8 +67,8 @@ jobs:
           context: was-web/
           push: true
           tags: |
-            ghcr.io/kaiEkkrin/wallandshadow:${{ github.sha }}
-            ghcr.io/kaiEkkrin/wallandshadow:latest
+            ghcr.io/kaiekkrin/wallandshadow:${{ github.sha }}
+            ghcr.io/kaiekkrin/wallandshadow:latest
           build-args: |
             VITE_DEPLOY_ENV=test
             VITE_BACKEND=hono
