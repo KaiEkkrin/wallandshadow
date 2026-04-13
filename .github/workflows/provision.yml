@@ -106,7 +106,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Ansible
-        run: pip install ansible
+        run: |
+          pip install ansible
+          ansible-galaxy collection install --upgrade ansible.posix community.postgresql community.general
 
       - name: Setup SSH key
         run: |

@@ -50,7 +50,7 @@
 
     - name: Add PostgreSQL apt repository
       ansible.builtin.apt_repository:
-        repo: "deb https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+        repo: "deb https://apt.postgresql.org/pub/repos/apt {{ ansible_facts['distribution_release'] }}-pgdg main"
         state: present
 
     - name: Install PostgreSQL {{ pg_version }}
@@ -107,7 +107,7 @@
 
     - name: Download AWS CLI v2 installer
       ansible.builtin.get_url:
-        url: "https://awscli.amazonaws.com/awscli-exe-linux-{{ ansible_architecture }}.zip"
+        url: "https://awscli.amazonaws.com/awscli-exe-linux-{{ ansible_facts['architecture'] }}.zip"
         dest: /tmp/awscliv2.zip
         mode: "0644"
       when: aws_cli_check.rc != 0
@@ -184,7 +184,7 @@
       when: volume_id is defined and volume_id != ''
 
     - name: Mount volume at {{ pgdata_mount }}
-      ansible.builtin.mount:
+      ansible.posix.mount:
         path: "{{ pgdata_mount }}"
         src: "/dev/disk/by-id/scsi-0HC_Volume_{{ volume_id }}"
         fstype: ext4
@@ -372,7 +372,7 @@
   handlers:
     - name: Restart sshd
       ansible.builtin.systemd:
-        name: sshd
+        name: ssh
         state: restarted
 
     - name: Restart PostgreSQL
