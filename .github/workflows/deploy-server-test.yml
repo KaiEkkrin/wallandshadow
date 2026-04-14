@@ -30,6 +30,7 @@ on:
       - 'was-web/.dockerignore'
       - 'config/**'
       - '.github/workflows/deploy-server-test.yml'
+      - '.kamal/**'
   workflow_dispatch:
 
 permissions:
