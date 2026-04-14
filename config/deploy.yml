@@ -18,7 +18,7 @@
 
 service: wallandshadow
 
-image: ghcr.io/KaiEkkrin/wallandshadow
+image: kaiekkrin/wallandshadow
 
 # Build context is was-web/ (contains Dockerfile, server/, packages/shared/, SPA source)
 builder:
