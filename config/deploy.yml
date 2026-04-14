@@ -12,21 +12,27 @@
 # Prerequisites:
 #   - VPS provisioned and configured via Ansible (see ansible/)
 #   - PostgreSQL and Caddy running natively on the VPS
-#   - Secrets populated in .kamal/secrets (see .kamal/secrets for details)
-#   - Docker image pushed to GHCR (done by CI, or manually: docker push)
+#   - Secrets populated in .kamal/secrets-common (see that file for details)
+#   - Runner/local machine logged in to ghcr.io (Kamal handles the build+push)
 # =============================================================================
 
 service: wallandshadow
 
 image: kaiekkrin/wallandshadow
 
-# Build context is was-web/ (contains Dockerfile, server/, packages/shared/, SPA source)
+# Build context is was-web/ (contains Dockerfile, server/, packages/shared/, SPA source).
+# Kamal builds and pushes the image itself — CI does not run a separate build step.
+# Registry-mode cache reuses layers across runner instances via ghcr.io.
 builder:
   context: was-web/
   dockerfile: was-web/Dockerfile
   arch: amd64
+  cache:
+    type: registry
+    options: mode=max
   args:
-    GIT_COMMIT: <%= `git rev-parse --short HEAD`.strip %>
+    VITE_BACKEND: hono
+    GIT_COMMIT: <%= ENV['GIT_COMMIT'] || `git rev-parse --short HEAD`.strip %>
 
 servers:
   web:

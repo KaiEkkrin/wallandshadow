@@ -10,3 +10,5 @@ env:
 builder:
   args:
     VITE_DEPLOY_ENV: test
+    VITE_OIDC_ISSUER: <%= ENV['OIDC_ISSUER'] %>
+    VITE_OIDC_CLIENT_ID: <%= ENV['OIDC_CLIENT_ID'] %>

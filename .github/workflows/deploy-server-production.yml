@@ -1,7 +1,7 @@
 # =============================================================================
 # Deploy server to production
 # =============================================================================
-# Manual trigger only. Builds Docker image, pushes to GHCR, deploys via Kamal.
+# Manual trigger only. Kamal builds the image, pushes to GHCR, and deploys.
 #
 # Recommended workflow:
 #   1. Verify test deployment is working (test.wallandshadow.com)
@@ -15,6 +15,7 @@
 # Prerequisites (GitHub Secrets):
 #   SSH_PRIVATE_KEY       — SSH key for VPS access
 #   VPS_IP                — Hetzner VPS public IPv4 address
+#   VPS_KNOWN_HOST        — pinned SSH host keys (captured by provision.yml)
 #   OIDC_ISSUER           — Zitadel OIDC issuer URL
 #   OIDC_PROD_CLIENT_ID   — Zitadel OIDC client ID
 #
@@ -52,23 +53,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: was-web/
-          push: true
-          tags: |
-            ghcr.io/kaiekkrin/wallandshadow:${{ github.sha }}
-            ghcr.io/kaiekkrin/wallandshadow:production-latest
-          build-args: |
-            VITE_DEPLOY_ENV=production
-            VITE_BACKEND=hono
-            VITE_OIDC_ISSUER=${{ secrets.OIDC_ISSUER }}
-            VITE_OIDC_CLIENT_ID=${{ secrets.OIDC_PROD_CLIENT_ID }}
-            GIT_COMMIT=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Setup Ruby (for Kamal)
         uses: ruby/setup-ruby@v1
         with:
@@ -82,7 +66,9 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
+          # Pinned host key (captured by provision.yml) — no TOFU at deploy time.
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOST }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
 
       - name: Fetch secrets from VPS
         run: .github/scripts/fetch-vps-secrets.sh "${{ secrets.VPS_IP }}" DATABASE_URL_PROD
@@ -90,6 +76,7 @@ jobs:
       - name: Deploy to production
         env:
           VPS_IP: ${{ secrets.VPS_IP }}
+          GIT_COMMIT: ${{ github.sha }}
           OIDC_ISSUER: ${{ secrets.OIDC_ISSUER }}
           OIDC_CLIENT_ID: ${{ secrets.OIDC_PROD_CLIENT_ID }}
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
