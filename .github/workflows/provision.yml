@@ -115,11 +115,26 @@ jobs:
           ansible-galaxy collection install --upgrade ansible.posix community.postgresql community.general
 
       - name: Setup SSH key
+        env:
+          VPS_IP: ${{ needs.opentofu.outputs.vps_ip }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -t rsa,ecdsa,ed25519 ${{ needs.opentofu.outputs.vps_ip }} >> ~/.ssh/known_hosts
+          # Unhashed keys so ruby net-ssh (Kamal) can match them later.
+          KNOWN_HOST=$(ssh-keyscan -t rsa,ecdsa,ed25519 "$VPS_IP" 2>/dev/null)
+          if [ -z "$KNOWN_HOST" ]; then
+            echo "::error::ssh-keyscan returned no host keys for $VPS_IP"
+            exit 1
+          fi
+          printf '%s\n' "$KNOWN_HOST" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          # Expose to later steps via a multi-line $GITHUB_ENV entry.
+          {
+            echo "VPS_KNOWN_HOST<<KNOWN_HOST_EOF"
+            printf '%s\n' "$KNOWN_HOST"
+            echo "KNOWN_HOST_EOF"
+          } >> "$GITHUB_ENV"
 
       - name: Run Ansible playbook
         working-directory: ansible
@@ -131,14 +146,8 @@ jobs:
             -e "s3_access_key=${{ secrets.HCLOUD_S3_ACCESS_KEY }}" \
             -e "s3_secret_key=${{ secrets.HCLOUD_S3_SECRET_KEY }}"
 
-      - name: Capture VPS host keys for GitHub secret
+      - name: Display VPS_KNOWN_HOST secret value
         run: |
-          # Unhashed keys so ruby net-ssh (Kamal) can match them.
-          KNOWN_HOST=$(ssh-keyscan -t rsa,ecdsa,ed25519 ${{ needs.opentofu.outputs.vps_ip }} 2>/dev/null)
-          if [ -z "$KNOWN_HOST" ]; then
-            echo "::error::ssh-keyscan returned no host keys for ${{ needs.opentofu.outputs.vps_ip }}"
-            exit 1
-          fi
           echo "╔══════════════════════════════════════════════════════════════════╗"
           echo "║  Set this GitHub Secret in the 'hetzner' environment:             "
           echo "║                                                                   "
@@ -146,5 +155,5 @@ jobs:
           echo "║                                                                   "
           echo "║  Value — copy the block between the lines below verbatim:        "
           echo "╠══════════════════════════════════════════════════════════════════╣"
-          printf '%s\n' "$KNOWN_HOST"
+          printf '%s\n' "$VPS_KNOWN_HOST"
           echo "╚══════════════════════════════════════════════════════════════════╝"
