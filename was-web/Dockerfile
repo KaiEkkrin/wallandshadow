@@ -13,6 +13,7 @@
 #   VITE_BACKEND          — "hono" for self-hosted deployments (falls back to Firebase if unset)
 #   VITE_OIDC_ISSUER      — Zitadel OIDC issuer URL (baked into SPA bundle)
 #   VITE_OIDC_CLIENT_ID   — Zitadel OIDC client ID (baked into SPA bundle)
+#   VITE_AUTH_MODE        — "oidc" to hide the email/password UI; "dual" for local dev
 #   GIT_COMMIT            — git commit hash (injected into SPA version string)
 #
 # Required runtime env vars:
@@ -51,12 +52,14 @@ ARG VITE_DEPLOY_ENV=production
 ARG VITE_BACKEND=hono
 ARG VITE_OIDC_ISSUER
 ARG VITE_OIDC_CLIENT_ID
+ARG VITE_AUTH_MODE=oidc
 ARG GIT_COMMIT=unknown
 
 ENV VITE_DEPLOY_ENV=${VITE_DEPLOY_ENV}
 ENV VITE_BACKEND=${VITE_BACKEND}
 ENV VITE_OIDC_ISSUER=${VITE_OIDC_ISSUER}
 ENV VITE_OIDC_CLIENT_ID=${VITE_OIDC_CLIENT_ID}
+ENV VITE_AUTH_MODE=${VITE_AUTH_MODE}
 ENV GIT_COMMIT=${GIT_COMMIT}
 
 # Copy SPA source
