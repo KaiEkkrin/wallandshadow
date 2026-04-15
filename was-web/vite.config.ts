@@ -134,11 +134,12 @@ export default defineConfig({
   },
   define: {
     __GIT_COMMIT__: JSON.stringify(gitCommitHash),
-    // Injected at compile/dev time so honoWebSocket.ts can connect directly to the
+    // Injected at dev time so honoWebSocket.ts can connect directly to the
     // Hono server for WebSocket, bypassing the Vite proxy (which is unreliable for
-    // WebSocket upgrades on Linux). Empty string in production (same origin).
+    // WebSocket upgrades on Linux). Empty string in production/test builds so the
+    // browser connects to the same origin (Caddy → Hono).
     __HONO_WS_BASE__: JSON.stringify(
-      process.env.VITE_BACKEND === 'hono'
+      deployEnvironment === 'development' && process.env.VITE_BACKEND === 'hono'
         ? (process.env.VITE_HONO_WS_URL || 'http://localhost:3000')
         : ''
     ),
