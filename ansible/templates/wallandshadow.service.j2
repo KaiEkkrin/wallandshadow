@@ -1,0 +1,42 @@
+# =============================================================================
+# Wall & Shadow application container — systemd unit ({{ env_name }})
+# =============================================================================
+# Managed by Ansible. Do not edit directly on the VPS.
+# Source: ansible/templates/wallandshadow.service.j2
+#
+# The image tag lives in /etc/wallandshadow/{{ env_name }}.image as a
+# KEY=VALUE line: `IMAGE=ghcr.io/kaiekkrin/wallandshadow:<sha>-{{ env_name }}`.
+# CI updates that file and runs `systemctl restart` to roll a new version.
+#
+# The container uses host networking so it can reach PostgreSQL at
+# localhost:5432 and be reached by Caddy at localhost:{{ app_port }}.
+# =============================================================================
+
+[Unit]
+Description=Wall & Shadow ({{ env_name }})
+Documentation=https://github.com/KaiEkkrin/wallandshadow
+After=network-online.target docker.service postgresql.service
+Wants=network-online.target
+Requires=docker.service postgresql.service
+
+[Service]
+Type=exec
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=180
+TimeoutStopSec=30
+
+# IMAGE=ghcr.io/kaiekkrin/wallandshadow:<sha>-{{ env_name }}
+EnvironmentFile=/etc/wallandshadow/{{ env_name }}.image
+
+ExecStartPre=-/usr/bin/docker rm -f wallandshadow-{{ env_name }}
+ExecStartPre=/usr/bin/docker pull ${IMAGE}
+ExecStart=/usr/bin/docker run --rm \
+    --name wallandshadow-{{ env_name }} \
+    --network host \
+    --env-file /etc/wallandshadow/{{ env_name }}.env \
+    ${IMAGE}
+ExecStop=/usr/bin/docker stop -t 20 wallandshadow-{{ env_name }}
+
+[Install]
+WantedBy=multi-user.target

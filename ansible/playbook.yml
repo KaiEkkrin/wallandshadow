@@ -368,6 +368,75 @@
         enabled: true
         state: started
 
+    # ── Application containers (systemd units) ─────────────────────────────
+    # Each environment runs as a plain systemd service that shells out to
+    # `docker run`. The image tag is written by CI into
+    # /etc/wallandshadow/<env>.image; `systemctl restart` picks it up.
+
+    - name: Render env-file for test application
+      ansible.builtin.template:
+        src: templates/wallandshadow.env.j2
+        dest: /etc/wallandshadow/test.env
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        env_name: test
+        app_port: "{{ app_port_test }}"
+        db_name: "{{ pg_db_test }}"
+        s3_bucket: "{{ s3_bucket_test }}"
+        oidc_client_id: "{{ oidc_test_client_id | default('') }}"
+
+    - name: Render env-file for production application
+      ansible.builtin.template:
+        src: templates/wallandshadow.env.j2
+        dest: /etc/wallandshadow/prod.env
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        env_name: prod
+        app_port: "{{ app_port_prod }}"
+        db_name: "{{ pg_db_prod }}"
+        s3_bucket: "{{ s3_bucket_prod }}"
+        oidc_client_id: "{{ oidc_prod_client_id | default('') }}"
+
+    - name: Render systemd unit for each application environment
+      ansible.builtin.template:
+        src: templates/wallandshadow.service.j2
+        dest: "/etc/systemd/system/wallandshadow-{{ item.env_name }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        env_name: "{{ item.env_name }}"
+        app_port: "{{ item.app_port }}"
+      loop:
+        - { env_name: test, app_port: "{{ app_port_test }}" }
+        - { env_name: prod, app_port: "{{ app_port_prod }}" }
+      notify: Reload systemd
+
+    - name: Seed image-tag file for each environment (only if missing)
+      ansible.builtin.copy:
+        dest: "/etc/wallandshadow/{{ item }}.image"
+        content: "IMAGE=ghcr.io/kaiekkrin/wallandshadow:latest-{{ item }}\n"
+        force: false
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - test
+        - prod
+
+    - name: Enable application systemd units
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: true
+        daemon_reload: true
+      loop:
+        - wallandshadow-test.service
+        - wallandshadow-prod.service
+
     # ── Unattended upgrades ─────────────────────────────────────────────────
 
     - name: Enable unattended upgrades
@@ -426,3 +495,7 @@
       ansible.builtin.systemd:
         name: caddy
         state: reloaded
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

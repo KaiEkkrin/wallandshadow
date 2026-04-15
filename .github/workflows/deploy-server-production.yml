@@ -1,16 +1,13 @@
 # =============================================================================
 # Deploy server to production
 # =============================================================================
-# Manual trigger only. Kamal builds the image, pushes to GHCR, and deploys.
+# Manual trigger only. Builds image, pushes to GHCR, SSHes to the VPS to flip
+# wallandshadow-prod.service onto the new tag.
 #
 # Recommended workflow:
 #   1. Verify test deployment is working (test.wallandshadow.com)
 #   2. Trigger this workflow manually from GitHub Actions UI
-#   3. Monitor the deployment via Kamal logs
-#
-# Secrets flow:
-#   - VPS_IP, SSH_PRIVATE_KEY, OIDC_*: from GitHub Secrets (static)
-#   - DATABASE_URL, JWT_SECRET, S3_*: fetched from VPS at deploy time
+#   3. Monitor via: ssh root@VPS journalctl -u wallandshadow-prod -f
 #
 # Prerequisites (GitHub Secrets):
 #   SSH_PRIVATE_KEY       — SSH key for VPS access
@@ -19,7 +16,7 @@
 #   OIDC_ISSUER           — Zitadel OIDC issuer URL
 #   OIDC_PROD_CLIENT_ID   — Zitadel OIDC client ID
 #
-# Consider adding required reviewers to the "production" GitHub Environment.
+# Consider adding required reviewers to the "hetzner" GitHub Environment.
 # =============================================================================
 
 name: Deploy Server (Production)
@@ -40,6 +37,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: hetzner
 
+    env:
+      IMAGE: ghcr.io/kaiekkrin/wallandshadow:${{ github.sha }}-prod
+
     steps:
       - uses: actions/checkout@v4
 
@@ -53,31 +53,40 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Ruby (for Kamal)
-        uses: ruby/setup-ruby@v1
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
         with:
-          ruby-version: "3.3"
-
-      - name: Install Kamal
-        run: gem install kamal
+          context: was-web/
+          push: true
+          tags: |
+            ${{ env.IMAGE }}
+            ghcr.io/kaiekkrin/wallandshadow:latest-prod
+          build-args: |
+            VITE_DEPLOY_ENV=production
+            VITE_BACKEND=hono
+            VITE_OIDC_ISSUER=${{ secrets.OIDC_ISSUER }}
+            VITE_OIDC_CLIENT_ID=${{ secrets.OIDC_PROD_CLIENT_ID }}
+            GIT_COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          # Pinned host key (captured by provision.yml) — no TOFU at deploy time.
           printf '%s\n' "${{ secrets.VPS_KNOWN_HOST }}" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      - name: Fetch secrets from VPS
-        run: .github/scripts/fetch-vps-secrets.sh "${{ secrets.VPS_IP }}" DATABASE_URL_PROD
-
-      - name: Deploy to production
-        env:
-          VPS_IP: ${{ secrets.VPS_IP }}
-          GIT_COMMIT: ${{ github.sha }}
-          OIDC_ISSUER: ${{ secrets.OIDC_ISSUER }}
-          OIDC_CLIENT_ID: ${{ secrets.OIDC_PROD_CLIENT_ID }}
-          KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: kamal deploy -d production --version ${{ github.sha }}
+      - name: Flip image tag and restart wallandshadow-prod
+        run: |
+          ssh "root@${{ secrets.VPS_IP }}" bash -se <<EOF
+          set -euo pipefail
+          printf 'IMAGE=%s\n' '${{ env.IMAGE }}' > /etc/wallandshadow/prod.image
+          systemctl restart wallandshadow-prod.service
+          # Type=exec reports success as soon as docker run exec()'s; give the
+          # container a few seconds to actually come up before re-checking.
+          sleep 5
+          systemctl is-active --quiet wallandshadow-prod.service
+          systemctl --no-pager --lines=20 status wallandshadow-prod.service
+          EOF
