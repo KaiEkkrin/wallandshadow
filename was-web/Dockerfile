@@ -6,7 +6,7 @@
 #   - Built React SPA (Vite)
 #   - Database migration runner (drizzle-orm)
 #
-# Build context: was-web/ (set via Kamal builder.context)
+# Build context: was-web/
 #
 # Required build args:
 #   VITE_DEPLOY_ENV       — "production" or "test" (controls SPA title prefix, robots.txt, noindex)

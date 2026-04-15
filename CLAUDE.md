@@ -252,7 +252,7 @@ The project is migrating from Firebase to a self-hosted, containerised stack. Fi
 - **Object storage**: MinIO (dev) / Hetzner Object Storage (prod), S3-compatible
 - **Auth**: External OIDC provider (Zitadel or Hanko, TBD); Phase 1 uses local JWT
 - **Static serving**: Caddy (reverse proxy + auto-HTTPS)
-- **Deployment**: Kamal (SSH-based, zero-downtime) to Hetzner Cloud VPS
+- **Deployment**: systemd units running `docker run` on a Hetzner Cloud VPS; CI SSHes in to flip the image tag and restart the unit
 
 ### Server Development
 

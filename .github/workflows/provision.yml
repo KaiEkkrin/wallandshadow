@@ -124,7 +124,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          # Unhashed keys so ruby net-ssh (Kamal) can match them later.
           KNOWN_HOST=$(ssh-keyscan -t rsa,ecdsa,ed25519 "$VPS_IP" 2>/dev/null)
           if [ -z "$KNOWN_HOST" ]; then
             echo "::error::ssh-keyscan returned no host keys for $VPS_IP"

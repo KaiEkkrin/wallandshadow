@@ -23,7 +23,7 @@ off Firebase and onto a portable, containerised server stack.
 | Static serving          | Caddy                                                                                   | Auto-HTTPS via Let's Encrypt; reverse-proxies `/api/*` to Node.js server                                                |
 | Local dev orchestration | Podman Compose                                                                          | Replaces `firebase emulators:start`; no Java dependency                                                                 |
 | CI                      | GitHub Actions → GitHub Container Registry                                              | Free container registry; images are multi-arch                                                                          |
-| Deployment              | Kamal (SSH-based, zero-downtime)                                                        | Maximum portability; move to any VPS with no tooling changes                                                            |
+| Deployment              | systemd unit per environment running `docker run`; CI SSHes in to flip image tag and restart the unit | Simple, portable, fits a VPS where Caddy + PostgreSQL are managed by Ansible; tens of seconds of downtime on restart is acceptable |
 | Hosting                 | Hetzner Cloud VPS + Hetzner Object Storage                                              | Best EU value; S3-compatible storage; German company, GDPR-native                                                       |
 | Analytics               | Dropped initially; server request logs sufficient at current scale                      | Traffic is low, most users are known personally; can add Plausible later if needed                                      |
 | Language (server)       | TypeScript now; Rust later (separate phase)                                             | Too much risk to combine Firebase migration with language change                                                        |
@@ -401,44 +401,33 @@ jobs:
   deploy:
     needs: build
     if: push to main
-    - Run Kamal deploy (SSH to Hetzner VPS)
+    - SSH to VPS, write IMAGE=... to /etc/wallandshadow/<env>.image,
+      systemctl restart wallandshadow-<env>.service
 ```
 
-### Production Deployment (Kamal)
+### Production Deployment (systemd + docker)
 
-Kamal deploys over SSH to the VPS. Key features:
+The VPS is provisioned by Ansible (`ansible/playbook.yml`), which installs Docker
+and renders a systemd unit per environment from `ansible/templates/wallandshadow.service.j2`.
+Each unit runs `docker run --network host --env-file /etc/wallandshadow/<env>.env`
+and reads its image tag from `/etc/wallandshadow/<env>.image` via `EnvironmentFile`.
 
-- Zero-downtime blue/green container swap
-- Health check before routing traffic to new container
-- Instant rollback (`kamal rollback`)
-- Works with any VPS; no Kubernetes required
+Deployment is a three-line shell operation over SSH:
 
-```yaml
-# config/deploy.yml (sketch)
-service: wallandshadow
-image: ghcr.io/OWNER/wallandshadow
-
-servers:
-  web:
-    - HETZNER_VPS_IP
-
-proxy:
-  ssl: true
-  host: wallandshadow.example.com
-
-env:
-  secret:
-    [
-      DATABASE_URL,
-      JWT_SECRET,
-      S3_ACCESS_KEY,
-      S3_SECRET_KEY,
-      GOOGLE_CLIENT_SECRET,
-    ]
-  clear:
-    S3_ENDPOINT: https://hel1.your-objectstorage.com
-    S3_BUCKET: wallandshadow
+```bash
+printf 'IMAGE=%s\n' "$NEW_IMAGE" > /etc/wallandshadow/<env>.image
+systemctl restart wallandshadow-<env>.service
+systemctl is-active --quiet wallandshadow-<env>.service
 ```
+
+Per-environment env-files (`/etc/wallandshadow/{test,prod}.env`) hold the runtime
+config: `DATABASE_URL`, `JWT_SECRET`, S3 creds, OIDC settings. They're rendered by
+Ansible and updated by `ansible/rotate_secrets.sh` when secrets rotate. Caddy and
+PostgreSQL run natively on the VPS (also managed by Ansible), not as containers.
+
+Trade-off: restarting the unit drops the container for tens of seconds — no
+blue/green, no zero-downtime swap. Acceptable at current scale; can be revisited
+later if needed.
 
 ---
 
@@ -588,5 +577,6 @@ The following are unaffected by the replatforming and require no migration work:
   Current leaning: self-manage initially, migrate to managed if it becomes a burden.
 - **E2E tests**: Current Playwright tests run against Firebase emulators. Will need updating to
   run against the Compose stack (Phase 4 or 5 work).
-- **Kamal config**: HTTP and WebSocket traffic on the same port — verify Kamal's proxy handles
-  `Upgrade: websocket` headers correctly (it should; Kamal uses kamal-proxy which is WebSocket-aware).
+- **Caddy WebSocket proxy**: HTTP and WebSocket traffic on the same port — verify Caddy's
+  `reverse_proxy` handles `Upgrade: websocket` headers correctly (it does by default, but the
+  current smoke test showed a WebSocket connection failure that still needs investigating).

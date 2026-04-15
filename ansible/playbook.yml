@@ -4,7 +4,7 @@
 # Configures an Ubuntu Server VPS with all infrastructure services:
 #   - PostgreSQL 17 (native, systemd)
 #   - Caddy reverse proxy (native, systemd)
-#   - Docker (for Kamal-managed application containers)
+#   - Docker (runs the application containers via systemd units)
 #   - ufw firewall
 #   - Unattended security upgrades
 #   - Nightly PostgreSQL backup to S3
