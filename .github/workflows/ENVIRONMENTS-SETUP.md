@@ -1,5 +1,9 @@
 # GitHub Environments Setup Guide
 
+**This guide applies only to the `legacy-firebase` branch.** `main` deploys via
+`deploy-server-{test,production}.yml` to Hetzner; see @docs/REPLATFORM.md
+("Production Deployment") for the current setup.
+
 This guide walks you through setting up GitHub Environments for deploying Wall & Shadow to test and production Firebase projects.
 
 ## Overview

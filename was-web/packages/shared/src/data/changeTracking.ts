@@ -205,7 +205,7 @@ export class SimpleChangeTracker implements IChangeTracker {
   getConsolidated(): Change[] {
     const all: Change[] = [];
     const pushTokenAdd = (f: IToken) => {
-      // `undefined` isn't supported in Firestore, so correct any token without
+      // JSON can't round-trip `undefined`, so correct any token without
       // an id now
       if (f.id === undefined) {
         f.id = uuidv7();

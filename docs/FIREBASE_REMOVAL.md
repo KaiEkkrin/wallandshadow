@@ -1,14 +1,13 @@
 # Firebase & Google Analytics Removal from `main`
 
-Phase 5 of the replatform (see @docs/REPLATFORM.md). The Firebase codebase has been
-forked to the `legacy-firebase` branch and still deploys from there. `main` should now
-drop Firebase and Google Analytics entirely so we can shrink dependencies, kill the
-forced peer-resolution pile in `package.json`, and simplify the client.
+**Status (2026-04-17): done.** This document is retained as a historical record of
+the Firebase removal effort (Phase 5 of the replatform, see @docs/REPLATFORM.md).
+The actual steps below have been completed; deviations from the original plan
+were mostly trivial (the E2E tests turned out already to be running against the
+Hono stack, so they did not need the bootstrap rewrite that was anticipated).
 
-**Goal**: after this work, `grep -ri firebase was-web/src was-web/packages` returns
-nothing; `firebase`, `firebase-admin`, and `@firebase/rules-unit-testing` are out of
-all `package.json` files in `main`; `VITE_BACKEND` and `VITE_AUTH_MODE` are gone; the
-`Consent` banner and `AnalyticsContextProvider` are deleted.
+The Firebase codebase lives on the `legacy-firebase` branch and still deploys from
+there. `main` has been purged of Firebase code and Google Analytics.
 
 **Non-goal**: changing anything on the `legacy-firebase` branch. That branch keeps
 working as-is.

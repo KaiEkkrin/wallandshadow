@@ -13,7 +13,7 @@ import { defaultSpriteGeometry, ISprite, ISpritesheet, toSpriteGeometryString } 
 
 import { v7 as uuidv7 } from 'uuid';
 
-// Converts raw data from Firestore to data matching the given interface,
+// Converts raw data from persisted storage to data matching the given interface,
 // filling in the missing properties with default values.
 export interface IConverter<T> {
   convert(rawData: Record<string, unknown>): T;

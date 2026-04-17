@@ -70,9 +70,6 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
     // For external auth (OIDC redirect), no local fields to validate —
     // the provider handles display name and credentials
     if (authMethod === 'external') {
-      if (oidcEnabled) return false;
-      // Firebase Google flow: require display name for new users
-      if (key === 'new') return displayName.length === 0;
       return false;
     }
 

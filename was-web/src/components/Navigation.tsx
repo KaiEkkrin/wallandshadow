@@ -415,17 +415,6 @@ function Navigation(props: INavigationProps) {
     [expanded, bounds.width]
   );
 
-  // Delete the firebase emulator warning, which is all well and good but
-  // screws up e2e testing.
-  // This code needs to go into a ubiquitous component inside the router -- the Navigation
-  // seems as good a place as any
-  useEffect(() => {
-    const emulatorWarnings = document.getElementsByClassName('firebase-emulator-warning');
-    for (const w of emulatorWarnings) {
-      w.remove();
-    }
-  }, []);
-
   return (
     <div ref={measureRef}>
       <Navbar

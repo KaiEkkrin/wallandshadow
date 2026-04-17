@@ -1,6 +1,6 @@
 # Wall & Shadow
 
-This project contains the source code for [Wall & Shadow](https://wallandshadow.web.app). It is available under the terms of the [Apache License, version 2.0](http://www.apache.org/licenses/LICENSE-2.0) -- see the LICENSE file.
+This project contains the source code for [Wall & Shadow](https://wallandshadow.com). It is available under the terms of the [Apache License, version 2.0](http://www.apache.org/licenses/LICENSE-2.0) -- see the LICENSE file.
 
 Wall & Shadow is a lightweight VTT (virtual tabletop) focused on providing a fast, on-the-fly battle map creation experience. It's aimed at groups who might:
 
@@ -20,26 +20,24 @@ For contributing to development I would strongly recommend Linux, either nativel
 
 ## Tech Stack
 
-**Current (Firebase):**
-
-- **React 18** + TypeScript + Vite
-- **Firebase v11** (Firestore, Functions, Auth, Hosting, Storage)
-- **Three.js** for 3D map rendering
+- **React 19** + TypeScript + Vite
+- **Three.js** for WebGL map rendering
 - **Bootstrap 5** with react-bootstrap
-
-**New self-hosted stack (in progress):**
-
 - **Hono** + TypeScript API server (`was-web/server/`)
 - **PostgreSQL 17** + Drizzle ORM
-- **MinIO** for object storage
+- **MinIO** (dev) / Hetzner Object Storage (prod) for images and spritesheets
+- **Zitadel** OIDC for authentication
+- **Caddy** + systemd-supervised Docker containers on a Hetzner VPS
+
+The original Firebase stack (Firestore, Cloud Functions, Firebase Auth, Firebase Hosting, Firebase Storage) lives on the `legacy-firebase` branch. See @docs/REPLATFORM.md for the migration story.
 
 ## Development with VS Code Dev Container (Recommended)
 
-The easiest way to get started is with the VS Code dev container:
+The easiest way to get started is with the VS Code dev container.
 
 ### Prerequisites
 
-1. [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running
+1. [Podman](https://podman.io/) (or Docker Desktop) installed and running
 2. [Visual Studio Code](https://code.visualstudio.com/) with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
 
 ### Quick Start
@@ -47,30 +45,23 @@ The easiest way to get started is with the VS Code dev container:
 1. Open this repository in VS Code
 2. Press `F1` and select **"Dev Containers: Reopen in Container"**
 3. Wait for the container to build (5-10 minutes first time)
-4. Set up Firebase credentials (see [`.devcontainer/README.md`](.devcontainer/README.md))
-5. Build Firebase Functions:
-   ```bash
-   cd was-web/functions
-   yarn build
-   ```
-6. Start developing:
+4. The dev container automatically starts PostgreSQL and MinIO.
+
+5. Start developing:
 
    ```bash
    cd was-web
 
-   # Terminal 1: Start Firebase emulators
-   yarn dev:firebase
+   # Terminal 1: Start the Hono API server
+   cd server && yarn dev
 
-   # Terminal 2: Start Vite dev server
+   # Terminal 2: Start the Vite dev server
    yarn dev:vite
    ```
 
-7. Open http://localhost:3400 in your browser (Firebase Hosting emulator)
-   - For development with hot reload, use http://localhost:5000 (Vite dev server)
+6. Open **http://localhost:5000** — register a new account or sign in via Zitadel OIDC.
 
-Running emulators and dev server separately is recommended - you can restart the app without restarting the emulators.
-
-See [`.devcontainer/README.md`](.devcontainer/README.md) for comprehensive documentation.
+See `.devcontainer/README.md` for comprehensive dev container documentation.
 
 ## Hono API Server
 
@@ -79,38 +70,24 @@ PostgreSQL and MinIO start automatically when the dev container starts.
 ```bash
 cd was-web/server
 
-# Apply schema to local database (first time, or after schema changes)
-yarn drizzle-kit push
+# Apply schema to the local dev and test databases (first time, or after schema changes)
+yarn db:push
+yarn db:push:test
 
 # Start the server with hot reload
 yarn dev
 ```
 
-The server runs on **http://localhost:3000**.
+The server runs on **http://localhost:3000** and the Vite dev server proxies `/api` and `/ws` to it.
 
-### Running the client against the Hono server
+### Auth modes
 
-The React client can run against the Hono server instead of Firebase by setting the `VITE_BACKEND` environment variable:
-
-```bash
-cd was-web
-
-# Terminal 1: Start the Hono server
-cd server && yarn dev
-
-# Terminal 2: Start Vite with Hono backend
-VITE_BACKEND=hono yarn dev:vite
-```
-
-Open **http://localhost:5000** and register a new account. The Hono backend supports local email/password auth (for dev/test) and Zitadel OIDC (for production). See [Zitadel OIDC Setup](#zitadel-oidc-setup) below.
-
-The Firebase emulators do not need to be running when using the Hono backend.
-
-**What works:** Sign up, log in, create/edit/delete adventures, invite/join, player management, create/edit/delete maps (metadata only), WebSocket live editing, image/spritesheet upload, OIDC sign-in via Zitadel.
+- **Production / test deploys**: OIDC-only. The login page shows a single "Sign in" button that redirects to Zitadel.
+- **Vite dev server (`import.meta.env.DEV`)**: both the email/password modal and the OIDC button are shown. This keeps Playwright E2E tests and local experimentation working without a Zitadel round-trip.
 
 ### Zitadel OIDC Setup
 
-Wall & Shadow uses [Zitadel](https://zitadel.com/) as its external OIDC authentication provider. In production, all authentication goes through Zitadel; in dev/test, local email/password auth is also available so that e2e tests can create users without hitting Zitadel.
+Wall & Shadow uses [Zitadel](https://zitadel.com/) as its external OIDC provider.
 
 #### 1. Create a Zitadel Instance
 
@@ -119,10 +96,6 @@ Sign up at [zitadel.cloud](https://zitadel.cloud/) (free tier available) or self
 #### 2. Create a Project
 
 In the Zitadel console, create a **Project** (e.g. "Wall & Shadow").
-
-**Project settings** — under the project's General tab:
-
-- **Assert Roles on Authentication**: leave off (not needed)
 
 **Token settings** — under the project's General tab, scroll to Token or find it in settings:
 
@@ -146,19 +119,17 @@ Inside the project, create a new **Application**:
 
 **Redirect URIs** — add all origins where the app runs:
 
-| Environment               | URI                                     |
-| ------------------------- | --------------------------------------- |
-| Vite dev server           | `http://localhost:5000/auth/callback`   |
-| Firebase Hosting emulator | `http://localhost:3400/auth/callback`   |
-| Production                | `https://your-domain.com/auth/callback` |
+| Environment     | URI                                     |
+| --------------- | --------------------------------------- |
+| Vite dev server | `http://localhost:5000/auth/callback`   |
+| Production      | `https://your-domain.com/auth/callback` |
 
 **Post Logout Redirect URIs** — same origins, pointing to the login page:
 
-| Environment               | URI                             |
-| ------------------------- | ------------------------------- |
-| Vite dev server           | `http://localhost:5000/login`   |
-| Firebase Hosting emulator | `http://localhost:3400/login`   |
-| Production                | `https://your-domain.com/login` |
+| Environment     | URI                             |
+| --------------- | ------------------------------- |
+| Vite dev server | `http://localhost:5000/login`   |
+| Production      | `https://your-domain.com/login` |
 
 Note the **Client ID** from the application page — you'll need it for the environment variables below.
 
@@ -208,11 +179,6 @@ OIDC_ISSUER=https://your-instance.zitadel.cloud
 VITE_OIDC_ISSUER=https://your-instance.zitadel.cloud
 VITE_OIDC_CLIENT_ID=your-client-id-from-step-3
 
-# Auth mode: "dual" allows both local and OIDC (default for dev).
-# Set to "oidc" in production to disable local email/password auth.
-#AUTH_MODE=dual
-#VITE_AUTH_MODE=dual
-
 # Optional: Zitadel test user for the OIDC e2e test
 #ZITADEL_TEST_EMAIL=test@example.com
 #ZITADEL_TEST_PASSWORD=your-test-password
@@ -231,13 +197,13 @@ export $(grep -v '^#' /workspaces/wallandshadow/.devcontainer/.env | xargs)
 ```bash
 cd was-web
 
-# Firebase client unit tests (watch mode)
+# Client unit tests (watch mode)
 yarn test:unit
 
-# Hono server integration tests (requires PostgreSQL running)
+# Hono server integration tests (requires PostgreSQL + MinIO running)
 yarn test:server
 
-# End-to-end tests (requires dev server running)
+# End-to-end tests (requires Hono server + Vite dev server running)
 yarn test:e2e
 
 # E2E in interactive UI mode (opens at http://localhost:8444)
@@ -255,18 +221,13 @@ yarn lint
 yarn test
 ```
 
-## Deployment (Firebase — Legacy)
+## Deployment
 
-For Firebase deployment instructions, see **[DEPLOY.md](DEPLOY.md)**.
+Production and test deploys run through `.github/workflows/deploy-server-production.yml` and `deploy-server-test.yml` — they build a multi-arch Docker image, push it to GHCR, and SSH to the Hetzner VPS to restart the systemd unit with the new image tag.
 
-Quick deploy (after initial setup):
+Infrastructure is provisioned by `.github/workflows/provision.yml` (OpenTofu + Ansible). See @docs/INFRASTRUCTURE_BOOTSTRAP.md for first-time VPS bootstrap.
 
-```bash
-cd was-web
-yarn build
-firebase deploy --only hosting    # Web app only (fast)
-firebase deploy                   # Everything (includes Functions)
-```
+For the retired Firebase deployment (applicable only to the `legacy-firebase` branch), see @docs/LEGACY_FIREBASE_DEPLOY.md.
 
 ## License
 

@@ -341,7 +341,7 @@ async function deleteMapTransaction(
 
   // TODO: We also need to remove the sub-collection of changes.
   // Maybe, write a Function to do this deletion instead?
-  // https://firebase.google.com/docs/firestore/manage-data/delete-data
+  // server-side deletion handles cascade for subcollections
 
   // Remove the map record itself
   await view.delete(mapRef);

@@ -2,7 +2,7 @@ import { IMapSummary } from '../data/adventure';
 import { maxProfileEntries } from '../data/policy';
 import { IAdventureSummary } from '../data/profile';
 
-// Extension helper functions shared between the web application and the Firebase Functions.
+// Extension helper functions shared between the web application and the Hono server.
 
 export function updateProfileAdventures(adventures: IAdventureSummary[] | undefined, changed: IAdventureSummary): IAdventureSummary[] | undefined {
   const existingIndex = adventures?.findIndex(a => a.id === changed.id) ?? -1;

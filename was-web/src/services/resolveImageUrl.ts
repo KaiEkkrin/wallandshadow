@@ -1,7 +1,7 @@
 import { IStorage } from '@wallandshadow/shared';
 import { ExpiringStringCache } from './expiringStringCache';
 
-// 10-minute cache — Firebase download URLs include a token that expires
+// 10-minute cache — S3 presigned URLs include a signature that expires
 export function createResolveImageUrl(storageService: IStorage | undefined): ((path: string) => Promise<string>) | undefined {
   if (storageService === undefined) {
     return undefined;

@@ -34,7 +34,7 @@ export interface ITokenProperties {
   note: string; // shown in the annotations UI
   noteVisibleToPlayers: boolean; // as you'd expect
   characterId: string; // empty if this isn't a character token
-  sprites: ISprite[]; // should be only 0 or 1, but this format makes it easy for Firestore
+  sprites: ISprite[]; // should be only 0 or 1, but the array shape makes it easy to serialise
   outline: boolean;
 }
 
