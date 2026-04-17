@@ -3,7 +3,7 @@ import * as React from 'react';
 
 import './Navigation.css';
 
-import { FirebaseContext } from './FirebaseContext';
+import { AuthContext } from './AuthContext';
 import { logError } from '../services/consoleLogger';
 import { ProfileContext } from './ProfileContext';
 import * as Policy from '@wallandshadow/shared';
@@ -218,7 +218,7 @@ function Avatar(props: { children?: React.ReactNode }) {
 }
 
 function NavLogin({ expanded }: { expanded: boolean }) {
-  const { auth } = useContext(FirebaseContext);
+  const { auth } = useContext(AuthContext);
   const { dataService, user } = useContext(UserContext);
   const { signInMethods } = useContext(SignInMethodsContext);
   const { profile } = useContext(ProfileContext);

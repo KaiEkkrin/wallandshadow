@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useContext } from 'react';
+import { useCallback, useEffect, useMemo, useState, useContext } from 'react';
 
 import { IProfile, IDataReference } from '@wallandshadow/shared';
 
@@ -26,21 +26,9 @@ function ProfileContextProvider(props: IContextProviderProps) {
     newUserDisplayNames.set(email, displayName);
   }, [newUserDisplayNames]);
 
-  // For Google OAuth new users: we don't know the email before the popup opens, so we
-  // store the display name separately and consume it on the next auth state change.
-  const pendingGoogleDisplayName = useRef<string | undefined>(undefined);
-  const expectGoogleSignup = useCallback((displayName: string) => {
-    pendingGoogleDisplayName.current = displayName;
-  }, []);
-
   const popNewUser = useCallback((email: string | null) => {
-    // Always consume (and clear) the pending Google display name on any auth event,
-    // so it doesn't linger and affect unrelated future logins.
-    const googleDisplayName = pendingGoogleDisplayName.current;
-    pendingGoogleDisplayName.current = undefined;
-
     if (!email) {
-      return googleDisplayName;
+      return undefined;
     }
 
     const newDisplayName = newUserDisplayNames.get(email);
@@ -48,11 +36,6 @@ function ProfileContextProvider(props: IContextProviderProps) {
       console.debug(`ensuring profile of ${email} setting display name ${newDisplayName}`);
       newUserDisplayNames.delete(email);
       return newDisplayName;
-    }
-
-    if (googleDisplayName !== undefined) {
-      console.debug(`ensuring profile of ${email} setting Google signup display name ${googleDisplayName}`);
-      return googleDisplayName;
     }
 
     console.debug(`ensuring profile of ${email}`);
@@ -91,8 +74,8 @@ function ProfileContextProvider(props: IContextProviderProps) {
   }, [profileRef, setProfile, dataService]);
 
   const profileContext = useMemo(
-    () => ({ profile: profile, expectNewUser: expectNewUser, expectGoogleSignup: expectGoogleSignup }),
-    [profile, expectNewUser, expectGoogleSignup]
+    () => ({ profile: profile, expectNewUser: expectNewUser }),
+    [profile, expectNewUser]
   );
 
   return (

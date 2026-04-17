@@ -38,3 +38,7 @@ jobs:
       - name: Lint web
         working-directory: was-web
         run: yarn lint
+
+      - name: Unit tests
+        working-directory: was-web
+        run: yarn test

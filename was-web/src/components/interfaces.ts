@@ -1,23 +1,14 @@
-import { IAdventure, IPlayer, IAdventureIdentified, IIdentified, IMap, IDataService, IUser, IAuth, IAuthProvider, IFunctionsService, IStorage, ISpriteManager, IProfile } from '@wallandshadow/shared';
+import { IAdventure, IPlayer, IAdventureIdentified, IIdentified, IMap, IDataService, IUser, IAuth, IFunctionsService, IStorage, ISpriteManager, IProfile } from '@wallandshadow/shared';
 import { MapState, MapStateMachine } from '../models/mapStateMachine';
 
-import { Firestore, FieldValue } from 'firebase/firestore';
-import { Functions } from 'firebase/functions';
-import { FirebaseStorage } from 'firebase/storage';
 import { Subject } from 'rxjs';
 
 export interface IContextProviderProps {
   children?: React.ReactNode;
 }
- 
-export interface IFirebaseContext {
+
+export interface IAuthContext {
   auth?: IAuth | undefined;
-  db?: Firestore | undefined;
-  functions?: Functions | undefined;
-  googleAuthProvider?: IAuthProvider | undefined;
-  storage?: FirebaseStorage | undefined;
-  timestampProvider?: (() => FieldValue) | undefined;
-  usingLocalEmulators?: boolean | undefined;
 }
 
 export interface IUserContext {
@@ -39,10 +30,6 @@ export interface IProfileContext {
   // specified display name.  The profile context, which is responsible for ensuring
   // the user's profile, will pop the new email and set the display name accordingly.
   expectNewUser?: (email: string, displayName: string) => void;
-
-  // For Google OAuth new users: call this *before* opening the sign-in popup so the
-  // display name is captured before auth state fires (we don't know the email yet).
-  expectGoogleSignup?: (displayName: string) => void;
 }
 
 export interface ISignInMethodsContext {

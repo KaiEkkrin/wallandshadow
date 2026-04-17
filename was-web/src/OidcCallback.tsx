@@ -1,7 +1,7 @@
 import { useEffect, useContext, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { handleOidcCallback, getOidcBearerToken } from './services/oidcAuth';
-import { FirebaseContext } from './components/FirebaseContext';
+import { AuthContext } from './components/AuthContext';
 import { HonoAuth } from './services/honoAuth';
 import Throbber from './components/Throbber';
 
@@ -14,7 +14,7 @@ import Throbber from './components/Throbber';
 let callbackProcessed = false;
 
 function OidcCallback() {
-  const { auth } = useContext(FirebaseContext);
+  const { auth } = useContext(AuthContext);
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const started = useRef(false);
