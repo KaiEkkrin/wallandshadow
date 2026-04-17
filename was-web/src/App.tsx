@@ -3,13 +3,13 @@ import './App.css';
 import { lazy, Suspense, useEffect } from 'react';
 
 import AdventureContextProvider from './components/AdventureContextProvider';
-import BackendProvider from './components/BackendProvider';
+import HonoContextProvider from './components/HonoContextProvider';
 import Home from './Home';
 import MapContextProvider from './components/MapContextProvider';
 import ProfileContextProvider from './components/ProfileContextProvider';
 import RootRedirect from './RootRedirect';
 import Routing from './components/Routing';
-import { IRoutingProps, IFirebaseProps } from './components/interfaces';
+import { IRoutingProps } from './components/interfaces';
 import Status from './components/Status';
 import StatusContextProvider from './components/StatusContextProvider';
 import Throbber from './components/Throbber';
@@ -30,7 +30,7 @@ const MapPage = lazy(() => import('./Map'));
 const OidcCallback = lazy(() => import('./OidcCallback'));
 const Shared = lazy(() => import('./Shared'));
 
-function App(props: IFirebaseProps & IRoutingProps) {
+function App(props: IRoutingProps) {
   // Set environment-specific CSS custom properties on mount
   useEffect(() => {
     const colors = getEnvironmentColors();
@@ -40,7 +40,7 @@ function App(props: IFirebaseProps & IRoutingProps) {
 
   return (
     <div className="App">
-      <BackendProvider {...props}>
+      <HonoContextProvider>
         <ProfileContextProvider>
           <StatusContextProvider>
             <Routing {...props}>
@@ -69,7 +69,7 @@ function App(props: IFirebaseProps & IRoutingProps) {
             <VersionBadge />
           </StatusContextProvider>
         </ProfileContextProvider>
-      </BackendProvider>
+      </HonoContextProvider>
     </div>
   );
 }

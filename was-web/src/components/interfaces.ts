@@ -71,11 +71,6 @@ export interface IMapContext {
   stateMachine?: MapStateMachine | undefined;
 }
 
-export interface IFirebaseProps {
-  // For testing only -- ignored by the real context provider.
-  user?: IUser | null; // null for no user
-}
-
 export interface IRoutingProps {
   // For testing only -- ignored by the real routing.
   defaultRoute?: string | undefined;
