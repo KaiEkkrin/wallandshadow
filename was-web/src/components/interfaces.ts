@@ -1,4 +1,4 @@
-import { IAdventure, IPlayer, IAdventureIdentified, IIdentified, IMap, IDataService, IUser, IAuth, IAuthProvider, IAnalytics, IFunctionsService, IStorage, ISpriteManager, IProfile } from '@wallandshadow/shared';
+import { IAdventure, IPlayer, IAdventureIdentified, IIdentified, IMap, IDataService, IUser, IAuth, IAuthProvider, IFunctionsService, IStorage, ISpriteManager, IProfile } from '@wallandshadow/shared';
 import { MapState, MapStateMachine } from '../models/mapStateMachine';
 
 import { Firestore, FieldValue } from 'firebase/firestore';
@@ -18,9 +18,6 @@ export interface IFirebaseContext {
   storage?: FirebaseStorage | undefined;
   timestampProvider?: (() => FieldValue) | undefined;
   usingLocalEmulators?: boolean | undefined;
-
-  // Creates an Analytics provider
-  createAnalytics?: (() => IAnalytics) | undefined;
 }
 
 export interface IUserContext {
@@ -50,14 +47,6 @@ export interface IProfileContext {
 
 export interface ISignInMethodsContext {
   signInMethods: string[];
-}
-
-export interface IAnalyticsContext {
-  analytics: IAnalytics | undefined;
-  enabled: boolean | undefined; // Residing in local storage, this signals consent.
-  setEnabled: (enabled: boolean | undefined) => void;
-  logError: (message: string, e: unknown, fatal?: boolean | undefined) => void; // Use this error helper to track errors in GA where possible.
-  logEvent: (event: string, parameters: Record<string, unknown>) => void;
 }
 
 export interface IToast {
@@ -90,11 +79,4 @@ export interface IFirebaseProps {
 export interface IRoutingProps {
   // For testing only -- ignored by the real routing.
   defaultRoute?: string | undefined;
-}
-
-export interface IAnalyticsProps {
-  // These two optional functions can be set in testing to override the
-  // use of local storage.
-  getItem?: ((key: string) => string | null) | undefined;
-  setItem?: ((key: string, value: string | null) => void) | undefined;
 }

@@ -1,7 +1,6 @@
 import { useState, useEffect, useContext, useMemo, useCallback } from 'react';
 import './App.css';
 
-import { AnalyticsContext } from './components/AnalyticsContext';
 import BusyElement from './components/BusyElement';
 import Navigation from './components/Navigation';
 import { ProfileContext } from './components/ProfileContext';
@@ -11,6 +10,7 @@ import { UserContext } from './components/UserContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 
 import { IInvite } from '@wallandshadow/shared';
+import { logError } from './services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
 
@@ -24,7 +24,6 @@ interface IInvitePageProps {
 function Invite({ inviteId }: IInvitePageProps) {
   const userContext = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
-  const analyticsContext = useContext(AnalyticsContext);
   const statusContext = useContext(StatusContext);
   const navigate = useNavigate();
 
@@ -43,9 +42,9 @@ function Invite({ inviteId }: IInvitePageProps) {
       const inviteRef = userContext.dataService.getInviteRef(inviteId);
       userContext.dataService.get(inviteRef)
         .then(i => setInvite(i))
-        .catch(e => analyticsContext.logError("Failed to fetch invite " + inviteId, e));
+        .catch(e => logError("Failed to fetch invite " + inviteId, e));
     }
-  }, [userContext.dataService, analyticsContext, inviteId]);
+  }, [userContext.dataService, inviteId]);
 
   const inviteDescription = useMemo(() =>
     invite === undefined ? "(no such invite)" : invite.adventureName + " by " + invite.ownerName,
@@ -61,12 +60,11 @@ function Invite({ inviteId }: IInvitePageProps) {
     setButtonDisabled(true);
     userContext.functionsService?.joinAdventure(inviteId)
       .then(adventureId => {
-        analyticsContext.analytics?.logEvent("join_group", { "group_id": adventureId });
         navigate("/adventure/" + adventureId, { replace: true });
       })
       .catch(e => {
         setButtonDisabled(false);
-        analyticsContext.logError("Failed to join using invite " + inviteId, e);
+        logError("Failed to join using invite " + inviteId, e);
         const message = String(e.message);
         if (message) {
           statusContext.toasts.next({ id: uuidv7(), record: {
@@ -74,7 +72,7 @@ function Invite({ inviteId }: IInvitePageProps) {
           }});
         }
       });
-  }, [analyticsContext, userContext, inviteId, navigate, setButtonDisabled, statusContext]);
+  }, [userContext, inviteId, navigate, setButtonDisabled, statusContext]);
 
   return (
     <div>

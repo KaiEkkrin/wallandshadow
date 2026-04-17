@@ -2,11 +2,11 @@ import { useContext, useEffect, useState } from 'react';
 import './App.css';
 
 import AdventureCollection from './components/AdventureCollection';
-import { AnalyticsContext } from './components/AnalyticsContext';
 import Navigation from './components/Navigation';
 import { RequireLoggedIn } from './components/RequireLoggedIn';
 import { UserContext } from './components/UserContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
+import { logError } from './services/consoleLogger';
 
 import { IPlayer } from '@wallandshadow/shared';
 
@@ -15,7 +15,6 @@ import Container from 'react-bootstrap/Container';
 import Row from 'react-bootstrap/Row';
 
 function Shared() {
-  const { logError } = useContext(AnalyticsContext);
   const { dataService, user } = useContext(UserContext);
   const [adventures, setAdventures] = useState<IPlayer[]>([]);
 
@@ -35,7 +34,7 @@ function Shared() {
       },
       e => logError("Error watching shared adventures: ", e)
     );
-  }, [logError, dataService, user]);
+  }, [dataService, user]);
 
   return (
     <RequireLoggedIn>

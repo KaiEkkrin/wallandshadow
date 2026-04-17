@@ -1,7 +1,6 @@
 import { useCallback, useContext, useState, useEffect, useMemo } from 'react';
 import './App.css';
 
-import { AnalyticsContext } from './components/AnalyticsContext';
 import { FirebaseContext } from './components/FirebaseContext';
 import Navigation from './components/Navigation';
 import * as Policy from '@wallandshadow/shared';
@@ -10,6 +9,7 @@ import { useDocumentTitle } from './hooks/useDocumentTitle';
 
 import { IUser } from '@wallandshadow/shared';
 import { isOidcEnabled, startOidcLogin } from './services/oidcAuth';
+import { logError } from './services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
@@ -43,7 +43,6 @@ interface INewUserFormProps {
 
 function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, handleSignUp, handleExternalSignUp, handleExternalSignIn }: INewUserFormProps) {
   const { auth } = useContext(FirebaseContext);
-  const { logError } = useContext(AnalyticsContext);
 
   const [key, setKey] = useState<"new" | "existing">("new");
   const [displayName, setDisplayName] = useState("");
@@ -114,7 +113,7 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
     auth?.sendPasswordResetEmail(target)
       .then(() => setPasswordResetTarget(target))
       .catch(e => logError("Error sending password reset email", e));
-  }, [logError, email, auth, setPasswordResetTarget]);
+  }, [email, auth, setPasswordResetTarget]);
 
   const passwordResetComponent = useMemo(() => {
     if (!Policy.emailIsValid(email)) {
@@ -253,7 +252,6 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
 function Login() {
   const { auth, googleAuthProvider } = useContext(FirebaseContext);
   const { profile, expectNewUser, expectGoogleSignup } = useContext(ProfileContext);
-  const { logError } = useContext(AnalyticsContext);
   const navigate = useNavigate();
 
   useDocumentTitle('Login');
@@ -294,7 +292,7 @@ function Login() {
     setLoginFailedVisible(true);
     setLoginFailedText(e instanceof Error ? e.message : String(e));
     logError("Login failed", e);
-  }, [logError, setLoginFailedVisible]);
+  }, [setLoginFailedVisible]);
 
   const handleEmailFormClose = useCallback(() => {
     setShowEmailForm(false);

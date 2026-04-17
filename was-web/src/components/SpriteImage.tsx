@@ -2,9 +2,9 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import * as React from 'react';
 
 import { AdventureContext } from './AdventureContext';
-import { AnalyticsContext } from './AnalyticsContext';
 
 import { ITokenProperties, fromSpriteGeometryString, ISprite, ISpritesheetEntry } from '@wallandshadow/shared';
+import { logError } from '../services/consoleLogger';
 
 // A pretty display of the image in a sprite for use in choosers etc.
 
@@ -26,7 +26,6 @@ function SpriteImage(
   { sprite, token, altName, className, size, border, borderColour, onClick }: ISpriteImageProps
 ) {
   const { spriteManager } = useContext(AdventureContext);
-  const { logError } = useContext(AnalyticsContext);
 
   // Resolve the sprite to display
   const [entry, setEntry] = useState<ISpritesheetEntry | undefined>(undefined);
@@ -58,7 +57,7 @@ function SpriteImage(
     }
 
     return undefined;
-  }, [logError, setEntry, sprite, spriteManager, token]);
+  }, [setEntry, sprite, spriteManager, token]);
 
   const alt = useMemo(
     () => entryAltText ? `${entryAltText} (${altName})` : altName,

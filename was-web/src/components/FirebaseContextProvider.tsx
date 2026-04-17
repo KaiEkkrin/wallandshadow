@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
 
 import { initializeApp } from 'firebase/app';
-import { getAnalytics, logEvent as firebaseLogEvent } from 'firebase/analytics';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator, serverTimestamp } from 'firebase/firestore';
 import { getFunctions, Functions, connectFunctionsEmulator } from 'firebase/functions';
 import { getStorage, FirebaseStorage, connectStorageEmulator } from 'firebase/storage';
-import { IAnalytics } from '@wallandshadow/shared';
 
 import { FirebaseContext } from './FirebaseContext';
 import { IContextProviderProps, IFirebaseContext, IFirebaseProps } from './interfaces';
@@ -86,13 +84,6 @@ async function configureFirebase(setFirebaseContext: (c: IFirebaseContext) => vo
     storage: storage,
     timestampProvider: serverTimestamp,
     usingLocalEmulators: usingLocalEmulators,
-    // Don't initialize Analytics in local development mode (requires real API key)
-    createAnalytics: isLocalDevelopment ? undefined : (): IAnalytics => {
-      const analytics = getAnalytics(app);
-      return {
-        logEvent: (event: string, parameters: Record<string, unknown>) => firebaseLogEvent(analytics, event, parameters)
-      };
-    }
   });
 }
 

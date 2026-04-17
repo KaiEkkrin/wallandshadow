@@ -3,8 +3,8 @@ import * as React from 'react';
 
 import './Navigation.css';
 
-import { AnalyticsContext } from './AnalyticsContext';
 import { FirebaseContext } from './FirebaseContext';
+import { logError } from '../services/consoleLogger';
 import { ProfileContext } from './ProfileContext';
 import * as Policy from '@wallandshadow/shared';
 import { StatusContext } from './StatusContext';
@@ -17,7 +17,6 @@ import Button from 'react-bootstrap/Button';
 import ButtonGroup from 'react-bootstrap/ButtonGroup';
 import Dropdown from 'react-bootstrap/Dropdown';
 import Form from 'react-bootstrap/Form';
-import FormCheck from 'react-bootstrap/FormCheck';
 import Modal from 'react-bootstrap/Modal';
 import Nav from 'react-bootstrap/Nav';
 import Navbar from 'react-bootstrap/Navbar';
@@ -224,7 +223,6 @@ function NavLogin({ expanded }: { expanded: boolean }) {
   const { signInMethods } = useContext(SignInMethodsContext);
   const { profile } = useContext(ProfileContext);
   const statusContext = useContext(StatusContext);
-  const { enabled, setEnabled, logError } = useContext(AnalyticsContext);
 
   const isPasswordUser = useMemo(
     () => signInMethods.find(m => /password/i.test(m)) !== undefined,
@@ -248,36 +246,27 @@ function NavLogin({ expanded }: { expanded: boolean }) {
     // Clear locally cached profile properties
     localStorage.removeItem("profile.image");
     localStorage.removeItem("profile.emailMd5");
-  }, [auth, logError]);
-  
+  }, [auth]);
+
   const [showChangePassword, setShowChangePassword] = useState(false);
 
   // The profile editor:
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState("");
-  const [editAnalyticsEnabled, setEditAnalyticsEnabled] = useState<boolean | undefined>(undefined);
-  const analyticsIsEnabled = useMemo(() => editAnalyticsEnabled === true, [editAnalyticsEnabled]);
 
   const handleEditProfile = useCallback(() => {
     setShowChangePassword(false);
     setEditDisplayName(displayName);
-    setEditAnalyticsEnabled(enabled);
     setShowEditProfile(true);
-  }, [enabled, displayName, setEditAnalyticsEnabled, setEditDisplayName, setShowChangePassword, setShowEditProfile]);
+  }, [displayName, setEditDisplayName, setShowChangePassword, setShowEditProfile]);
 
   const handleModalClose = useCallback(() => {
     setShowChangePassword(false);
     setShowEditProfile(false);
   }, [setShowEditProfile]);
 
-  const handleEditAnalyticsEnabledChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => setEditAnalyticsEnabled(e.currentTarget.checked),
-    [setEditAnalyticsEnabled]
-  );
-
   const handleSaveProfile = useCallback(() => {
     handleModalClose();
-    setEnabled(editAnalyticsEnabled);
     if (dataService === undefined) {
       return;
     }
@@ -296,7 +285,7 @@ function NavLogin({ expanded }: { expanded: boolean }) {
     }
 
     doUpdateProfile().catch(e => logError("error updating profile", e));
-  }, [setEnabled, logError, displayName, editAnalyticsEnabled, editDisplayName, handleModalClose, dataService, user]);
+  }, [displayName, editDisplayName, handleModalClose, dataService, user]);
 
   const saveProfileDisabled = useMemo(() => editDisplayName.length === 0, [editDisplayName]);
 
@@ -392,16 +381,6 @@ function NavLogin({ expanded }: { expanded: boolean }) {
               <Form.Control id="emailInput" type="text" maxLength={50} value={profile?.email} disabled={true} />
               <Form.Text className="text-muted">
                 This is the email address associated with your Wall &amp; Shadow account. It will not be shown to other users.
-              </Form.Text>
-            </Form.Group>
-            <Form.Group>
-              <FormCheck inline>
-                <FormCheck.Input id="allowAnalytics" type="checkbox" checked={analyticsIsEnabled}
-                  onChange={handleEditAnalyticsEnabledChange} />
-                <FormCheck.Label htmlFor="allowAnalytics">Allow Google Analytics</FormCheck.Label>
-              </FormCheck>
-              <Form.Text className="text-muted">
-                Check this box to allow Wall &amp; Shadow to use Google Analytics to measure usage and identify errors, and accept the data collection and cookies required.
               </Form.Text>
             </Form.Group>
           </Form>

@@ -2,7 +2,6 @@ import { useContext, useState, useEffect, useMemo } from 'react';
 import './App.css';
 
 import AdventureCollection from './components/AdventureCollection';
-import { AnalyticsContext } from './components/AnalyticsContext';
 import Navigation from './components/Navigation';
 import { ProfileContext } from './components/ProfileContext';
 import { RequireLoggedIn } from './components/RequireLoggedIn';
@@ -10,6 +9,7 @@ import { UserContext } from './components/UserContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 
 import { IAdventure, summariseAdventure, IIdentified, getUserPolicy } from '@wallandshadow/shared';
+import { logError } from './services/consoleLogger';
 
 import Col from 'react-bootstrap/Col';
 import Container from 'react-bootstrap/Container';
@@ -18,7 +18,6 @@ import Row from 'react-bootstrap/Row';
 function All() {
   const { dataService, user } = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
-  const analyticsContext = useContext(AnalyticsContext);
 
   useDocumentTitle('My Adventures');
 
@@ -44,9 +43,9 @@ function All() {
     return dataService?.watchAdventures(
       uid,
       a => setAdventures(a),
-      e => analyticsContext.logError("Error watching adventures: ", e)
+      e => logError("Error watching adventures: ", e)
     );
-  }, [analyticsContext, dataService, user]);
+  }, [dataService, user]);
 
   // I can create a new adventure if I'm not at cap
   const showNewAdventure = useMemo(

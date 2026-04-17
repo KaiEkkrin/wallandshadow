@@ -6,11 +6,7 @@ import * as Api from './apiFixture';
 test.describe('Map CRUD tests', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await Promise.race([
-      expect(page.locator('.App-login-text').first()).toBeVisible(),
-      expect(page.locator('.App-consent-container')).toBeVisible()
-    ]);
-    await Util.acceptCookieConsent(page);
+    await expect(page.locator('.App-login-text').first()).toBeVisible();
   });
 
   // Map editing from the map page requires WebGL because the MapContextProvider

@@ -35,12 +35,7 @@ test.describe('Basic tests', () => {
 
     // Navigate to home page (which redirects to /login for unauthenticated users)
     await page.goto('/');
-    // Wait for either the login page text or the consent banner to appear
-    await Promise.race([
-      expect(page.locator('.App-login-text').first()).toBeVisible(),
-      expect(page.locator('.App-consent-container')).toBeVisible()
-    ]);
-    await Util.acceptCookieConsent(page);
+    await expect(page.locator('.App-login-text').first()).toBeVisible();
   });
 
   test('redirect to login when not authenticated', async ({ page }) => {
@@ -99,16 +94,7 @@ test.describe('Basic tests', () => {
       try {
         // Set up second page (will redirect to /login for unauthenticated users)
         await page2.goto('/');
-        // Wait for either the login page text or the consent banner to appear
-        await Promise.race([
-          expect(page2.locator('.App-login-text').first()).toBeVisible(),
-          expect(page2.locator('.App-consent-container')).toBeVisible()
-        ]);
-        await Util.acceptCookieConsent(page2);
-
-        // Debug: Check if localStorage was set
-        const analyticsEnabled = await page2.evaluate(() => localStorage.getItem('analyticsEnabled'));
-        console.log('After accepting consent, analyticsEnabled in localStorage:', analyticsEnabled);
+        await expect(page2.locator('.App-login-text').first()).toBeVisible();
 
         // Sign up a new user
         const user = await Util.signUp(page, deviceName, 'User');
@@ -144,13 +130,6 @@ test.describe('Basic tests', () => {
 
         // Sign up a second user, who will join the adventure
         const user2 = await Util.signUp(page2, deviceName, 'User');
-
-        // Debug: Check if localStorage is still set after signUp
-        const analyticsEnabledAfterSignup = await page2.evaluate(() => localStorage.getItem('analyticsEnabled'));
-        console.log('After signUp, analyticsEnabled in localStorage:', analyticsEnabledAfterSignup);
-
-        // Wait for consent banner to be hidden after signUp returns to home page
-        await expect(page2.locator('.App-consent-container')).not.toBeVisible();
 
         // Go to the invite link and click.  There should be a suitable greeting
         await page2.goto("http://localhost:5000" + inviteLink);
@@ -197,7 +176,6 @@ test.describe('Basic tests', () => {
           if (which === 'map') {
             // WebGL succeeded -- full verification
             await expect(page2.locator('text=The map owner has not assigned you any tokens')).toBeVisible();
-            await expect(page2.locator('.App-consent-container')).not.toBeVisible();
 
             await Util.takeAndVerifyScreenshot(page2, browserName, deviceName, 'share-joined-map');
             await page2.click('.toast-header .btn-close');

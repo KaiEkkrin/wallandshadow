@@ -5,9 +5,9 @@ import { MapLifecycleManager } from '../models/mapLifecycleManager';
 import { createDefaultState, MapStateMachine } from '../models/mapStateMachine';
 import { networkStatusTracker } from '../models/networkStatusTracker';
 import { registerMapAsRecent, removeMapFromRecent, watchChangesAndConsolidate } from '../services/extensions';
+import { logError } from '../services/consoleLogger';
 
 import { AdventureContext } from './AdventureContext';
-import { AnalyticsContext } from './AnalyticsContext';
 import { MapContext } from './MapContext';
 import { IContextProviderProps, IMapContext } from './interfaces';
 import { ProfileContext } from './ProfileContext';
@@ -20,7 +20,6 @@ import { first, map, scan, share, switchMap } from 'rxjs/operators';
 import { v7 as uuidv7 } from 'uuid';
 
 function MapContextProvider(props: IContextProviderProps) {
-  const { analytics, logError, logEvent } = useContext(AnalyticsContext);
   const { dataService, functionsService, resolveImageUrl, user } = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
   const { toasts } = useContext(StatusContext);
@@ -45,7 +44,7 @@ function MapContextProvider(props: IContextProviderProps) {
     }
 
     setLcm(new MapLifecycleManager(dataService, functionsService, logError, resolveImageUrl, uid));
-  }, [dataService, functionsService, logError, resolveImageUrl, user]);
+  }, [dataService, functionsService, resolveImageUrl, user]);
 
   // Watch the map when it changes.
   // We'll try not to depend on `dataService` in here to avoid repeated calls
@@ -92,10 +91,6 @@ function MapContextProvider(props: IContextProviderProps) {
           if (m === undefined) {
             sub.error("That map does not exist.");
           } else {
-            analytics?.logEvent("select_content", {
-              "content_type": "map",
-              "item_id": mapId
-            });
             sub.next({ adventureId: adventureId, id: mapId, record: m });
           }
         },
@@ -142,7 +137,6 @@ function MapContextProvider(props: IContextProviderProps) {
           return trackChanges(m.record, sm.changeTracker, chs.chs, chs.user);
         },
         () => sm.changeTracker.clear(),
-        logEvent,
         e => logError("Error watching map changes", e)
       );
 
@@ -172,7 +166,7 @@ function MapContextProvider(props: IContextProviderProps) {
       stopWatchingMap?.();
     };
   }, [
-    analytics, lcm, location, logError, logEvent,
+    lcm, location,
     profile, setMapContext, spriteManager, toasts
   ]);
 

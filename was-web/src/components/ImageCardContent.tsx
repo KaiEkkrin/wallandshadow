@@ -1,11 +1,12 @@
 import { useContext, useEffect, useState, useMemo } from 'react';
 import * as React from 'react';
 
-import { AnalyticsContext } from './AnalyticsContext';
 import { UserContext } from './UserContext';
 
 import Card from 'react-bootstrap/Card';
 import { from } from 'rxjs';
+
+import { logError } from '../services/consoleLogger';
 
 // Draws a card, with an image if one is available at the given path.
 
@@ -16,7 +17,6 @@ interface IImageCardProps {
 }
 
 function ImageCardContent({ altName, imagePath, children }: IImageCardProps) {
-  const { logError } = useContext(AnalyticsContext);
   const { resolveImageUrl } = useContext(UserContext);
   const [url, setUrl] = useState<string | undefined>(undefined);
 
@@ -35,7 +35,7 @@ function ImageCardContent({ altName, imagePath, children }: IImageCardProps) {
       e => logError("Failed to get download URL for image " + imagePath, e)
     );
     return () => sub.unsubscribe();
-  }, [imagePath, logError, setUrl, resolveImageUrl]);
+  }, [imagePath, setUrl, resolveImageUrl]);
 
   const contents = useMemo(
     () => (url) ? (<React.Fragment>

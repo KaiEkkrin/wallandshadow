@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { AnalyticsContext } from './AnalyticsContext';
 import BusyElement from './BusyElement';
 import { ImagePickerForm } from './ImagePickerModal';
 import { ProfileContext } from './ProfileContext';
@@ -9,6 +8,7 @@ import { UserContext } from './UserContext';
 
 import { IImage, getUserPolicy, defaultSpriteGeometry, ISprite, toSpriteGeometryString } from '@wallandshadow/shared';
 import { hexColours } from '../models/featureColour';
+import { logError } from '../services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
 
@@ -29,7 +29,6 @@ function TokenImageEditor({
   adventureId, altText, busySettingImage, colour, show, sprites,
   setBusySettingImage, setImageTabTitle, setSprites, handleImageDelete
 }: ITokenImageEditorProperties) {
-  const { logError } = useContext(AnalyticsContext);
   const { functionsService } = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
   const maxImages = useMemo(
@@ -95,7 +94,7 @@ function TokenImageEditor({
       logError(`Failed to set sprite to ${image.path}`, e);
       setBusySettingImage(false);
     })
-  }, [adventureId, functionsService, logError, setBusySettingImage, setSprites]);
+  }, [adventureId, functionsService, setBusySettingImage, setSprites]);
 
   const handleUseNoImage = useCallback(() => handleSetImage(undefined), [handleSetImage]);
   const handleUseImage = useCallback(() => handleSetImage(activeImage), [activeImage, handleSetImage]);

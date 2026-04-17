@@ -53,11 +53,6 @@ export interface IUser {
   updateProfile: (p: { displayName?: string | null; photoURL?: string | null }) => Promise<void>;
 }
 
-// The analytics service.
-export interface IAnalytics {
-  logEvent(event: string, parameters: Record<string, unknown>): void;
-}
-
 // A reference to stored data.
 export interface IDataReference<T> {
   id: string;

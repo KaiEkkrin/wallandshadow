@@ -1,7 +1,6 @@
 import { useCallback, useContext, useMemo, useState } from 'react';
 import '../App.css';
 
-import { AnalyticsContext } from './AnalyticsContext';
 import MapCards from './MapCards';
 import MapCloneModal from './MapCloneModal';
 import MapEditorModal from './MapEditorModal';
@@ -9,6 +8,7 @@ import { StatusContext } from './StatusContext';
 import { UserContext } from './UserContext';
 
 import { IMapSummary, IMap, IAdventureSummary } from '@wallandshadow/shared';
+import { logError } from '../services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
 import Modal from 'react-bootstrap/Modal';
@@ -26,7 +26,6 @@ interface IMapCollectionProps {
 }
 
 function MapCollection({ adventures, maps, showNewMap, deleteMap, pickImage }: IMapCollectionProps) {
-  const { logError } = useContext(AnalyticsContext);
   const { toasts } = useContext(StatusContext);
   const { functionsService, user } = useContext(UserContext);
   const navigate = useNavigate();
@@ -88,7 +87,7 @@ function MapCollection({ adventures, maps, showNewMap, deleteMap, pickImage }: I
         }});
       }
     }
-  }, [logError, handleModalClose, navigate, toasts, functionsService]);
+  }, [handleModalClose, navigate, toasts, functionsService]);
 
   const handleDeleteMapSave = useCallback(() => {
     if (editId !== undefined) {

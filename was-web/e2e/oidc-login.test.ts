@@ -27,7 +27,6 @@ test.describe('OIDC login', () => {
 
     // Navigate directly to the SPA login page (not the static landing page at /)
     await page.goto('/login');
-    await Util.acceptCookieConsent(page);
     await expect(page.locator('.App-login-text').first()).toBeVisible();
 
     // Click login, open the modal, select external provider, and sign in

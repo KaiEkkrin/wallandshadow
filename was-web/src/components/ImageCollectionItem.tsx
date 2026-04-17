@@ -1,12 +1,13 @@
 import { useContext, useEffect, useState } from 'react';
 import * as React from 'react';
 
-import { AnalyticsContext } from './AnalyticsContext';
 import { UserContext } from './UserContext';
 
 import { IImage } from '@wallandshadow/shared';
 
 import { from } from 'rxjs';
+
+import { logError } from '../services/consoleLogger';
 
 interface IImageCollectionItemProps {
   image: IImage;
@@ -14,7 +15,6 @@ interface IImageCollectionItemProps {
 }
 
 function ImageCollectionItem({ image, style }: IImageCollectionItemProps) {
-  const { logError } = useContext(AnalyticsContext);
   const { storageService } = useContext(UserContext);
   const [url, setUrl] = useState("");
 
@@ -28,7 +28,7 @@ function ImageCollectionItem({ image, style }: IImageCollectionItemProps) {
       e => logError("Failed to get download URL for image " + image.path, e)
     );
     return () => sub.unsubscribe();
-  }, [logError, storageService, image, setUrl]);
+  }, [storageService, image, setUrl]);
 
   return (
     <div style={style}>

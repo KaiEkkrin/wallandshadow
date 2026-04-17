@@ -2,12 +2,12 @@ import { useContext, useState, useCallback } from 'react';
 import '../App.css';
 
 import AdventureCards from './AdventureCards';
-import { AnalyticsContext } from './AnalyticsContext';
 import AdventureModal from './AdventureModal';
 import { StatusContext } from './StatusContext';
 import { UserContext } from './UserContext';
 
 import { IAdventureSummary } from '@wallandshadow/shared';
+import { logError } from '../services/consoleLogger';
 
 import { useNavigate } from 'react-router-dom';
 import { v7 as uuidv7 } from 'uuid';
@@ -20,7 +20,6 @@ interface IAdventureCollectionProps {
 
 function AdventureCollection(props: IAdventureCollectionProps) {
   const userContext = useContext(UserContext);
-  const analyticsContext = useContext(AnalyticsContext);
   const statusContext = useContext(StatusContext);
   const navigate = useNavigate();
 
@@ -45,7 +44,7 @@ function AdventureCollection(props: IAdventureCollectionProps) {
       navigate('/adventure/' + id, { replace: true });
     } catch (e: unknown) {
       setShowEditAdventure(false);
-      analyticsContext.logError('Failed to create adventure', e);
+      logError('Failed to create adventure', e);
       const message = e instanceof Error ? e.message : String(e);
       if (message) {
         statusContext.toasts.next({ id: uuidv7(), record: {
@@ -53,7 +52,7 @@ function AdventureCollection(props: IAdventureCollectionProps) {
         } });
       }
     }
-  }, [analyticsContext, editName, editDescription, navigate, statusContext, userContext]);
+  }, [editName, editDescription, navigate, statusContext, userContext]);
 
   return (
     <div>

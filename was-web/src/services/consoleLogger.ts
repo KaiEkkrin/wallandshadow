@@ -17,3 +17,11 @@ class ConsoleLogger implements ILogger {
 
 const consoleLogger = new ConsoleLogger();
 export default consoleLogger;
+
+export function logError(message: string, e?: unknown): void {
+  consoleLogger.logError(message, e);
+}
+
+export function logWarning(message: string, e?: unknown): void {
+  consoleLogger.logWarning(message, e);
+}

@@ -2,16 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, useContext } from 'r
 
 import { IProfile, IDataReference } from '@wallandshadow/shared';
 
-import { AnalyticsContext } from './AnalyticsContext';
 import { ProfileContext } from './ProfileContext';
 import { UserContext } from './UserContext';
 import { IContextProviderProps } from './interfaces';
 import { ensureProfile } from '../services/extensions';
+import { logError } from '../services/consoleLogger';
 
 // This provides the profile context, and can be wrapped around individual components
 // for unit testing.
 function ProfileContextProvider(props: IContextProviderProps) {
-  const { analytics, logError } = useContext(AnalyticsContext);
   const { dataService, user } = useContext(UserContext);
   const [profile, setProfile] = useState<IProfile | undefined>(undefined);
 
@@ -70,13 +69,13 @@ function ProfileContextProvider(props: IContextProviderProps) {
     }
 
     const uid = user.uid;
-    ensureProfile(dataService, user, analytics, popNewUser(user.email))
+    ensureProfile(dataService, user, popNewUser(user.email))
       .then(p => {
         setProfile(p);
         setProfileRef(dataService.getProfileRef(uid));
       })
       .catch(e => logError("Failed to ensure profile of user " + user?.displayName, e));
-  }, [analytics, logError, popNewUser, setProfile, setProfileRef, dataService, user]);
+  }, [popNewUser, setProfile, setProfileRef, dataService, user]);
 
   // Watch the user's profile:
   useEffect(() => {
@@ -89,7 +88,7 @@ function ProfileContextProvider(props: IContextProviderProps) {
         p => setProfile(p),
         e => logError("Failed to watch profile", e)
       );
-  }, [logError, profileRef, setProfile, dataService]);
+  }, [profileRef, setProfile, dataService]);
 
   const profileContext = useMemo(
     () => ({ profile: profile, expectNewUser: expectNewUser, expectGoogleSignup: expectGoogleSignup }),
