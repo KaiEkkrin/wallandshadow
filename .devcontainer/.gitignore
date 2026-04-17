@@ -1,3 +1,4 @@
 .cache
+.config
 .minio-data
 .pgdata
