@@ -1,5 +1,7 @@
 import {
   Change,
+  ChangeCategory,
+  ChangeType,
   Changes,
   SimpleChangeTracker,
   trackChanges,
@@ -34,6 +36,7 @@ import {
   adventurePlayers,
   maps,
   mapChanges,
+  mapImages,
   invites,
   users,
 } from '../db/schema.js';
@@ -56,6 +59,49 @@ export async function fetchMapChanges(db: Db, mapId: string) {
       .orderBy(mapChanges.createdAt),
   ]);
   return { baseRow: baseRows[0] as { id: string; changes: unknown } | undefined, incrementalRows };
+}
+
+// ─── Map images junction ─────────────────────────────────────────────────────
+
+// The map_images junction materialises "which images are placed on which map"
+// so that the image download permission check can authorise adventure members
+// without scanning map_changes JSONB at request time.
+
+function extractImagePaths(chs: Change[]): string[] {
+  const paths = new Set<string>();
+  for (const ch of chs) {
+    if (ch.cat === ChangeCategory.Image && ch.ty === ChangeType.Add) {
+      const path = ch.feature.image.path;
+      if (path) paths.add(path);
+    }
+  }
+  return Array.from(paths);
+}
+
+// Accept both the top-level Db and a transaction scope.
+type DbOrTx = Pick<Db, 'insert' | 'delete'>;
+
+async function syncMapImagesFromChanges(
+  tx: DbOrTx,
+  mapId: string,
+  chs: Change[],
+): Promise<void> {
+  const paths = extractImagePaths(chs);
+  if (paths.length === 0) return;
+  await tx.insert(mapImages)
+    .values(paths.map(path => ({ mapId, path })))
+    .onConflictDoNothing();
+}
+
+async function replaceMapImages(
+  tx: DbOrTx,
+  mapId: string,
+  chs: Change[],
+): Promise<void> {
+  await tx.delete(mapImages).where(eq(mapImages.mapId, mapId));
+  const paths = extractImagePaths(chs);
+  if (paths.length === 0) return;
+  await tx.insert(mapImages).values(paths.map(path => ({ mapId, path })));
 }
 
 // ─── Shared auth helper ───────────────────────────────────────────────────────
@@ -296,6 +342,7 @@ export async function cloneMap(
         userId: uid,
       };
       await tx.insert(mapChanges).values(baseChangeRow);
+      await syncMapImagesFromChanges(tx, id, baseChange.chs);
     }
   });
 
@@ -413,6 +460,11 @@ async function tryConsolidateMapChanges(
     // Delete the processed incremental rows
     const ids = incrementalRows.map(r => r.id);
     await tx.delete(mapChanges).where(inArray(mapChanges.id, ids));
+
+    // Rebuild the map_images junction to match the new consolidated base.
+    // Images that were added but then removed between consolidations drop
+    // out here, which revokes access for non-owners.
+    await replaceMapImages(tx, mapId, consolidated);
   });
 
   const baseId = baseRow?.id ?? mapId;
@@ -598,13 +650,18 @@ export async function addMapChanges(
     user: uid,
     resync: false,
   };
-  await db.insert(mapChanges).values({
-    id,
-    mapId,
-    changes: changesDoc as unknown as object,
-    incremental: true,
-    resync: false,
-    userId: uid,
+  await db.transaction(async (tx) => {
+    await tx.insert(mapChanges).values({
+      id,
+      mapId,
+      changes: changesDoc as unknown as object,
+      incremental: true,
+      resync: false,
+      userId: uid,
+    });
+    // Record any new placed-image paths so other adventure members can
+    // download them. Orphans are reconciled at consolidation time.
+    await syncMapImagesFromChanges(tx, mapId, chs);
   });
   await notifyMapChange(mapId, id).catch(e => console.error('NOTIFY failed:', e));
   return id;

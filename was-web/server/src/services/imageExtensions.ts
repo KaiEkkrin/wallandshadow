@@ -1,7 +1,7 @@
 import { IStorage, ILogger, getUserPolicy, UserLevel } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
-import { adventures, adventurePlayers, maps, images, spritesheets, users } from '../db/schema.js';
+import { adventures, adventurePlayers, maps, mapImages, images, spritesheets, users } from '../db/schema.js';
 import { eq, sql, count } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { assertAdventureMember } from './extensions.js';
@@ -61,6 +61,7 @@ function getSpritesheetId(path: string): string | undefined {
 
 export async function assertImageDownloadAccess(
   db: Db,
+  logger: ILogger,
   uid: string,
   path: string,
 ): Promise<void> {
@@ -69,29 +70,37 @@ export async function assertImageDownloadAccess(
   if (imageOwner) {
     if (imageOwner === uid) return; // Owner can always download their own images
 
-    // Check if the image is referenced by an adventure the user is a member of
+    // Four grant sources: adventure background, map background, spritesheet source,
+    // or an image placed onto a map (tracked in map_images junction).
+    const memberOfAdventure = sql`(${adventures.ownerId} = ${uid} OR (${adventurePlayers.userId} = ${uid} AND ${adventurePlayers.allowed} = true))`;
     const result = await db.execute<{ found: boolean }>(sql`
       SELECT EXISTS (
         SELECT 1 FROM ${adventures}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${adventures.imagePath} = ${path}
-          AND (${adventures.ownerId} = ${uid} OR (${adventurePlayers.userId} = ${uid} AND ${adventurePlayers.allowed} = true))
+        WHERE ${adventures.imagePath} = ${path} AND ${memberOfAdventure}
         UNION ALL
         SELECT 1 FROM ${maps}
           JOIN ${adventures} ON ${adventures.id} = ${maps.adventureId}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${maps.imagePath} = ${path}
-          AND (${adventures.ownerId} = ${uid} OR (${adventurePlayers.userId} = ${uid} AND ${adventurePlayers.allowed} = true))
+        WHERE ${maps.imagePath} = ${path} AND ${memberOfAdventure}
         UNION ALL
         SELECT 1 FROM ${spritesheets}
           JOIN ${adventures} ON ${adventures.id} = ${spritesheets.adventureId}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${spritesheets.sprites}::jsonb @> ${JSON.stringify([path])}::jsonb
-          AND (${adventures.ownerId} = ${uid} OR (${adventurePlayers.userId} = ${uid} AND ${adventurePlayers.allowed} = true))
+        WHERE ${spritesheets.sprites}::jsonb @> ${JSON.stringify([path])}::jsonb AND ${memberOfAdventure}
+        UNION ALL
+        SELECT 1 FROM ${mapImages}
+          JOIN ${maps} ON ${maps.id} = ${mapImages.mapId}
+          JOIN ${adventures} ON ${adventures.id} = ${maps.adventureId}
+          LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
+        WHERE ${mapImages.path} = ${path} AND ${memberOfAdventure}
       ) AS found
     `);
-    // Return 404 rather than 403 to avoid leaking whether the image exists (RFC 9110 §15.5.4)
+    // Return 404 rather than 403 to avoid leaking whether the image exists (RFC 9110 §15.5.4).
+    // Log at warning level so operators can investigate reports of missing images without
+    // exposing information to the client.
     if (!result.rows[0]?.found) {
+      logger.logWarning(`Image download denied (not referenced) for user ${uid}, path ${path}`);
       throwApiError('not-found', 'Image not found');
     }
     return;
@@ -105,18 +114,21 @@ export async function assertImageDownloadAccess(
       .where(eq(spritesheets.id, sheetId))
       .limit(1);
     if (!row) {
+      logger.logWarning(`Image download denied (no spritesheet) for user ${uid}, path ${path}`);
       throwApiError('not-found', 'Image not found');
     }
     // assertAdventureMember throws 403 for non-members; convert to 404 to avoid leaking existence
     try {
       await assertAdventureMember(db, uid, row.adventureId);
     } catch {
+      logger.logWarning(`Image download denied (not adventure member) for user ${uid}, path ${path}`);
       throwApiError('not-found', 'Image not found');
     }
     return;
   }
 
   // Case 3: unrecognised path — also 404 (don't reveal which paths are valid)
+  logger.logWarning(`Image download denied (unrecognised path format) for user ${uid}, path ${path}`);
   throwApiError('not-found', 'Image not found');
 }
 
@@ -139,6 +151,9 @@ export async function deleteImage(
     // Clear image_path on adventures and maps that reference it
     await tx.update(adventures).set({ imagePath: '' }).where(eq(adventures.imagePath, path));
     await tx.update(maps).set({ imagePath: '' }).where(eq(maps.imagePath, path));
+
+    // Drop any placed-image access grants for this path
+    await tx.delete(mapImages).where(eq(mapImages.path, path));
 
     // Clear path from spritesheets sprites JSONB arrays:
     // Replace matching source string with "" in the sprites JSON array, increment free_spaces

@@ -16,6 +16,7 @@ import {
   createAddToken1,
   createMoveToken1,
   createAddWall1,
+  createAddImage,
 } from './helpers.js';
 
 const app = createApp();
@@ -48,7 +49,7 @@ async function consolidate(token: string, adventureId: string, mapId: string): P
   expect(res.status).toBe(204);
 }
 
-function verifyBaseChange(base: ReturnType<typeof getBaseChange> extends Promise<infer T> ? T : never, uid: string, expectedX: number) {
+function verifyBaseChange(base: ReturnType<typeof getBaseChange> extends Promise<infer T> ? T : never, _uid: string, expectedX: number) {
   expect(base).not.toBeUndefined();
   expect(base!.chs).toHaveLength(2);
 
@@ -913,6 +914,116 @@ describe('server integration tests', () => {
       const { token } = await registerUser(app);
       const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent('sprites/00000000-0000-0000-0000-000000000000.png')}`, token);
       expect(res.status).toBe(404);
+    });
+
+    test('adventure member can download image placed on shared map via imageAdd change', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      // Owner uploads an image (with no other references — not a background)
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'placed.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      const mId = await createMap(owner.token, aId);
+
+      // Invite player
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Before the image is placed, the player must not have access
+      const beforeRes = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(beforeRes.status).toBe(404);
+
+      // Owner places the image on the map via an imageAdd change
+      await postMapChanges(app, owner.token, aId, mId, [createAddImage(imagePath)]);
+
+      // Player can now download the placed image
+      const afterRes = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(afterRes.status).toBe(200);
+    });
+
+    test('non-member cannot download image placed on a map', async () => {
+      const owner = await registerUser(app);
+      const stranger = await registerUser(app);
+
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'placed.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      const mId = await createMap(owner.token, aId);
+
+      await postMapChanges(app, owner.token, aId, mId, [createAddImage(imagePath)]);
+
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, stranger.token);
+      expect(res.status).toBe(404);
+    });
+
+    test('deleting an image revokes placed-image access', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'placed.png', 'image/png');
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      const mId = await createMap(owner.token, aId);
+
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      await postMapChanges(app, owner.token, aId, mId, [createAddImage(imagePath)]);
+
+      // Player has access while image is placed
+      const beforeDelete = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(beforeDelete.status).toBe(200);
+
+      // Owner deletes the image
+      const delRes = await apiDelete(app, `/api/${imagePath}`, owner.token);
+      expect(delRes.status).toBe(204);
+
+      // Player can no longer access it
+      const afterDelete = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(afterDelete.status).toBe(404);
+    });
+
+    test('consolidation revokes access for an image that was placed and then removed', async () => {
+      const owner = await registerUser(app);
+      const player = await registerUser(app);
+
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'transient.png', 'image/png');
+      const { path: imagePath } = (await uploadRes.json()) as { path: string };
+
+      const aId = await createAdventure(owner.token);
+      const mId = await createMap(owner.token, aId);
+
+      const inviteRes = await apiPost(app, `/api/adventures/${aId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, player.token);
+
+      // Add then remove the image across two change batches
+      await postMapChanges(app, owner.token, aId, mId, [createAddImage(imagePath, 'image1', 'transient.png')]);
+      await postMapChanges(app, owner.token, aId, mId, [{
+        ty: ChangeType.Remove,
+        cat: ChangeCategory.Image,
+        id: 'image1',
+      }]);
+
+      // Before consolidation, the junction still grants access — we don't
+      // claw back access mid-session because a simultaneous client could still
+      // be fetching the texture.
+      const midSession = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(midSession.status).toBe(200);
+
+      // Consolidation rebuilds the junction from the resulting base, which no longer has the image
+      await consolidate(owner.token, aId, mId);
+
+      const afterConsolidate = await apiGet(app, `/api/images/download?path=${encodeURIComponent(imagePath)}`, player.token);
+      expect(afterConsolidate.status).toBe(404);
     });
   });
 

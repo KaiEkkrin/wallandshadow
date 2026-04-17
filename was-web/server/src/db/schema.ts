@@ -70,6 +70,14 @@ export const maps = pgTable('maps', {
   index('maps_image_path_idx').on(t.imagePath).where(sql`image_path != ''`),
 ]);
 
+export const mapImages = pgTable('map_images', {
+  mapId: uuid('map_id').notNull().references(() => maps.id, { onDelete: 'cascade' }),
+  path: text('path').notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.mapId, t.path] }),
+  index('map_images_path_idx').on(t.path),
+]);
+
 export const mapChanges = pgTable('map_changes', {
   id: uuid('id').primaryKey(),
   mapId: uuid('map_id').notNull().references(() => maps.id, { onDelete: 'cascade' }),

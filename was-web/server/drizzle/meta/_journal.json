@@ -29,6 +29,13 @@
       "when": 1775830466440,
       "tag": "0003_light_the_professor",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776422795049,
+      "tag": "0004_bright_matthew_murdock",
+      "breakpoints": true
     }
   ]
 }
