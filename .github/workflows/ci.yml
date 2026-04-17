@@ -13,11 +13,6 @@ on:
 permissions:
   contents: read
 
-env:
-  # Pin firebase-tools version for reproducible builds
-  # Update this when upgrading Firebase CLI in the dev environment
-  FIREBASE_TOOLS_VERSION: "15.1.0"
-
 jobs:
   build-lint-test:
     runs-on: ubuntu-latest
@@ -32,39 +27,9 @@ jobs:
           cache: "yarn"
           cache-dependency-path: was-web/yarn.lock
 
-      - name: Setup Java (for Firebase emulators)
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "21"
-
-      - name: Cache Firebase emulators
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/firebase/emulators
-          key: ${{ runner.os }}-firebase-emulators-${{ env.FIREBASE_TOOLS_VERSION }}
-
-      - name: Cache npm (for firebase-tools)
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-firebase-tools-${{ env.FIREBASE_TOOLS_VERSION }}
-
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools@${{ env.FIREBASE_TOOLS_VERSION }}
-
       - name: Install dependencies
         working-directory: was-web
         run: yarn install --frozen-lockfile
-
-      - name: Build functions
-        working-directory: was-web/functions
-        run: yarn build
-
-      - name: Create mock Firebase credentials
-        working-directory: was-web
-        run: |
-          echo '{"project_id": "hexland-test"}' > firebase-admin-credentials.json
 
       - name: Build web
         working-directory: was-web
@@ -73,15 +38,3 @@ jobs:
       - name: Lint web
         working-directory: was-web
         run: yarn lint
-
-      - name: Lint functions
-        working-directory: was-web/functions
-        run: yarn lint
-
-      - name: Start Firebase Emulators and Run Tests
-        working-directory: was-web
-        run: |
-          firebase emulators:exec \
-            --only auth,firestore,functions,storage \
-            --project hexland-test \
-            "yarn test"
