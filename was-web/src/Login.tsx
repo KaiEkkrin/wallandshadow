@@ -321,35 +321,35 @@ function Login() {
     setShowEmailForm(false);
     setLoginFailedVisible(false);
     if (oidcEnabled) {
-      startOidcLogin().catch(handleLoginError);
+      startOidcLogin(location.state?.from).catch(handleLoginError);
     }
-  }, [handleLoginError, setLoginFailedVisible, setShowEmailForm]);
+  }, [location.state?.from, handleLoginError, setLoginFailedVisible, setShowEmailForm]);
 
   const handleExternalSignIn = useCallback(() => {
     setShowEmailForm(false);
     setLoginFailedVisible(false);
     if (oidcEnabled) {
-      startOidcLogin().catch(handleLoginError);
+      startOidcLogin(location.state?.from).catch(handleLoginError);
     }
-  }, [handleLoginError, setLoginFailedVisible, setShowEmailForm]);
+  }, [location.state?.from, handleLoginError, setLoginFailedVisible, setShowEmailForm]);
 
   const handleSignUpClick = useCallback(() => {
     if (oidcOnly) {
-      startOidcLogin().catch(handleLoginError);
+      startOidcLogin(location.state?.from).catch(handleLoginError);
     } else {
       setInitialTab("new");
       setShowEmailForm(true);
     }
-  }, [handleLoginError]);
+  }, [location.state?.from, handleLoginError]);
 
   const handleLoginClick = useCallback(() => {
     if (oidcOnly) {
-      startOidcLogin().catch(handleLoginError);
+      startOidcLogin(location.state?.from).catch(handleLoginError);
     } else {
       setInitialTab("existing");
       setShowEmailForm(true);
     }
-  }, [handleLoginError]);
+  }, [location.state?.from, handleLoginError]);
 
   // In OIDC-only mode, show a single sign-in button
   if (oidcOnly) {

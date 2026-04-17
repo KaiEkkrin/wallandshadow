@@ -18,7 +18,9 @@ function getUserManager(): UserManager {
     post_logout_redirect_uri: `${window.location.origin}/login`,
     response_type: 'code',
     scope: 'openid profile email',
-    userStore: new WebStorageStateStore({ store: sessionStorage }),
+    // localStorage so the user record is shared across tabs; sessionStorage left
+    // a fresh tab (invite link opened externally) appearing logged-out.
+    userStore: new WebStorageStateStore({ store: localStorage }),
     automaticSilentRenew: true,
   });
 
@@ -30,9 +32,13 @@ export function isOidcEnabled(): boolean {
   return !!(import.meta.env.VITE_OIDC_ISSUER && import.meta.env.VITE_OIDC_CLIENT_ID);
 }
 
-/** Redirect to the OIDC provider's login page. */
-export async function startOidcLogin(): Promise<void> {
-  await getUserManager().signinRedirect();
+/**
+ * Redirect to the OIDC provider's login page. A string `from` is round-tripped
+ * through the provider and recovered in `handleOidcCallback` via `user.state.from`.
+ */
+export async function startOidcLogin(from?: unknown): Promise<void> {
+  const state = typeof from === 'string' ? { from } : undefined;
+  await getUserManager().signinRedirect(state ? { state } : undefined);
 }
 
 /** Process the OIDC callback after redirect. Returns the authenticated OIDC user. */

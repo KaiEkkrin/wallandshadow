@@ -4,6 +4,7 @@ import { handleOidcCallback, getOidcBearerToken } from './services/oidcAuth';
 import { AuthContext } from './components/AuthContext';
 import { HonoAuth } from './services/honoAuth';
 import Throbber from './components/Throbber';
+import { getPostLoginPath } from './utils/loginRedirect';
 
 // Module-level flag to guard against React StrictMode double-mount.
 // The OIDC authorization code is single-use, so we must only call
@@ -31,7 +32,8 @@ function OidcCallback() {
         if (auth instanceof HonoAuth) {
           await auth.completeOidcLogin(token);
         }
-        navigate('/app', { replace: true });
+        const rawFrom = (oidcUser.state as { from?: unknown } | undefined)?.from;
+        navigate(getPostLoginPath(rawFrom), { replace: true });
       } catch (e) {
         console.error('OIDC callback error:', e);
         setError(e instanceof Error ? e.message : 'Login failed');
