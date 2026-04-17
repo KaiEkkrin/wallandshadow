@@ -4,8 +4,12 @@ This document captures the architecture decisions and migration plan for moving 
 off Firebase and onto a portable, containerised server stack.
 
 **Decision date**: March 2026
-**Current Firebase deployment**: Remains in maintenance mode during migration
-**Planned migration window**: Several months; phases can be worked independently
+**Status (2026-04-17)**: Phases 1–4 shipped. Test server deployed on Hetzner and exercised.
+The Firebase codebase has been forked to the `legacy-firebase` branch and continues to deploy
+from there; `main` is being prepared for Firebase removal (Phase 5). Descoped during delivery:
+automated Firestore → PostgreSQL data migration (see Phase 5 note below) and ephemeral
+WebSocket messages (`ping`, `measurement`) — the latter moved to a separate plan, see
+@docs/EPHEMERAL_WS.md. Analytics replacement outlined in @docs/ANALYTICS.md.
 
 ---
 
@@ -15,7 +19,7 @@ off Firebase and onto a portable, containerised server stack.
 | ----------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Database                | PostgreSQL (self-managed on VPS)                                                        | Ubiquitous, excellent JSON support for change documents, CASCADE constraints replace `recursiveDelete()`                |
 | HTTP API server         | Node.js + Hono (TypeScript)                                                             | Reuses existing Functions logic; Hono is runtime-agnostic (portable to Bun/Deno/CF Workers)                             |
-| Real-time transport     | WebSockets via `ws` library, surfaced through Hono's `upgradeWebSocket`                 | Needed for ephemeral features (pings, measurements); also used for map change broadcast                                 |
+| Real-time transport     | WebSockets via `ws` library                                                             | Used for map change broadcast today. Potential future use for ephemeral features (pings, measurements) — see @docs/EPHEMERAL_WS.md |
 | Object storage          | MinIO (local dev) + Hetzner Object Storage (production)                                 | S3-compatible; same client code in both environments                                                                    |
 | Auth                    | External European OIDC provider (Zitadel or Hanko — TBD); server is an OIDC client only | Avoids building token issuance, refresh, OAuth2 flows ourselves; provider handles Google federation and future passkeys |
 | Email/password accounts | Retained for migrated accounts and local dev; no new production signups                 | Existing users keep access; no email infrastructure needed (password reset via admin endpoint only)                     |
@@ -25,7 +29,7 @@ off Firebase and onto a portable, containerised server stack.
 | CI                      | GitHub Actions → GitHub Container Registry                                              | Free container registry; images are multi-arch                                                                          |
 | Deployment              | systemd unit per environment running `docker run`; CI SSHes in to flip image tag and restart the unit | Simple, portable, fits a VPS where Caddy + PostgreSQL are managed by Ansible; tens of seconds of downtime on restart is acceptable |
 | Hosting                 | Hetzner Cloud VPS + Hetzner Object Storage                                              | Best EU value; S3-compatible storage; German company, GDPR-native                                                       |
-| Analytics               | Dropped initially; server request logs sufficient at current scale                      | Traffic is low, most users are known personally; can add Plausible later if needed                                      |
+| Analytics               | Google Analytics dropped; replacement outlined in @docs/ANALYTICS.md                    | Traffic is low, most users known personally; server request logs sufficient at current scale. Plausible/Umami candidates for later |
 | Language (server)       | TypeScript now; Rust later (separate phase)                                             | Too much risk to combine Firebase migration with language change                                                        |
 
 ---
@@ -62,36 +66,29 @@ off Firebase and onto a portable, containerised server stack.
 
 ### WebSocket Room Model
 
-Each map session is a WebSocket room (`/ws/maps/:mapId`). Message types split cleanly
-into persistent and ephemeral:
-
-| Message type  | Direction                   | Persisted?       | Description                                     |
-| ------------- | --------------------------- | ---------------- | ----------------------------------------------- |
-| `change`      | client → server → broadcast | Yes (PostgreSQL) | Map feature/token changes                       |
-| `ping`        | client → server → broadcast | No               | "Look here" point on map                        |
-| `measurement` | client → server → broadcast | No               | Drag-to-measure line, shown live to all clients |
-
-Ephemeral messages (ping, measurement) are forwarded immediately with no database write.
-Map changes are persisted first, then broadcast to the room.
+Each map session is a WebSocket room (`/ws/maps/:mapId`). The room is currently a
+one-way broadcast channel: the server pushes persisted map changes; clients do not send
+messages back over the socket. All writes go through the REST API.
 
 ```
-Client A sends measurement update
+Client POST /api/adventures/:id/maps/:id/changes
     │
     ▼
-WebSocket server
-    ├─ (measurement) → forward to all other clients in room
-    └─ (change)      → service.addChanges() → PostgreSQL → NOTIFY → broadcast to room
-                                   ↑
-                        same function as POST /api/.../changes
+service.addChanges()  →  PostgreSQL (INSERT)  →  NOTIFY map_changes
+                                                      │
+                                                      ▼
+                                  LISTEN handler  →  room.broadcast(mapId)
+                                                      │
+                                                      ▼
+                                         every WebSocket in the room
 ```
-
-**The WebSocket layer is transport + pub/sub only.** All business logic (authorization,
-validation, persistence) lives in service functions shared with the REST endpoints. A
-WebSocket `change` message and a `POST /api/.../changes` request call identical code;
-the WebSocket path additionally triggers the room broadcast.
 
 PostgreSQL LISTEN/NOTIFY is used internally so that if the server is ever scaled to multiple
 instances, each instance's rooms stay in sync via the database notification channel.
+
+The original plan also anticipated bidirectional ephemeral messages (`ping`, `measurement`)
+for live collaboration cues. That work is unimplemented and broken out into its own plan:
+see @docs/EPHEMERAL_WS.md.
 
 ---
 
@@ -466,67 +463,83 @@ French, EU-only, with data centres in Paris, Amsterdam, and Warsaw.
 
 ## Migration Phases
 
-Firebase stays live throughout. Each phase can ship independently.
+Firebase was kept live throughout Phases 1–4 and has now been forked to the
+`legacy-firebase` branch. Each phase shipped independently.
 
-### Phase 1 — New server foundation (alongside Firebase)
+### Phase 1 — New server foundation (alongside Firebase) ✅
 
-The goal of Phase 1 is a complete, fully-tested REST API that covers the entire data
-model — not just the operations Firebase Functions handled, but also the direct Firestore
-writes the client made without going through Functions. Firebase's "client drives the
-database" model is not carried forward; all persistent operations are server-mediated.
+Goal: a complete, fully-tested REST API covering the entire data model — not just the
+operations Firebase Functions handled, but also the direct Firestore writes the client
+made without going through Functions. Firebase's "client drives the database" model is
+not carried forward; all persistent operations are server-mediated.
 
-- Set up PostgreSQL schema with Drizzle ORM and migrations
-- Build Hono API server with JWT auth middleware (Phase 1 uses local email/password JWT;
-  replaced by OIDC in Phase 2)
-- Implement all REST routes: CRUD for adventures, maps, players, map changes, images,
-  spritesheets, invites (see "Firebase Functions → Full REST API" above for the full list)
-- Integration test suite running against real PostgreSQL and MinIO — no direct DB seeding
-  in tests once all write endpoints are implemented
-- Compose file for local dev (PostgreSQL + MinIO already running; add API container)
-- GitHub Actions CI pipeline (`test:server` against real PostgreSQL/MinIO services)
-- Write data migration script (Firestore export → PostgreSQL import)
-- **No client changes yet**
+- ✅ PostgreSQL schema with Drizzle ORM and migrations (`was-web/server/src/db/`)
+- ✅ Hono API server with JWT auth middleware (`was-web/server/src/auth/`)
+- ✅ Full REST route coverage (`was-web/server/src/routes/`) — all verbs in "Firebase
+  Functions → Full REST API" above, plus the Firestore-write equivalents
+- ✅ Integration test suite against real PostgreSQL and MinIO (`was-web/server/src/__tests__/`)
+- ✅ GitHub Actions CI pipeline (`.github/workflows/ci-server.yml`)
+- ⏭ No standalone `compose.yaml` was written: the devcontainer already auto-starts
+  PostgreSQL + MinIO, which turned out to be the practical entry point for local dev.
+  If a Compose file is ever needed outside the devcontainer, this is where to slot it.
 
-### Phase 2 — Auth migration
+### Phase 2 — Auth migration ✅
 
-- Choose between Zitadel and Hanko (evaluation: run both locally, assess DX and federation setup)
-- Configure chosen provider: Google as federated upstream; email/password for legacy accounts; no new email signups in production
-- Implement admin password-reset endpoint (no email delivery; operator-triggered)
-- Server becomes OIDC client: validate provider JWTs, look up/create `users` row on first login
-- Migrate existing Firebase Auth users into the provider (Firebase export → provider import)
-- **Client change**: replace Firebase Auth SDK sign-in flows with provider's login UI (redirect or embedded) and token storage
-- Run Firebase Auth and new provider in parallel until all users confirmed migrated
+- ✅ OIDC provider selected: **Zitadel** (Hanko trialled and deprioritised)
+- ✅ Server is an OIDC Relying Party: validates provider JWTs via JWKS
+  (`was-web/server/src/auth/oidc.ts`); creates/looks up `users` row on first login
+- ✅ Legacy email/password auth retained for migrated accounts
+  (`was-web/server/src/auth/password.ts`); no new email signups in production
+- ✅ Client OIDC flow (`was-web/src/OidcCallback.tsx`, `HonoContextProvider`)
+- ⏭ Test helpers still register users via a local JWT path rather than a full OIDC
+  test flow (see `// TODO Phase 2:` in `was-web/server/src/__tests__/helpers.ts`);
+  left as-is because it works and OIDC round-trips in tests would add slow infrastructure
+- ⏭ No bulk Firebase Auth → Zitadel user import was run; users re-authenticate through
+  the new provider when they come back
 
-### Phase 3 — Storage migration
+### Phase 3 — Storage migration ✅
 
-- Wire up MinIO (dev) and Hetzner Object Storage (prod) with S3 client
-- Implement image upload endpoint (validates MIME, writes to S3, records in PostgreSQL)
-- Implement `addSprites` endpoint
-- Migrate existing images from Firebase Storage
-- **Client change**: swap Firebase Storage SDK for direct S3 presigned URLs or proxy upload
+- ✅ S3 client wired to MinIO (dev) and Hetzner Object Storage (prod)
+- ✅ `POST /api/images` with MIME validation, quota enforcement, DB + S3 atomicity
+- ✅ `POST /api/adventures/:id/spritesheets` for sprite uploads
+- ⏭ No bulk image migration run; images in Firebase Storage stay on `legacy-firebase`
 
-### Phase 4 — Real-time sync and data migration
+### Phase 4 — Real-time sync ✅
 
-By this point the full REST API exists and is tested. The WebSocket layer is a thin
-transport + pub/sub adapter on top of the same service functions.
+The WebSocket layer is a thin transport + pub/sub adapter on top of the same service
+functions the REST API uses.
 
-- Implement WebSocket server (`/ws/maps/:id`) with room management and auth
-- Wire `change` messages to the same `addChanges` service used by `POST .../changes`;
-  broadcast the persisted result to all room members
-- Implement ephemeral `ping` and `measurement` messages (forward only, no DB write)
-- Implement map change broadcast via PostgreSQL LISTEN/NOTIFY (supports multi-instance)
-- Run the data migration script to move Firestore data to PostgreSQL
-- **Client change**: replace Firestore `onSnapshot` with WebSocket; replace `httpsCallable`
-  with `fetch` against the REST API
-- Smoke test collaborative editing with both old and new paths available
+- ✅ WebSocket server (`/ws/maps/:id`) with room management and auth
+  (`was-web/server/src/ws/`)
+- ✅ Broadcast of persisted changes via PostgreSQL LISTEN/NOTIFY — supports multi-instance
+- ✅ Client replaces Firestore `onSnapshot` with WebSocket (`honoWebSocket.ts`) and
+  `httpsCallable` with `fetch` against the REST API
+- ⏭ Ephemeral `ping` / `measurement` messages **not implemented** — moved to
+  @docs/EPHEMERAL_WS.md for separate consideration. The server currently registers no
+  `'message'` handler on the WebSocket; clients do not send messages over the socket
+- ⏭ No automated Firestore → PostgreSQL data migration. Deliberately descoped: long-lived
+  maps are not a thing in Wall & Shadow, so users rotate onto the new stack as their
+  map usage turns over. `legacy-firebase` remains deployable for anyone who needs their
+  old data
 
-### Phase 5 — Decommission Firebase
+### Phase 5 — Remove Firebase from `main` 🚧
 
-- Verify all features working on new stack
-- Final data migration run
-- Switch DNS to new server
-- Disable Firebase project (or put in archive mode)
-- Remove Firebase SDK dependencies from client
+Firebase has been forked to the `legacy-firebase` branch. `main` is being stripped of
+Firebase code to shrink dependencies, unblock security updates, and simplify the client.
+The detailed deletion list lives in @docs/FIREBASE_REMOVAL.md.
+
+- Delete `was-web/functions/` and Firebase-specific client services/providers
+- Drop `firebase`, `firebase-admin`, `@firebase/rules-unit-testing` from package manifests
+- Collapse `VITE_BACKEND` (Hono becomes the only option) and `VITE_AUTH_MODE`
+  (OIDC-only)
+- Remove Google Analytics consent banner and `AnalyticsContextProvider`; replacement
+  plan lives in @docs/ANALYTICS.md
+- Keep the Firebase **deployment workflow YAMLs** (`.github/workflows/deploy-firebase.yml`,
+  `deploy-test.yml`, `deploy-production.yml`) on `main` so `workflow_dispatch` triggers
+  remain visible in the GitHub Actions UI for the `legacy-firebase` branch
+- Remove Firebase config files (`firebase.json`, `.firebaserc`, `cors.json`,
+  `firestore.rules`, `storage.rules`, `firestore.indexes.json`) from `main`;
+  `legacy-firebase` branch retains its own copies
 
 ### Phase 6 (future) — Rust server rewrite
 
@@ -571,12 +584,10 @@ The following are unaffected by the replatforming and require no migration work:
 
 ## Open Questions
 
-- **Auth provider**: Zitadel vs Hanko — evaluate both in Phase 2. Key criteria: ease of Google
-  federation setup, Docker image quality for local dev, user import tooling for Firebase migration.
 - **Managed PostgreSQL**: Self-manage on VPS (simpler, cheaper) vs Scaleway managed (less ops)?
   Current leaning: self-manage initially, migrate to managed if it becomes a burden.
-- **E2E tests**: Current Playwright tests run against Firebase emulators. Will need updating to
-  run against the Compose stack (Phase 4 or 5 work).
-- **Caddy WebSocket proxy**: HTTP and WebSocket traffic on the same port — verify Caddy's
-  `reverse_proxy` handles `Upgrade: websocket` headers correctly (it does by default, but the
-  current smoke test showed a WebSocket connection failure that still needs investigating).
+- **E2E tests**: Playwright setup still needs a full pass against the Hono stack (no
+  Firebase emulators) — covered by Phase 5 cleanup.
+- **Ephemeral WebSocket messages**: should we build them? See @docs/EPHEMERAL_WS.md.
+- **Analytics replacement**: which tool, and is it worth it at current traffic? See
+  @docs/ANALYTICS.md.
