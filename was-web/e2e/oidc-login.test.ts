@@ -40,23 +40,23 @@ test.describe('OIDC login', () => {
     // Click sign in — this triggers a redirect to Zitadel's hosted login page
     await page.click('button >> text=/^Sign in$/');
 
-    // We're now on Zitadel's v2 login page
-    // Enter the login name (email) and click Continue
+    // We're now on Zitadel's v1 hosted login page.
+    // Enter the login name (email) and click Next
     const loginInput = page.locator('input[name="loginName"], input[autocomplete="username"]');
     await expect(loginInput).toBeVisible({ timeout: 15000 });
     await loginInput.fill(zitadelEmail!);
-    await page.locator('button:has-text("Continue"), button[type="submit"]').first().click();
+    await page.getByRole('button', { name: /^Next$/ }).click();
 
-    // Enter the password and click Continue
+    // Enter the password and click Next
     const passwordInput = page.locator('input[type="password"]');
     await expect(passwordInput).toBeVisible({ timeout: 10000 });
     await passwordInput.fill(zitadelPassword!);
 
-    // Click Continue and wait for the redirect chain to complete.
+    // Click Next and wait for the redirect chain to complete.
     // Zitadel redirects to /auth/callback which processes the code and navigates to /app.
     await Promise.all([
       page.waitForURL('**/app**', { timeout: 30000 }),
-      page.locator('button:has-text("Continue"), button[type="submit"]').first().click(),
+      page.getByRole('button', { name: /^Next$/ }).click(),
     ]);
 
     // Verify the app loaded in authenticated state
