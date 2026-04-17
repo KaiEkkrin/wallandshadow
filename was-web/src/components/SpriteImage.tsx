@@ -64,30 +64,55 @@ function SpriteImage(
     [altName, entryAltText]
   );
 
-  const style: React.CSSProperties | undefined = useMemo(() => {
+  // <img crossOrigin> rather than CSS background-image so the sheet URL is
+  // fetched in CORS mode, matching Three.js's later load of the same URL — see #325.
+  const layout = useMemo(() => {
     if (entry === undefined) {
       return undefined;
     }
-
-    const geometry = fromSpriteGeometryString(entry.sheet.geometry);
-    const x = entry.position % geometry.columns;
-    const y = Math.floor(entry.position / geometry.columns);
-    const spriteSize = sheetSize / geometry.columns; // `rows` won't be different
-    const backgroundSize = size ? (sheetSize * size / spriteSize) : sheetSize;
+    const { columns } = fromSpriteGeometryString(entry.sheet.geometry);
+    const nativeSpriteSize = sheetSize / columns; // `rows` won't be different
+    const tileSize = size ?? nativeSpriteSize;
+    const imgSize = (sheetSize * tileSize) / nativeSpriteSize;
+    const x = entry.position % columns;
+    const y = Math.floor(entry.position / columns);
     return {
-      width: `${size ?? spriteSize}px`,
-      height: `${size ?? spriteSize}px`,
-      backgroundImage: `url(${entry.url})`,
-      backgroundPosition: `${-x * (size ?? spriteSize)}px ${-y * (size ?? spriteSize)}px`,
-      backgroundSize: `${backgroundSize}px ${backgroundSize}px`,
-      border: `${border ?? "4px solid"}`,
-      borderColor: borderColour,
-      borderRadius: '50%'
+      tileSize,
+      imgSize,
+      offsetX: -x * tileSize,
+      offsetY: -y * tileSize,
     };
-  }, [border, borderColour, entry, size]);
+  }, [entry, size]);
+
+  const wrapperStyle: React.CSSProperties = useMemo(() => ({
+    width: layout ? `${layout.tileSize}px` : size !== undefined ? `${size}px` : undefined,
+    height: layout ? `${layout.tileSize}px` : size !== undefined ? `${size}px` : undefined,
+    overflow: 'hidden',
+    position: 'relative',
+    display: 'inline-block',
+    border: border ?? '4px solid',
+    borderColor: borderColour,
+    borderRadius: '50%',
+  }), [border, borderColour, layout, size]);
 
   return (
-    <img className={className} style={style} src="/tiny.png" alt={alt} title={alt} onClick={onClick} />
+    <div className={className} style={wrapperStyle} onClick={onClick} title={alt}>
+      {entry && layout && (
+        <img
+          crossOrigin="anonymous"
+          src={entry.url}
+          alt={alt}
+          style={{
+            position: 'absolute',
+            width: `${layout.imgSize}px`,
+            height: `${layout.imgSize}px`,
+            left: `${layout.offsetX}px`,
+            top: `${layout.offsetY}px`,
+            maxWidth: 'none',
+          }}
+        />
+      )}
+    </div>
   );
 }
 

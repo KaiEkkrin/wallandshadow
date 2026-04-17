@@ -39,7 +39,7 @@ function ImageCardContent({ altName, imagePath, children }: IImageCardProps) {
 
   const contents = useMemo(
     () => (url) ? (<React.Fragment>
-      <Card.Img src={url} alt={altName} style={{ maxHeight: '400px', objectFit: 'contain' }} />
+      <Card.Img crossOrigin="anonymous" src={url} alt={altName} style={{ maxHeight: '400px', objectFit: 'contain' }} />
       <Card.ImgOverlay style={{ textShadow: '2px 2px #000000' }}>
         {children}
       </Card.ImgOverlay>
