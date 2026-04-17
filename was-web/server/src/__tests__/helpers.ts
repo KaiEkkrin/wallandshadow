@@ -4,6 +4,7 @@ import {
   ChangeCategory,
   type Changes,
   type Change,
+  type ImageAdd,
   type TokenAdd,
   type TokenMove,
   type WallAdd,
@@ -197,6 +198,20 @@ export function createMoveToken1(x: number): TokenMove {
     tokenId: 'token1',
     oldPosition: { x, y: 3 },
     newPosition: { x: x + 1, y: 3 },
+  };
+}
+
+export function createAddImage(imagePath: string, id = 'image1', name = 'placed.png'): ImageAdd {
+  return {
+    ty: ChangeType.Add,
+    cat: ChangeCategory.Image,
+    feature: {
+      id,
+      image: { name, path: imagePath },
+      rotation: '0',
+      start: { anchorType: 'vertex', position: { x: 0, y: 0, vertex: 0 } },
+      end: { anchorType: 'vertex', position: { x: 2, y: 2, vertex: 0 } },
+    },
   };
 }
 
