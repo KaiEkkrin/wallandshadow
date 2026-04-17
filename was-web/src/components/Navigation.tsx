@@ -287,7 +287,10 @@ function NavLogin({ expanded }: { expanded: boolean }) {
     doUpdateProfile().catch(e => logError("error updating profile", e));
   }, [displayName, editDisplayName, handleModalClose, dataService, user]);
 
-  const saveProfileDisabled = useMemo(() => editDisplayName.length === 0, [editDisplayName]);
+  const saveProfileDisabled = useMemo(
+    () => editDisplayName.length === 0 || isOidcUser,
+    [editDisplayName, isOidcUser]
+  );
 
   const handleChangePassword = useCallback(() => {
     setShowChangePassword(true);
@@ -308,7 +311,7 @@ function NavLogin({ expanded }: { expanded: boolean }) {
   // We show the profile button as a dropdown only if there are further things to drop
   // down from it
   const profileButton = useMemo(() => {
-    if (isPasswordUser) {
+    if (isPasswordUser && !isOidcUser) {
       return (
         <Dropdown>
           <Dropdown.Toggle variant="primary">
@@ -317,7 +320,7 @@ function NavLogin({ expanded }: { expanded: boolean }) {
             </Avatar>
           </Dropdown.Toggle>
           <Dropdown.Menu align={!expanded ? "end" : undefined}>
-            <Dropdown.Item onClick={handleEditProfile}>Edit profile</Dropdown.Item>
+            <Dropdown.Item onClick={handleEditProfile}>Profile</Dropdown.Item>
             <Dropdown.Item onClick={handleChangePassword}>Change password</Dropdown.Item>
           </Dropdown.Menu>
         </Dropdown>
@@ -332,8 +335,8 @@ function NavLogin({ expanded }: { expanded: boolean }) {
       );
     }
   }, [
-    displayName, expanded, handleChangePassword, handleEditProfile, isPasswordUser,
-    verifiedIcon
+    displayName, expanded, handleChangePassword, handleEditProfile, isOidcUser,
+    isPasswordUser, verifiedIcon
   ]);
 
   const handleChangePasswordSave = useCallback((oldPassword: string, newPassword: string) => {
