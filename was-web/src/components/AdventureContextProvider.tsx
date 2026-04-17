@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, useContext, useReducer } from 'react';
 
 import { UserContext } from './UserContext';
-import { AnalyticsContext } from './AnalyticsContext';
 import { AdventureContext } from './AdventureContext';
 import { IAdventureContext, IContextProviderProps } from './interfaces';
 import { StatusContext } from './StatusContext';
@@ -9,6 +8,7 @@ import { StatusContext } from './StatusContext';
 import { IAdventure, IPlayer, IIdentified, ISpriteManager } from '@wallandshadow/shared';
 import { registerAdventureAsRecent, removeAdventureFromRecent } from '../services/extensions';
 import { SpriteManager } from '../services/spriteManager';
+import { logError } from '../services/consoleLogger';
 
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Observable } from 'rxjs';
@@ -17,7 +17,6 @@ import { v7 as uuidv7 } from 'uuid';
 
 function AdventureContextProvider(props: IContextProviderProps) {
   const { dataService, resolveImageUrl, user } = useContext(UserContext);
-  const { analytics, logError } = useContext(AnalyticsContext);
   const { toasts } = useContext(StatusContext);
 
   const navigate = useNavigate();
@@ -73,14 +72,10 @@ function AdventureContextProvider(props: IContextProviderProps) {
         couldNotLoad(e.message);
       });
 
-    analytics?.logEvent("select_content", {
-      "content_type": "adventure",
-      "item_id": adventureId
-    });
     return dataService?.watch(d,
       a => setAdventure(a === undefined ? undefined : { id: adventureId, record: a }),
       e => logError("Error watching adventure " + adventureId + ": ", e));
-  }, [adventureId, analytics, dataService, navigate, logError, toasts, user]);
+  }, [adventureId, dataService, navigate, toasts, user]);
   
   const [players, setPlayers] = useState<IPlayer[]>([]);
 
@@ -134,7 +129,7 @@ function AdventureContextProvider(props: IContextProviderProps) {
       playerSub.unsubscribe();
       unsub?.();
     }
-  }, [adventure, dataService, logError, setPlayers, setSpriteManager, resolveImageUrl, user]);
+  }, [adventure, dataService, setPlayers, setSpriteManager, resolveImageUrl, user]);
 
   const adventureContext: IAdventureContext = useMemo(
     () => ({

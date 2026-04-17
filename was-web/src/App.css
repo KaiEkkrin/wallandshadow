@@ -2,7 +2,6 @@
  * 1-2: Map annotations, popovers
  * 4: Map controls, nav, info cards, toast container
  * 104: Status card overlay
- * 202: Consent banner
  * 1004: Throbber/loading overlay
  * 2002: Context menus
  */
@@ -15,31 +14,6 @@
   background-size: 75px 75px;
   color: white;
   height: 100vh;
-}
-
-.App-consent-card {
-  background-color: darkslateblue !important;
-  color: white !important;
-  z-index: 202;
-}
-
-.App-consent-card-content {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.App-consent-container {
-  display: flex;
-  position: fixed;
-  flex-direction: row;
-  justify-content: center;
-  align-items: flex-end;
-  bottom: 0;
-  padding-left: 10px;
-  padding-right: 10px;
-  width: calc(100vw - 20px);
 }
 
 .App-divider {

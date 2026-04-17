@@ -1,6 +1,20 @@
-# Wall & Shadow - Deployment Guide
+# Wall & Shadow — Legacy Firebase Deployment Guide
 
-This guide covers deploying Wall & Shadow to Firebase.
+**This doc applies only to the `legacy-firebase` branch.** `main` has been migrated
+off Firebase. For the current (Hono + PostgreSQL + Hetzner) deployment story, see
+@docs/REPLATFORM.md ("Production Deployment" section) and the deploy workflows at
+`.github/workflows/deploy-server-{test,production}.yml`.
+
+This guide is retained on `main` so that `workflow_dispatch` triggers for
+`deploy-firebase.yml` / `deploy-test.yml` / `deploy-production.yml` remain visible
+in the GitHub Actions UI (which only surfaces workflow files present on the default
+branch). The actual Firebase configuration files referenced below
+(`firebase.json`, `.firebaserc`, `firestore.rules`, etc.) only exist on the
+`legacy-firebase` branch; dispatching these workflows from `main` will fail.
+
+## Prerequisites
+
+### 1. Firebase Project Setup
 
 ## Prerequisites
 

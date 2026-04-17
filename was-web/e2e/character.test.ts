@@ -6,11 +6,7 @@ import * as Api from './apiFixture';
 test.describe('Character CRUD tests', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await Promise.race([
-      expect(page.locator('.App-login-text').first()).toBeVisible(),
-      expect(page.locator('.App-consent-container')).toBeVisible()
-    ]);
-    await Util.acceptCookieConsent(page);
+    await expect(page.locator('.App-login-text').first()).toBeVisible();
   });
 
   test('create, edit, and delete character', async ({ page }, testInfo) => {

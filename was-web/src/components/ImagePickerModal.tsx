@@ -9,12 +9,12 @@ import {
 } from 'react';
 import * as React from 'react';
 
-import { AnalyticsContext } from './AnalyticsContext';
 import ImageCollectionItem from './ImageCollectionItem';
 import { ProfileContext } from './ProfileContext';
 import { UserContext } from './UserContext';
 
 import { IImage, getUserPolicy } from '@wallandshadow/shared';
+import { logError } from '../services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
@@ -45,7 +45,6 @@ interface IImagePickerFormProps {
 }
 
 export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDelete }: IImagePickerFormProps) {
-  const { logError } = useContext(AnalyticsContext);
   const { dataService, storageService, user } = useContext(UserContext);
 
   const [status, setStatus] = useState<IImageStatusProps>({ message: "" });
@@ -88,7 +87,7 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
 
     const sub = from(doUpload()).subscribe();
     return () => sub.unsubscribe();
-  }, [logError, setStatus, storageService, user]);
+  }, [setStatus, storageService, user]);
 
   const [images, setImages] = useState<IImage[]>([]);
   useEffect(() => {
@@ -109,7 +108,7 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
       },
       e => logError("Error watching images", e)
     );
-  }, [logError, setImageCount, setImages, setStatus, dataService, user]);
+  }, [setImageCount, setImages, setStatus, dataService, user]);
 
   const [index, setIndex] = useReducer(
     (state: number, action: number) => action === 0 ? 0 : state + action,

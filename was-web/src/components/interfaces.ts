@@ -1,26 +1,14 @@
-import { IAdventure, IPlayer, IAdventureIdentified, IIdentified, IMap, IDataService, IUser, IAuth, IAuthProvider, IAnalytics, IFunctionsService, IStorage, ISpriteManager, IProfile } from '@wallandshadow/shared';
+import { IAdventure, IPlayer, IAdventureIdentified, IIdentified, IMap, IDataService, IUser, IAuth, IFunctionsService, IStorage, ISpriteManager, IProfile } from '@wallandshadow/shared';
 import { MapState, MapStateMachine } from '../models/mapStateMachine';
 
-import { Firestore, FieldValue } from 'firebase/firestore';
-import { Functions } from 'firebase/functions';
-import { FirebaseStorage } from 'firebase/storage';
 import { Subject } from 'rxjs';
 
 export interface IContextProviderProps {
   children?: React.ReactNode;
 }
- 
-export interface IFirebaseContext {
-  auth?: IAuth | undefined;
-  db?: Firestore | undefined;
-  functions?: Functions | undefined;
-  googleAuthProvider?: IAuthProvider | undefined;
-  storage?: FirebaseStorage | undefined;
-  timestampProvider?: (() => FieldValue) | undefined;
-  usingLocalEmulators?: boolean | undefined;
 
-  // Creates an Analytics provider
-  createAnalytics?: (() => IAnalytics) | undefined;
+export interface IAuthContext {
+  auth?: IAuth | undefined;
 }
 
 export interface IUserContext {
@@ -42,22 +30,10 @@ export interface IProfileContext {
   // specified display name.  The profile context, which is responsible for ensuring
   // the user's profile, will pop the new email and set the display name accordingly.
   expectNewUser?: (email: string, displayName: string) => void;
-
-  // For Google OAuth new users: call this *before* opening the sign-in popup so the
-  // display name is captured before auth state fires (we don't know the email yet).
-  expectGoogleSignup?: (displayName: string) => void;
 }
 
 export interface ISignInMethodsContext {
   signInMethods: string[];
-}
-
-export interface IAnalyticsContext {
-  analytics: IAnalytics | undefined;
-  enabled: boolean | undefined; // Residing in local storage, this signals consent.
-  setEnabled: (enabled: boolean | undefined) => void;
-  logError: (message: string, e: unknown, fatal?: boolean | undefined) => void; // Use this error helper to track errors in GA where possible.
-  logEvent: (event: string, parameters: Record<string, unknown>) => void;
 }
 
 export interface IToast {
@@ -82,19 +58,7 @@ export interface IMapContext {
   stateMachine?: MapStateMachine | undefined;
 }
 
-export interface IFirebaseProps {
-  // For testing only -- ignored by the real context provider.
-  user?: IUser | null; // null for no user
-}
-
 export interface IRoutingProps {
   // For testing only -- ignored by the real routing.
   defaultRoute?: string | undefined;
-}
-
-export interface IAnalyticsProps {
-  // These two optional functions can be set in testing to override the
-  // use of local storage.
-  getItem?: ((key: string) => string | null) | undefined;
-  setItem?: ((key: string, value: string | null) => void) | undefined;
 }

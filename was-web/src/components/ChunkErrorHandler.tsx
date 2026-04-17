@@ -36,8 +36,8 @@ function isChunkError(error: unknown): boolean {
  * 3. Triggers reload with sessionStorage-based loop prevention
  *
  * This catches cases where:
- * - The Firestore version listener hasn't connected yet
- * - The user is unauthenticated (no Firestore access)
+ * - The version listener hasn't connected yet
+ * - The user is unauthenticated
  * - A new deployment happened mid-navigation to a lazy-loaded route
  *
  * The component renders nothing - it's purely for side effects.

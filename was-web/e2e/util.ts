@@ -7,25 +7,6 @@ import { SCREENSHOTS_PATH } from './globals';
 
 // Various utility functions for testing.
 
-/**
- * Accepts the cookie consent banner by clicking the Accept button and waiting for it to disappear.
- * Uses precise mouse positioning to avoid clicks being intercepted by the Firebase emulator warning.
- */
-export async function acceptCookieConsent(page: Page) {
-  // Click on the top-left of the Accept button to avoid the Firebase emulator warning banner
-  const acceptButton = page.locator('.App-consent-card .btn-success');
-  const buttonBox = await acceptButton.boundingBox();
-  if (buttonBox) {
-    // Click 10px from left, 8px from top (top half of button)
-    await page.mouse.click(buttonBox.x + 10, buttonBox.y + 8);
-  } else {
-    throw new Error('Accept button not found');
-  }
-
-  // Wait for consent banner to hide after accepting (localStorage must save before we navigate)
-  await expect(page.locator('.App-consent-container')).not.toBeVisible({ timeout: 3000 });
-}
-
 // Helper to extract device name from project name (e.g., "chromium-iphone7" -> "iPhone 7")
 export function getDeviceNameFromProject(projectName: string): string {
   if (projectName.includes('iphone7')) return 'iPhone 7';
@@ -324,11 +305,7 @@ export async function setupSecondUser(
   const context2 = await browser.newContext();
   const page2 = await context2.newPage();
   await page2.goto('/');
-  await Promise.race([
-    expect(page2.locator('.App-login-text').first()).toBeVisible(),
-    expect(page2.locator('.App-consent-container')).toBeVisible()
-  ]);
-  await acceptCookieConsent(page2);
+  await expect(page2.locator('.App-login-text').first()).toBeVisible();
   await signIn(page2, user, deviceName);
   return { page2, context2 };
 }

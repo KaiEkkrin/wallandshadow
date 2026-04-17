@@ -4,7 +4,6 @@ import './App.css';
 import { AdventureContext } from './components/AdventureContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 import AdventureModal from './components/AdventureModal';
-import { AnalyticsContext } from './components/AnalyticsContext';
 import BusyElement from './components/BusyElement';
 import CharacterDeletionModal from './components/CharacterDeletionModal';
 import CharacterEditorModal from './components/CharacterEditorModal';
@@ -21,6 +20,7 @@ import { UserContext } from './components/UserContext';
 
 import { IAdventure, summariseAdventure, IPlayer, IMapSummary, ICharacter, maxCharacters, IImage, IMap, getUserPolicy } from '@wallandshadow/shared';
 import { editAdventure, leaveAdventure, editMap, editCharacter, deleteCharacter } from './services/extensions';
+import { logError } from './services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
 import ButtonGroup from 'react-bootstrap/ButtonGroup';
@@ -40,7 +40,6 @@ interface IAdventureProps {
 
 function Adventure({ adventureId }: IAdventureProps) {
   const { dataService, functionsService, user } = useContext(UserContext);
-  const { analytics, logError } = useContext(AnalyticsContext);
   const { profile } = useContext(ProfileContext);
   const { adventure, players } = useContext(AdventureContext);
   const navigate = useNavigate();
@@ -93,14 +92,13 @@ function Adventure({ adventureId }: IAdventureProps) {
     }
 
     setCreateInviteButtonDisabled(true);
-    analytics?.logEvent("share", { "content_type": "adventure", "item_id": adventureId });
     functionsService.inviteToAdventure(adventure.id)
       .then(l => setInviteLink("/invite/" + l))
       .catch(e => {
         setCreateInviteButtonDisabled(false);
         logError("Failed to create invite link for " + adventureId, e);
       });
-  }, [adventure, analytics, logError, adventureId, setCreateInviteButtonDisabled, setInviteLink, functionsService]);
+  }, [adventure, adventureId, setCreateInviteButtonDisabled, setInviteLink, functionsService]);
 
   // Adventure editing support
   const playersTitle = useMemo(() => {
@@ -205,7 +203,7 @@ function Adventure({ adventureId }: IAdventureProps) {
       dataService?.update(playerRef, { allowed: allowed })
         .catch(e => logError("Failed to block/unblock player", e));
     }
-  }, [logError, handleModalClose, playerToBlock, adventureId, dataService]);
+  }, [handleModalClose, playerToBlock, adventureId, dataService]);
 
   const handleShowEditAdventure = useCallback(() => {
     if (adventure === undefined) {
@@ -291,7 +289,7 @@ function Adventure({ adventureId }: IAdventureProps) {
         .then(() => console.debug(`Map ${mapSummary.id} successfully edited`))
         .catch(e => logError(`Error editing map ${mapSummary.id}`, e));
     }
-  }, [adventure, logError, handleModalClose, pickImageForMap, adventureId, dataService, user]);
+  }, [adventure, handleModalClose, pickImageForMap, adventureId, dataService, user]);
 
   const handleImageDeletionSave = useCallback(() => {
     handleModalClose();
@@ -302,7 +300,7 @@ function Adventure({ adventureId }: IAdventureProps) {
     functionsService.deleteImage(imageToDelete.path)
       .then(() => console.debug(`deleted image ${imageToDelete.path}`))
       .catch(e => logError(`failed to delete image ${imageToDelete}`, e));
-  }, [logError, handleModalClose, imageToDelete, functionsService]);
+  }, [handleModalClose, imageToDelete, functionsService]);
 
   const handleDeleteAdventureSave = useCallback(() => {
     handleModalClose();
@@ -315,7 +313,7 @@ function Adventure({ adventureId }: IAdventureProps) {
         navigate("/app", { replace: true });
       })
       .catch(e => logError("Error deleting adventure " + adventureId, e));
-  }, [functionsService, adventureId, navigate, handleModalClose, logError]);
+  }, [functionsService, adventureId, navigate, handleModalClose]);
 
   const handleLeaveAdventureSave = useCallback(() => {
     handleModalClose();
@@ -325,7 +323,7 @@ function Adventure({ adventureId }: IAdventureProps) {
         navigate("/app", { replace: true });
       })
       .catch(e => logError("Error leaving adventure " + adventureId, e));
-  }, [dataService, user, logError, adventureId, handleModalClose, navigate]);
+  }, [dataService, user, adventureId, handleModalClose, navigate]);
 
   // Support for the character list
   const myPlayer = useMemo(() => players.filter(p => p.playerId === user?.uid), [players, user]);
@@ -365,7 +363,7 @@ function Adventure({ adventureId }: IAdventureProps) {
         console.debug("Successfully edited character " + character.id);
       })
       .catch(e => logError("Error editing character " + character.id, e));
-  }, [dataService, user, logError, adventureId, handleModalClose]);
+  }, [dataService, user, adventureId, handleModalClose]);
 
   const handleCharacterDeletion = useCallback(() => {
     handleModalClose();
@@ -378,7 +376,7 @@ function Adventure({ adventureId }: IAdventureProps) {
         console.debug("Successfully deleted character " + characterToEdit.id);
       })
       .catch(e => logError("Error deleting character " + characterToEdit.id, e));
-  }, [dataService, user, logError, adventureId, characterToEdit, handleModalClose]);
+  }, [dataService, user, adventureId, characterToEdit, handleModalClose]);
 
   // Maps
   const maps = useMemo(() => adventure?.record.maps ?? [], [adventure]);
@@ -389,7 +387,7 @@ function Adventure({ adventureId }: IAdventureProps) {
     functionsService.deleteMap(adventureId, id)
       .then(() => console.debug("Map " + id + " successfully deleted"))
       .catch(e => logError("Error deleting map " + id, e));
-  }, [functionsService, adventureId, logError]);
+  }, [functionsService, adventureId]);
 
   const mapsTitle = useMemo(
     () => `Maps (${maps.length}/${userPolicy?.maps})`,

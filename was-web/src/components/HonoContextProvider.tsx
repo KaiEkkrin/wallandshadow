@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { FirebaseContext } from './FirebaseContext';
+import { AuthContext } from './AuthContext';
 import { UserContext } from './UserContext';
 import { SignInMethodsContext } from './SignInMethodsContext';
 import { IContextProviderProps, IUserContext } from './interfaces';
@@ -12,8 +12,6 @@ import { HonoFunctionsService } from '../services/honoFunctions';
 import { HonoStorage } from '../services/honoStorage';
 import { createResolveImageUrl } from '../services/resolveImageUrl';
 
-// Replaces FirebaseContextProvider + UserContextProvider for the Hono backend.
-// Provides FirebaseContext (with auth only), UserContext, and SignInMethodsContext.
 function HonoContextProvider(props: IContextProviderProps) {
   const apiClient = useMemo(() => {
     const baseUrl = import.meta.env.VITE_HONO_URL ?? '';
@@ -43,13 +41,13 @@ function HonoContextProvider(props: IContextProviderProps) {
   }, [auth, apiClient]);
 
   return (
-    <FirebaseContext.Provider value={{ auth }}>
+    <AuthContext.Provider value={{ auth }}>
       <UserContext.Provider value={userContext}>
         <SignInMethodsContext.Provider value={{ signInMethods: auth.oidcEnabled ? ['password', 'oidc'] : ['password'] }}>
           {props.children}
         </SignInMethodsContext.Provider>
       </UserContext.Provider>
-    </FirebaseContext.Provider>
+    </AuthContext.Provider>
   );
 }
 

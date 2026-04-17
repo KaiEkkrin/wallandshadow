@@ -139,7 +139,7 @@ export default defineConfig({
     // WebSocket upgrades on Linux). Empty string in production/test builds so the
     // browser connects to the same origin (Caddy → Hono).
     __HONO_WS_BASE__: JSON.stringify(
-      deployEnvironment === 'development' && process.env.VITE_BACKEND === 'hono'
+      deployEnvironment === 'development'
         ? (process.env.VITE_HONO_WS_URL || 'http://localhost:3000')
         : ''
     ),
@@ -155,20 +155,13 @@ export default defineConfig({
       host: 'localhost',
     },
     proxy: {
-      // Replaces setupProxy.js - proxy Firebase reserved URLs to emulator
-      '/__': {
-        target: 'http://localhost:3400',
-        changeOrigin: true,
-      },
-      // When using the Hono backend, proxy /api requests to the Hono server.
+      // Proxy /api requests to the Hono server.
       // WebSocket goes directly to the Hono server (see __HONO_WS_BASE__ above)
       // because Vite's ws proxy is unreliable on Linux.
-      ...(process.env.VITE_BACKEND === 'hono' ? {
-        '/api': {
-          target: 'http://localhost:3000',
-          changeOrigin: true,
-        },
-      } : {}),
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
   build: {

@@ -6,11 +6,7 @@ import { TINY_PNG } from './testImage';
 test.describe('Image management tests', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await Promise.race([
-      expect(page.locator('.App-login-text').first()).toBeVisible(),
-      expect(page.locator('.App-consent-container')).toBeVisible()
-    ]);
-    await Util.acceptCookieConsent(page);
+    await expect(page.locator('.App-login-text').first()).toBeVisible();
   });
 
   test('upload image and assign to adventure', async ({ page }, testInfo) => {

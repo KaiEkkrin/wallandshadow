@@ -5,7 +5,6 @@ import './Map.css';
 
 import { AdventureContext } from './components/AdventureContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
-import { AnalyticsContext } from './components/AnalyticsContext';
 import CharacterTokenEditorModal from './components/CharacterTokenEditorModal';
 import { addToast } from './components/extensions';
 import ImageDeletionModal from './components/ImageDeletionModal';
@@ -33,6 +32,7 @@ import { ITokenProperties, IImage, IMapImageProperties, createTokenSizes, IMap, 
 import { zoomMax, zoomMin } from './models/mapStateMachine';
 import { createDefaultUiState, isAnEditorOpen, MapUi } from './models/mapUi';
 import { networkStatusTracker } from './models/networkStatusTracker';
+import { logError } from './services/consoleLogger';
 
 import { Link } from 'react-router-dom';
 
@@ -43,7 +43,6 @@ import { v7 as uuidv7 } from 'uuid';
 // The map component is rather large because of all the state that got pulled into it...
 function Map() {
   const { dataService, functionsService, user } = useContext(UserContext);
-  const { logError } = useContext(AnalyticsContext);
   const { adventure, players } = useContext(AdventureContext);
   const { map, mapState, stateMachine } = useContext(MapContext);
   const { profile } = useContext(ProfileContext);
@@ -160,7 +159,7 @@ function Map() {
   const ui = useMemo(
     () => statusContext.toasts === undefined ? undefined :
       new MapUi(stateMachine, setUiState, getClientPosition, logError, statusContext.toasts),
-    [logError, getClientPosition, setUiState, stateMachine, statusContext.toasts]
+    [getClientPosition, setUiState, stateMachine, statusContext.toasts]
   );
 
   const mapContainerClassName = useMemo(
@@ -200,7 +199,7 @@ function Map() {
       map, updated,
       (message, e) => logError(message, e)
     );
-  }, [logError, map, ui, dataService, functionsService]);
+  }, [map, ui, dataService, functionsService]);
 
   const handleModalClose = useCallback(() => ui?.modalClose(), [ui]);
   const handleTokenEditorCanSave = useCallback(
@@ -228,7 +227,7 @@ function Map() {
     functionsService.deleteImage(imageToDelete.path)
       .then(() => console.debug(`deleted image ${imageToDelete.path}`))
       .catch(e => logError(`failed to delete image ${imageToDelete}`, e));
-  }, [functionsService, logError, ui, uiState]);
+  }, [functionsService, ui, uiState]);
 
   const handleNoteEditorDelete = useCallback(() => ui?.noteEditorDelete(), [ui]);
   const handleNoteEditorSave = useCallback((id: string, colour: number, text: string, visibleToPlayers: boolean) => {

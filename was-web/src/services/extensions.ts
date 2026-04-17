@@ -1,4 +1,4 @@
-import { IAdventure, IPlayer, Changes, ICharacter, IMap, summariseMap, UserLevel, IAdventureSummary, IProfile, IDataService, IDataView, IDataReference, IDataAndReference, IUser, IAnalytics, IFunctionsService, updateProfileAdventures, updateAdventureMaps, updateProfileMaps } from '@wallandshadow/shared';
+import { IAdventure, IPlayer, Changes, ICharacter, IMap, summariseMap, UserLevel, IAdventureSummary, IProfile, IDataService, IDataView, IDataReference, IDataAndReference, IUser, IFunctionsService, updateProfileAdventures, updateAdventureMaps, updateProfileMaps } from '@wallandshadow/shared';
 import * as Convert from '@wallandshadow/shared';
 
 import { interval, Subject } from 'rxjs';
@@ -9,7 +9,6 @@ const defaultDisplayName = "Unnamed user";
 export async function ensureProfile(
   dataService: IDataService | undefined,
   user: IUser | undefined,
-  analytics: IAnalytics | undefined,
   displayName?: string | undefined
 ): Promise<IProfile | undefined> {
   if (dataService === undefined || user === undefined) {
@@ -20,8 +19,6 @@ export async function ensureProfile(
   return await dataService.runTransaction(async view => {
     let profile = await view.get(profileRef);
     if (profile !== undefined) {
-      analytics?.logEvent("login", { "method": user.providerId });
-
       // Keep the user's email in sync if required, and replace any default display name
       let profileNeedsUpdate = false;
       const profileUpdates: Partial<IProfile> = {};
@@ -53,7 +50,6 @@ export async function ensureProfile(
       latestMaps: []
     };
 
-    analytics?.logEvent("sign_up", { "method": user.providerId });
     await view.set(profileRef, profile);
     return profile;
   });
@@ -345,7 +341,7 @@ async function deleteMapTransaction(
 
   // TODO: We also need to remove the sub-collection of changes.
   // Maybe, write a Function to do this deletion instead?
-  // https://firebase.google.com/docs/firestore/manage-data/delete-data
+  // server-side deletion handles cascade for subcollections
 
   // Remove the map record itself
   await view.delete(mapRef);
@@ -622,7 +618,6 @@ export function watchChangesAndConsolidate(
   mapId: string,
   onNext: (chs: Changes) => boolean, // applies changes and returns true if successful, else false
   onReset: () => void, // reset the map state to blank (expect an onNext() right after)
-  onEvent: (event: string, parameters: Record<string, unknown>) => void, // GA events delegate
   onError?: ((message: string, ...params: unknown[]) => void) | undefined,
   resyncIntervalMillis?: number | undefined
 ) {
@@ -647,7 +642,6 @@ export function watchChangesAndConsolidate(
   const resyncSub = resyncSubject.pipe(throttle(() => interval(resyncIntervalMillis ?? 5000)))
     .subscribe(() => {
       console.debug("lost sync -- trying to consolidate");
-      onEvent("desync", { "adventureId": adventureId, "mapId": mapId });
       changesBeforeConsolidate = createConsolidateInterval();
       functionsService.consolidateMapChanges(adventureId, mapId, true)
         .catch(e => onError?.("Consolidate call failed", e));

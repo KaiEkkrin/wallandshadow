@@ -63,10 +63,8 @@ jobs:
             ghcr.io/kaiekkrin/wallandshadow:latest-prod
           build-args: |
             VITE_DEPLOY_ENV=production
-            VITE_BACKEND=hono
             VITE_OIDC_ISSUER=${{ secrets.OIDC_ISSUER }}
             VITE_OIDC_CLIENT_ID=${{ secrets.OIDC_PROD_CLIENT_ID }}
-            VITE_AUTH_MODE=oidc
             GIT_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

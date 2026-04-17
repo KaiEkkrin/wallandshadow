@@ -14,14 +14,8 @@ function isLocalDev(): boolean {
 }
 
 /**
- * Silently watches for new app versions via Firestore and triggers automatic reload.
- *
- * This component:
- * 1. Skips on localhost (development/emulator)
- * 2. Uses dataService.watch() to listen to config/version document
- * 3. On first load, stores current version in a ref
- * 4. When version changes, triggers window.location.reload()
- * 5. Uses sessionStorage to prevent infinite reload loops
+ * Silently watches for new app versions via the data service and triggers
+ * automatic reload when the deployed commit changes.
  *
  * The component renders nothing - it's purely for side effects.
  */

@@ -13,15 +13,13 @@ import { IConverter } from './converter';
 
 import { Observable } from 'rxjs';
 
-// App version information stored in Firestore (config/version document).
-// Used to detect when a new version has been deployed.
+// App version information used to detect when a new version has been deployed.
 export interface IAppVersion {
   commit: string;
   version?: string;
 }
 
-// Abstracts the Firebase authentication stuff, which isn't supported by the
-// simulator.
+// Authentication abstraction implemented by HonoAuth.
 export interface IAuth {
   createUserWithEmailAndPassword(email: string, password: string, displayName: string): Promise<IUser | null>;
   fetchSignInMethodsForEmail(email: string): Promise<Array<string>>;
@@ -38,8 +36,7 @@ export interface IAuth {
 
 export type IAuthProvider = object;
 
-// A user.  (Exposes the things we want from `firebase.User` -- may need extending;
-// but needs to be hidden behind this interface to facilitate unit testing.)
+// A user, as projected to the client.
 export interface IUser {
   displayName: string | null;
   email: string | null;
@@ -51,11 +48,6 @@ export interface IUser {
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
   sendEmailVerification: () => Promise<void>;
   updateProfile: (p: { displayName?: string | null; photoURL?: string | null }) => Promise<void>;
-}
-
-// The analytics service.
-export interface IAnalytics {
-  logEvent(event: string, parameters: Record<string, unknown>): void;
 }
 
 // A reference to stored data.
@@ -184,7 +176,7 @@ export interface IDataView {
   update<T>(r: IDataReference<T>, changes: Partial<T>): Promise<void>;
 }
 
-// Provides access to Firebase Functions.
+// Provides access to server verbs (implemented by the Hono REST API client).
 export interface IFunctionsService {
   // Adds images to spritesheets.
   addSprites(adventureId: string, geometry: string, sources: string[]): Promise<ISprite[]>;
@@ -256,8 +248,8 @@ export interface ISpriteManager {
   dispose(): void;
 }
 
-// A stripped-down abstraction around Firebase Storage that lets me use a mock one in local
-// testing (standing in for an emulator.)
+// Object-storage abstraction implemented by HonoStorage (backed by MinIO in dev,
+// Hetzner Object Storage in production).
 export interface IStorage {
   // Gets a reference to this path.
   ref(path: string): IStorageReference;

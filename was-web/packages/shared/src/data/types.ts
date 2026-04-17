@@ -1,4 +1,4 @@
-// Abstract type for Firestore server timestamps.
-// In the web context, this corresponds to firebase/firestore FieldValue.
-// In the functions context, this corresponds to FirebaseFirestore.FieldValue.
+// Legacy abstract timestamp type carried over from the Firestore era. Records
+// read from PostgreSQL use numeric milliseconds; the object union branch is
+// retained for schema rows that still carry an opaque server-side timestamp.
 export type Timestamp = object;

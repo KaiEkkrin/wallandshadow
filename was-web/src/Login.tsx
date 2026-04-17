@@ -1,8 +1,7 @@
 import { useCallback, useContext, useState, useEffect, useMemo } from 'react';
 import './App.css';
 
-import { AnalyticsContext } from './components/AnalyticsContext';
-import { FirebaseContext } from './components/FirebaseContext';
+import { AuthContext } from './components/AuthContext';
 import Navigation from './components/Navigation';
 import * as Policy from '@wallandshadow/shared';
 import { ProfileContext } from './components/ProfileContext';
@@ -10,6 +9,7 @@ import { useDocumentTitle } from './hooks/useDocumentTitle';
 
 import { IUser } from '@wallandshadow/shared';
 import { isOidcEnabled, startOidcLogin } from './services/oidcAuth';
+import { logError } from './services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
@@ -20,7 +20,10 @@ import Tabs from 'react-bootstrap/Tabs';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getPostLoginPath } from './utils/loginRedirect';
 const oidcEnabled = isOidcEnabled();
-const oidcOnly = import.meta.env.VITE_AUTH_MODE === 'oidc';
+// In production/test builds, show only the OIDC sign-in button. In dev builds
+// (Vite dev server, E2E tests), expose the email/password modal too so legacy
+// accounts and test fixtures can still sign in without a provider round-trip.
+const oidcOnly = !import.meta.env.DEV;
 
 interface ILoginMessageProps {
   isVisible: boolean;
@@ -42,8 +45,7 @@ interface INewUserFormProps {
 }
 
 function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, handleSignUp, handleExternalSignUp, handleExternalSignIn }: INewUserFormProps) {
-  const { auth } = useContext(FirebaseContext);
-  const { logError } = useContext(AnalyticsContext);
+  const { auth } = useContext(AuthContext);
 
   const [key, setKey] = useState<"new" | "existing">("new");
   const [displayName, setDisplayName] = useState("");
@@ -68,9 +70,6 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
     // For external auth (OIDC redirect), no local fields to validate —
     // the provider handles display name and credentials
     if (authMethod === 'external') {
-      if (oidcEnabled) return false;
-      // Firebase Google flow: require display name for new users
-      if (key === 'new') return displayName.length === 0;
       return false;
     }
 
@@ -114,7 +113,7 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
     auth?.sendPasswordResetEmail(target)
       .then(() => setPasswordResetTarget(target))
       .catch(e => logError("Error sending password reset email", e));
-  }, [logError, email, auth, setPasswordResetTarget]);
+  }, [email, auth, setPasswordResetTarget]);
 
   const passwordResetComponent = useMemo(() => {
     if (!Policy.emailIsValid(email)) {
@@ -251,9 +250,8 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
 }
 
 function Login() {
-  const { auth, googleAuthProvider } = useContext(FirebaseContext);
-  const { profile, expectNewUser, expectGoogleSignup } = useContext(ProfileContext);
-  const { logError } = useContext(AnalyticsContext);
+  const { auth } = useContext(AuthContext);
+  const { profile, expectNewUser } = useContext(ProfileContext);
   const navigate = useNavigate();
 
   useDocumentTitle('Login');
@@ -294,7 +292,7 @@ function Login() {
     setLoginFailedVisible(true);
     setLoginFailedText(e instanceof Error ? e.message : String(e));
     logError("Login failed", e);
-  }, [logError, setLoginFailedVisible]);
+  }, [setLoginFailedVisible]);
 
   const handleEmailFormClose = useCallback(() => {
     setShowEmailForm(false);
@@ -319,42 +317,21 @@ function Login() {
       .catch(handleLoginError);
   }, [auth, finishLogin, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
 
-  const handleExternalSignUp = useCallback((displayName: string) => {
+  const handleExternalSignUp = useCallback((_displayName: string) => {
     setShowEmailForm(false);
     setLoginFailedVisible(false);
     if (oidcEnabled) {
-      // OIDC redirect flow — display name is set by the provider
       startOidcLogin().catch(handleLoginError);
-    } else if (googleAuthProvider !== undefined) {
-      // Firebase Google popup flow
-      expectGoogleSignup?.(displayName);
-      auth?.signInWithPopup(googleAuthProvider)
-        .then(async (user) => {
-          if (user && displayName) {
-            await user.updateProfile({ displayName });
-          }
-          return user;
-        })
-        .then(handleLoginResult)
-        .then(finishLogin)
-        .catch(handleLoginError);
     }
-  }, [auth, expectGoogleSignup, googleAuthProvider, finishLogin, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
+  }, [handleLoginError, setLoginFailedVisible, setShowEmailForm]);
 
   const handleExternalSignIn = useCallback(() => {
     setShowEmailForm(false);
     setLoginFailedVisible(false);
     if (oidcEnabled) {
-      // OIDC redirect flow
       startOidcLogin().catch(handleLoginError);
-    } else if (googleAuthProvider !== undefined) {
-      // Firebase Google popup flow
-      auth?.signInWithPopup(googleAuthProvider)
-        .then(handleLoginResult)
-        .then(finishLogin)
-        .catch(handleLoginError);
     }
-  }, [finishLogin, auth, googleAuthProvider, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
+  }, [handleLoginError, setLoginFailedVisible, setShowEmailForm]);
 
   const handleSignUpClick = useCallback(() => {
     if (oidcOnly) {
