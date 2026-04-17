@@ -3,7 +3,7 @@
 
 FROM mcr.microsoft.com/devcontainers/typescript-node:22-trixie
 
-# Install system dependencies and Google Cloud SDK
+# Install system dependencies, Google Cloud SDK, and GitHub CLI
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     openjdk-21-jdk \
@@ -16,8 +16,10 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     postgresql-17 \
     && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list \
     && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list \
     && apt-get update \
-    && apt-get -y install google-cloud-cli \
+    && apt-get -y install google-cloud-cli gh \
     && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
 # Add PostgreSQL binaries to PATH so pg_ctl, psql, initdb etc. work in all shell sessions
