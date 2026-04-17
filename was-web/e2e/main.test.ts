@@ -59,7 +59,7 @@ test.describe('Basic tests', () => {
     // Click the navbar dropdown
     await page.click(`.dropdown >> text=${user.displayName}`);
     await Util.takeScreenshot(page, browserName, deviceName, 'create-account-navbar-dropdown');
-    await page.click('text="Edit profile"');
+    await page.click('text="Profile"');
 
     // Change the display name
     expect(await page.getAttribute('[id=nameInput]', 'value')).toBe(user.displayName);

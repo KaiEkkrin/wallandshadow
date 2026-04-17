@@ -1,5 +1,25 @@
 #!/bin/bash
 
+# Ensure .bashrc re-sources .devcontainer/.env on every new interactive shell.
+# This makes `.env` edits take effect by opening a new terminal, without
+# needing to rebuild/recreate the container (the `--env-file` in
+# devcontainer.json runArgs is only applied at container create, not start).
+BASHRC="$HOME/.bashrc"
+GUARD="# wallandshadow-devcontainer-env-source"
+if ! grep -qF "$GUARD" "$BASHRC" 2>/dev/null; then
+    cat >> "$BASHRC" <<'EOF'
+
+# wallandshadow-devcontainer-env-source
+# Auto-source .devcontainer/.env so edits take effect on new terminals
+# without rebuilding the container. Safe if the file is missing.
+if [ -f /workspaces/wallandshadow/.devcontainer/.env ]; then
+    set -a
+    . /workspaces/wallandshadow/.devcontainer/.env
+    set +a
+fi
+EOF
+fi
+
 # Start PostgreSQL (idempotent — skips if already running)
 # pg_ctl status checks the PID in postmaster.pid, but after a container rebuild the
 # PID may have been reused by a different process (e.g. VS Code's node). Detect this
