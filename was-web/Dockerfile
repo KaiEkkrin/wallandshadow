@@ -84,6 +84,12 @@ FROM node:22-slim AS production
 
 WORKDIR /app
 
+# ImageMagick provides `montage`, used by spriteExtensions.ts to assemble
+# spritesheets when a user adds a new character image.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends imagemagick \
+  && rm -rf /var/lib/apt/lists/*
+
 # Copy package manifests and install production dependencies only
 COPY package.json yarn.lock ./
 COPY packages/shared/package.json packages/shared/

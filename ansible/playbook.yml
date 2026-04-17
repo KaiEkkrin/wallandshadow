@@ -53,6 +53,9 @@
         repo: "deb https://apt.postgresql.org/pub/repos/apt {{ ansible_facts['distribution_release'] }}-pgdg main"
         state: present
 
+    # Log rotation for PostgreSQL's own logs is handled by the package-default
+    # logrotate config at /etc/logrotate.d/postgresql-common (weekly, keep 10,
+    # compressed). No playbook task needed — just don't remove that file.
     - name: Install PostgreSQL {{ pg_version }}
       ansible.builtin.apt:
         name: "postgresql-{{ pg_version }}"
@@ -83,6 +86,22 @@
       ansible.builtin.apt:
         name: docker.io
         state: present
+
+    # Route container stdout/stderr to journald instead of the default json-file
+    # driver. journald already captures the systemd units' output, so the
+    # on-disk json-file copy was redundant and unbounded; journald handles
+    # rotation via SystemMaxUse. `docker logs <name>` still works.
+    - name: Configure Docker to log via journald
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          {
+            "log-driver": "journald"
+          }
+      notify: Restart Docker
 
     - name: Enable Docker service
       ansible.builtin.systemd:
@@ -483,6 +502,24 @@
         job: "/usr/local/bin/pg_backup.sh >> /var/log/pg_backup.log 2>&1"
         user: root
 
+    # cron appends to /var/log/pg_backup.log forever; rotate it ourselves.
+    # copytruncate because cron reopens the same path on every run.
+    - name: Configure logrotate for pg_backup.log
+      ansible.builtin.copy:
+        dest: /etc/logrotate.d/pg_backup
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          /var/log/pg_backup.log {
+              weekly
+              rotate 8
+              compress
+              missingok
+              notifempty
+              copytruncate
+          }
+
     # ── Display status ──────────────────────────────────────────────────────
 
     - name: Display provisioning summary
@@ -517,3 +554,8 @@
     - name: Reload systemd
       ansible.builtin.systemd:
         daemon_reload: true
+
+    - name: Restart Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
