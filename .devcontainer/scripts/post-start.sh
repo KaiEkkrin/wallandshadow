@@ -55,6 +55,7 @@ else
     for i in $(seq 1 10); do
         if mc alias set was-local http://127.0.0.1:9000 wasdev wasdevpass > /dev/null 2>&1; then
             mc mb --ignore-existing was-local/wallandshadow > /dev/null 2>&1 || true
+            mc mb --ignore-existing was-local/wallandshadow-test > /dev/null 2>&1 || true
             break
         fi
         sleep 1
