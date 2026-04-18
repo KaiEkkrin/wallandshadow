@@ -16,6 +16,16 @@ if (!dbUrl.includes('_test')) {
   );
 }
 
+// Same guard for S3_BUCKET — beforeEach wipes every object in this bucket.
+// (S3 bucket names can't contain underscores, so we use a "-test" suffix.)
+const bucketName = process.env.S3_BUCKET ?? '';
+if (!bucketName.endsWith('-test')) {
+  throw new Error(
+    'Refusing to run: S3_BUCKET does not point to a test bucket. ' +
+    'Expected name ending in "-test". Got: ' + bucketName
+  );
+}
+
 export const testS3 = new S3Client({
   endpoint: process.env.S3_ENDPOINT ?? 'http://127.0.0.1:9000',
   region: process.env.S3_REGION ?? 'us-east-1',
