@@ -406,3 +406,148 @@ describe('spritesheets subscription', () => {
     ws.close();
   });
 });
+
+describe('profile subscription', () => {
+  test('snapshot combines me + adventures', async () => {
+    const { token, uid } = await registerUser(app, 'WsProfile1');
+    await createAdventure(token, 'First');
+
+    const ws = await connectWs(token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'profile' });
+    const snap = await waitForFrame(ws, f => f.type === 'snapshot' && f.subId === 1);
+    const data = snap.data as { me: { uid: string; name: string }; adventures: { name: string }[] };
+    expect(data.me.uid).toBe(uid);
+    expect(data.me.name).toBe('WsProfile1');
+    expect(data.adventures.some(a => a.name === 'First')).toBe(true);
+    ws.close();
+  });
+
+  test('updating name NOTIFYs profile', async () => {
+    const { token } = await registerUser(app, 'WsProfile2');
+
+    const ws = await connectWs(token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'profile' });
+    await waitForFrame(ws, f => f.type === 'snapshot' && f.subId === 1);
+
+    const updatePromise = waitForFrame(ws,
+      f => f.type === 'roomUpdate' && f.scope === 'profile');
+    const res = await apiPatch(app, '/api/auth/me', { name: 'Renamed' }, token);
+    expect(res.status).toBe(200);
+    const upd = await updatePromise;
+    const data = upd.data as { me: { name: string } };
+    expect(data.me.name).toBe('Renamed');
+    ws.close();
+  });
+
+  test('creating an adventure NOTIFYs profile', async () => {
+    const { token } = await registerUser(app, 'WsProfile3');
+
+    const ws = await connectWs(token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'profile' });
+    await waitForFrame(ws, f => f.type === 'snapshot' && f.subId === 1);
+
+    const updatePromise = waitForFrame(ws,
+      f => f.type === 'roomUpdate' && f.scope === 'profile');
+    await createAdventure(token, 'Joined');
+    const upd = await updatePromise;
+    const data = upd.data as { adventures: { name: string }[] };
+    expect(data.adventures.some(a => a.name === 'Joined')).toBe(true);
+    ws.close();
+  });
+});
+
+describe('adventure subscription', () => {
+  test('snapshot returns adventure detail with maps', async () => {
+    const { token } = await registerUser(app, 'WsAdvDetail1');
+    const aId = await createAdventure(token, 'Detail Test');
+    const mId = await createMap(token, aId, 'First Map');
+
+    const ws = await connectWs(token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'adventure', id: aId });
+    const snap = await waitForFrame(ws, f => f.type === 'snapshot' && f.subId === 1);
+    const data = snap.data as { id: string; name: string; maps: { id: string; name: string }[] };
+    expect(data.id).toBe(aId);
+    expect(data.name).toBe('Detail Test');
+    expect(data.maps.some(m => m.id === mId && m.name === 'First Map')).toBe(true);
+    ws.close();
+  });
+
+  test('createMap NOTIFYs adventure detail', async () => {
+    const { token } = await registerUser(app, 'WsAdvDetail2');
+    const aId = await createAdventure(token);
+
+    const ws = await connectWs(token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'adventure', id: aId });
+    await waitForFrame(ws, f => f.type === 'snapshot' && f.subId === 1);
+
+    const updatePromise = waitForFrame(ws,
+      f => f.type === 'roomUpdate' && f.scope === 'adventure' && f.key === aId);
+    await createMap(token, aId, 'Fresh');
+    const upd = await updatePromise;
+    const data = upd.data as { maps: { name: string }[] };
+    expect(data.maps.some(m => m.name === 'Fresh')).toBe(true);
+    ws.close();
+  });
+
+  test('non-member gets subscribeError on adventure scope', async () => {
+    const owner = await registerUser(app, 'WsAdvOwner');
+    const outsider = await registerUser(app, 'WsAdvOutsider');
+    const aId = await createAdventure(owner.token);
+
+    const ws = await connectWs(outsider.token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'adventure', id: aId });
+    const err = await waitForFrame(ws, f => f.type === 'subscribeError' && f.subId === 1);
+    expect(err.message).toMatch(/Adventure not found/);
+    ws.close();
+  });
+});
+
+describe('map subscription', () => {
+  test('snapshot returns { adventure, map }', async () => {
+    const { token } = await registerUser(app, 'WsMapDetail1');
+    const aId = await createAdventure(token, 'Adv');
+    const mId = await createMap(token, aId, 'Map');
+
+    const ws = await connectWs(token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'map', id: mId });
+    const snap = await waitForFrame(ws, f => f.type === 'snapshot' && f.subId === 1);
+    const data = snap.data as { adventure: { id: string; name: string }; map: { id: string; name: string } };
+    expect(data.adventure.id).toBe(aId);
+    expect(data.adventure.name).toBe('Adv');
+    expect(data.map.id).toBe(mId);
+    expect(data.map.name).toBe('Map');
+    ws.close();
+  });
+
+  test('updateMap NOTIFYs map subscribers', async () => {
+    const { token } = await registerUser(app, 'WsMapDetail2');
+    const aId = await createAdventure(token);
+    const mId = await createMap(token, aId, 'Before');
+
+    const ws = await connectWs(token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'map', id: mId });
+    await waitForFrame(ws, f => f.type === 'snapshot' && f.subId === 1);
+
+    const updatePromise = waitForFrame(ws,
+      f => f.type === 'roomUpdate' && f.scope === 'map' && f.key === mId);
+    const res = await apiPatch(app, `/api/adventures/${aId}/maps/${mId}`, { name: 'After' }, token);
+    expect(res.status).toBe(204);
+    const upd = await updatePromise;
+    const data = upd.data as { map: { name: string } };
+    expect(data.map.name).toBe('After');
+    ws.close();
+  });
+
+  test('non-member cannot subscribe to map', async () => {
+    const owner = await registerUser(app, 'WsMapDetailOwner');
+    const outsider = await registerUser(app, 'WsMapDetailOutsider');
+    const aId = await createAdventure(owner.token);
+    const mId = await createMap(owner.token, aId);
+
+    const ws = await connectWs(outsider.token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'map', id: mId });
+    const err = await waitForFrame(ws, f => f.type === 'subscribeError' && f.subId === 1);
+    expect(err.message).toMatch(/Adventure not found/);
+    ws.close();
+  });
+});

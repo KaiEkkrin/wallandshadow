@@ -19,6 +19,7 @@ import {
   IAppVersion,
   ISpritesheet,
   MapType,
+  UpdateScope,
 } from '@wallandshadow/shared';
 import {
   HonoApiClient,
@@ -262,6 +263,14 @@ export class HonoDataService implements IDataService {
   private readonly uid: string;
   private socket: HonoWebSocket | null = null;
 
+  /**
+   * Per-(scope,id) JSON of the last payload emitted to any subscriber.
+   * Shared across all subscribeWs calls so that React StrictMode's
+   * double-mount (which creates two overlapping subscriptions) doesn't fire
+   * the same emission twice and churn downstream effects.
+   */
+  private readonly lastEmitJson = new Map<string, string>();
+
   constructor(api: HonoApiClient, uid: string) {
     this.api = api;
     this.uid = uid;
@@ -458,11 +467,10 @@ export class HonoDataService implements IDataService {
 
   // ── Profile synthesis ───────────────────────────────────────────────────
 
-  private async getProfile(): Promise<IProfile> {
-    const [me, adventures] = await Promise.all([
-      this.api.getMe(),
-      this.api.getAdventures(),
-    ]);
+  private toIProfile(
+    me: { name: string; email: string | null; level: IProfile['level'] },
+    adventures: AdventureRow[],
+  ): IProfile {
     return {
       name: me.name,
       email: me.email ?? '',
@@ -470,6 +478,14 @@ export class HonoDataService implements IDataService {
       adventures: adventures.map(adventureRowToSummary),
       latestMaps: readLatestMaps(this.uid),
     };
+  }
+
+  private async getProfile(): Promise<IProfile> {
+    const [me, adventures] = await Promise.all([
+      this.api.getMe(),
+      this.api.getAdventures(),
+    ]);
+    return this.toIProfile(me, adventures);
   }
 
   // ── Reference factories ─────────────────────────────────────────────────
@@ -616,12 +632,6 @@ export class HonoDataService implements IDataService {
   }
 
   // ── Watch methods ───────────────────────────────────────────────────────
-  //
-  // `watch` for a single document ref still polls: the refs it covers change
-  // infrequently, the shape is heterogeneous, and a per-path subscription
-  // would add server surface for little gain. The four scope-specific
-  // watchers below (adventures, players, spritesheets, changes) are the
-  // hot paths and go over the multiplexed WebSocket.
 
   watch<T>(
     d: IDataReference<T>,
@@ -629,8 +639,50 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    const w = new PollingWatch(() => this.get(d), onNext, onError, POLL_INTERVAL_MS);
-    return () => w.stop();
+    const ref = d as HonoDataReference<T>;
+    switch (ref.meta.kind) {
+      case 'profile':
+        return this.subscribeProfile(onNext as (p: IProfile | undefined) => void, onError);
+      case 'adventure':
+        return this.subscribeAdventureDetail(ref.id, onNext as (a: IAdventure | undefined) => void, onError);
+      case 'map':
+        return this.subscribeMap(ref.meta.adventureId!, ref.id, onNext as (m: IMap | undefined) => void, onError);
+      default: {
+        const w = new PollingWatch(() => this.get(d), onNext, onError, POLL_INTERVAL_MS);
+        return () => w.stop();
+      }
+    }
+  }
+
+  private subscribeProfile(
+    onNext: (p: IProfile | undefined) => void,
+    onError?: (error: Error) => void,
+  ): () => void {
+    const emit = (payload: { me: { name: string; email: string | null; level: IProfile['level'] }; adventures: AdventureRow[] }) => {
+      onNext(this.toIProfile(payload.me, payload.adventures));
+    };
+    return this.subscribeWs('profile', undefined, emit, onError);
+  }
+
+  private subscribeAdventureDetail(
+    adventureId: string,
+    onNext: (a: IAdventure | undefined) => void,
+    onError?: (error: Error) => void,
+  ): () => void {
+    const emit = (detail: AdventureDetailRow) => onNext(adventureRowToIAdventure(detail));
+    return this.subscribeWs('adventure', adventureId, emit, onError);
+  }
+
+  private subscribeMap(
+    adventureId: string,
+    mapId: string,
+    onNext: (m: IMap | undefined) => void,
+    onError?: (error: Error) => void,
+  ): () => void {
+    const emit = (payload: { adventure: AdventureRow; map: MapRow }) => {
+      onNext(mapRowToIMap(payload.map, payload.adventure.name, payload.adventure.owner));
+    };
+    return this.subscribeWs('map', mapId, emit, onError);
   }
 
   watchAdventures(
@@ -643,7 +695,7 @@ export class HonoDataService implements IDataService {
       id: r.id,
       record: adventureRowToIAdventure(r),
     })));
-    return this.subscribe<AdventureRow[]>('adventures', undefined, emit, onError);
+    return this.subscribeWs<AdventureRow[]>('adventures', undefined, emit, onError);
   }
 
   watchChanges(
@@ -680,7 +732,7 @@ export class HonoDataService implements IDataService {
       const adv = payload.adventure ?? emptyAdventureRow(adventureId);
       onNext(payload.players.map(p => playerRowToIPlayer(p, adv)));
     };
-    return this.subscribe<PlayersScopeData>('players', adventureId, emit, onError);
+    return this.subscribeWs<PlayersScopeData>('players', adventureId, emit, onError);
   }
 
   watchSharedAdventures(
@@ -695,7 +747,7 @@ export class HonoDataService implements IDataService {
       rows.filter(r => r.owner !== this.uid)
         .map(r => adventureRowToSelfPlayer(r, this.uid)),
     );
-    return this.subscribe<AdventureRow[]>('adventures', undefined, emit, onError);
+    return this.subscribeWs<AdventureRow[]>('adventures', undefined, emit, onError);
   }
 
   watchSpritesheets(
@@ -710,20 +762,33 @@ export class HonoDataService implements IDataService {
       passthroughConverter(),
       spritesheetRowToISpritesheet(r),
     )));
-    return this.subscribe<SpritesheetRow[]>('spritesheets', adventureId, emit, onError);
+    return this.subscribeWs<SpritesheetRow[]>('spritesheets', adventureId, emit, onError);
   }
 
-  /** Thin adapter: treat snapshot + update frames the same from the caller's view. */
-  private subscribe<T>(
-    scope: 'adventures' | 'players' | 'spritesheets',
+  /**
+   * Treat snapshot + update frames the same from the caller's view. Dedup by
+   * JSON-compare across all subscribers for the same (scope, id), so no-op
+   * re-broadcasts and StrictMode's double-mount don't churn downstream React
+   * effects. `mapChanges` uses a separate path in `watchChanges` because
+   * each frame must emit.
+   */
+  private subscribeWs<T>(
+    scope: Exclude<UpdateScope, 'mapChanges'>,
     id: string | undefined,
     emit: (data: T) => void,
     onError?: (error: Error) => void,
   ): () => void {
     try {
+      const cacheKey = `${scope}:${id ?? ''}`;
+      const dedupedEmit = (data: unknown) => {
+        const json = JSON.stringify(data);
+        if (this.lastEmitJson.get(cacheKey) === json) return;
+        this.lastEmitJson.set(cacheKey, json);
+        emit(data as T);
+      };
       const handlers: SubscriptionHandlers = {
-        onSnapshot: data => emit(data as T),
-        onUpdate: data => emit(data as T),
+        onSnapshot: dedupedEmit,
+        onUpdate: dedupedEmit,
         onError,
       };
       const sub = this.getSocket().subscribe(scope, id, handlers);

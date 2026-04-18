@@ -35,6 +35,7 @@ import {
   notifyAdventuresUser,
   notifyAdventuresUsers,
   notifyAdventurePlayers,
+  notifyAdventureDetail,
   notifySafe,
 } from '../ws/notify.js';
 import {
@@ -271,6 +272,7 @@ export async function createMap(
     await tx.insert(maps).values({ id, adventureId, name, description, ty, ffa, imagePath: '' });
   });
 
+  await notifySafe(notifyAdventureDetail(adventureId));
   return id;
 }
 
@@ -360,6 +362,7 @@ export async function cloneMap(
     }
   });
 
+  await notifySafe(notifyAdventureDetail(adventureId));
   return id;
 }
 
@@ -518,6 +521,8 @@ export async function deleteMap(db: Db, uid: string, adventureId: string, mapId:
 
   // CASCADE handles map_changes
   await db.delete(maps).where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)));
+
+  await notifySafe(notifyAdventureDetail(adventureId));
 }
 
 // ─── Invites ─────────────────────────────────────────────────────────────────
@@ -586,6 +591,7 @@ export async function updateAdventure(
   await notifySafe(
     notifyAdventuresUsers(memberRows.map(r => r.userId)),
     notifyAdventurePlayers(adventureId),
+    notifyAdventureDetail(adventureId),
   );
 }
 
@@ -601,6 +607,8 @@ export async function updateMap(
   await db.update(maps)
     .set(fields)
     .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)));
+
+  await notifySafe(notifyAdventureDetail(adventureId));
 }
 
 export async function updatePlayer(

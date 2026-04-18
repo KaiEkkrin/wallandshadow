@@ -225,11 +225,12 @@ export class HonoWebSocket {
       }
       case 'roomUpdate': {
         // Routed by scope (+ id for non-user scopes) to every matching
-        // subscription. For `adventures` the server only broadcasts to this
-        // user's own room, so any update frame matches.
+        // subscription. User-scoped updates (`adventures`, `profile`) only
+        // reach the user's own room, so no id match is needed.
+        const isUserScoped = frame.scope === 'adventures' || frame.scope === 'profile';
         for (const [, sub] of this.subs) {
           if (sub.scope !== frame.scope) continue;
-          if (sub.scope !== 'adventures' && sub.id !== frame.key) continue;
+          if (!isUserScoped && sub.id !== frame.key) continue;
           sub.handlers.onUpdate(this.decode(frame.scope, frame.data));
         }
         return;

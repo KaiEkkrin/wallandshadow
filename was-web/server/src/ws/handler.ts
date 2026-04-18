@@ -14,6 +14,9 @@ import {
   snapshotPlayers,
   snapshotSpritesheets,
   snapshotMapChanges,
+  snapshotProfile,
+  snapshotAdventureDetail,
+  snapshotMap,
 } from './subscriptions.js';
 import type { Change, UpdateScope } from '@wallandshadow/shared';
 
@@ -24,8 +27,14 @@ const WS_PATH = '/ws';
 // are tagged with `scope` so the client routes them correctly.
 const SCOPE_ROOMS: Record<UpdateScope, 'mapRooms' | 'adventureRooms' | 'userRooms'> = {
   adventures: 'userRooms',
+  profile: 'userRooms',
   players: 'adventureRooms',
   spritesheets: 'adventureRooms',
+  adventure: 'adventureRooms',
+  // `map` subscriptions room by adventureId so a single adventure-level
+  // NOTIFY can reach every map view in that adventure; the wire `key` is the
+  // mapId and the client filters on it.
+  map: 'adventureRooms',
   mapChanges: 'mapRooms',
 };
 
@@ -211,8 +220,13 @@ async function resolveSubscribe(
 ): Promise<{ key: string; data: unknown }> {
   switch (frame.scope) {
     case 'adventures':
-      // User-scoped — `id` is ignored.
       return { key: uid, data: await snapshotAdventures(db, uid) };
+
+    case 'profile': {
+      const data = await snapshotProfile(db, uid);
+      if (!data) throw new Error('User not found');
+      return { key: uid, data };
+    }
 
     case 'players': {
       const adventureId = requireId(frame);
@@ -230,6 +244,30 @@ async function resolveSubscribe(
         snapshotSpritesheets(db, adventureId),
       ]);
       return { key: adventureId, data };
+    }
+
+    case 'adventure': {
+      const adventureId = requireId(frame);
+      const [, data] = await Promise.all([
+        assertAdventureMember(db, uid, adventureId),
+        snapshotAdventureDetail(db, adventureId),
+      ]);
+      if (!data) throw new Error('Adventure not found');
+      return { key: adventureId, data };
+    }
+
+    case 'map': {
+      const mapId = requireId(frame);
+      const [mapRow] = await db.select({ adventureId: maps.adventureId })
+        .from(maps).where(eq(maps.id, mapId)).limit(1);
+      if (!mapRow) throw new Error('Map not found');
+      const [, pair] = await Promise.all([
+        assertAdventureMember(db, uid, mapRow.adventureId),
+        snapshotMap(db, mapRow.adventureId, mapId),
+      ]);
+      if (!pair) throw new Error('Map not found');
+      // Room keyed by adventureId; client filters incoming updates by mapId.
+      return { key: mapRow.adventureId, data: pair };
     }
 
     case 'mapChanges': {

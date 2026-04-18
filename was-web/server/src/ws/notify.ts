@@ -6,19 +6,22 @@ import { eq } from 'drizzle-orm';
 import { logger } from '../services/logger.js';
 import type { RoomManager, Rooms } from './rooms.js';
 import {
-  snapshotAdventures,
   snapshotPlayers,
   snapshotSpritesheets,
+  snapshotProfile,
+  snapshotAdventureDetail,
+  fetchAdventureMapPairs,
 } from './subscriptions.js';
 
-// map_changes payload = `<mapId>:<changeId>` — the listener forwards the
-// stored JSONB verbatim to preserve incremental-application semantics.
-// The other three channels carry a single id; the listener re-queries the
-// same snapshot the subscribe path uses.
+// map_changes carries `<mapId>:<changeId>` and forwards the stored JSONB
+// verbatim to preserve incremental-application semantics. All other channels
+// carry a single id and the listener re-queries a fresh snapshot.
 const CH_MAP_CHANGES = 'map_changes';
 const CH_ADVENTURES_USER = 'adventures_user';
 const CH_ADVENTURE_PLAYERS = 'adventure_players';
 const CH_ADVENTURE_SPRITESHEETS = 'adventure_spritesheets';
+const CH_USER_PROFILE = 'user_profile';
+const CH_ADVENTURE_DETAIL = 'adventure_detail';
 
 function encodeUpdate(scope: UpdateScope, key: string, data: unknown): string {
   return JSON.stringify({ type: 'roomUpdate', scope, key, data });
@@ -53,6 +56,12 @@ export async function startNotifyListener(
         case CH_ADVENTURE_SPRITESHEETS:
           await handleAdventureSpritesheets(msg.payload, rooms.adventureRooms);
           return;
+        case CH_USER_PROFILE:
+          await handleUserProfile(msg.payload, rooms.userRooms);
+          return;
+        case CH_ADVENTURE_DETAIL:
+          await handleAdventureDetail(msg.payload, rooms.adventureRooms);
+          return;
       }
     } catch (e) {
       logger.logError(`NOTIFY handler failed on channel ${msg.channel}`, e);
@@ -65,6 +74,8 @@ export async function startNotifyListener(
     await client.query(`LISTEN ${CH_ADVENTURES_USER}`);
     await client.query(`LISTEN ${CH_ADVENTURE_PLAYERS}`);
     await client.query(`LISTEN ${CH_ADVENTURE_SPRITESHEETS}`);
+    await client.query(`LISTEN ${CH_USER_PROFILE}`);
+    await client.query(`LISTEN ${CH_ADVENTURE_DETAIL}`);
     client.on('notification', onNotification);
     client.on('error', onError);
   }
@@ -122,8 +133,11 @@ async function handleMapChanges(payload: string, mapRooms: RoomManager): Promise
 
 async function handleAdventuresUser(userId: string, userRooms: RoomManager): Promise<void> {
   if (!userRooms.hasRoom(userId)) return;
-  const data = await snapshotAdventures(db, userId);
-  userRooms.broadcast(userId, encodeUpdate('adventures', userId, data));
+  // profile embeds adventures, so one query feeds both scopes.
+  const profile = await snapshotProfile(db, userId);
+  if (!profile) return;
+  userRooms.broadcast(userId, encodeUpdate('adventures', userId, profile.adventures));
+  userRooms.broadcast(userId, encodeUpdate('profile', userId, profile));
 }
 
 async function handleAdventurePlayers(adventureId: string, adventureRooms: RoomManager): Promise<void> {
@@ -136,6 +150,29 @@ async function handleAdventureSpritesheets(adventureId: string, adventureRooms: 
   if (!adventureRooms.hasRoom(adventureId)) return;
   const data = await snapshotSpritesheets(db, adventureId);
   adventureRooms.broadcast(adventureId, encodeUpdate('spritesheets', adventureId, data));
+}
+
+async function handleUserProfile(userId: string, userRooms: RoomManager): Promise<void> {
+  if (!userRooms.hasRoom(userId)) return;
+  const data = await snapshotProfile(db, userId);
+  if (!data) return;
+  userRooms.broadcast(userId, encodeUpdate('profile', userId, data));
+}
+
+async function handleAdventureDetail(adventureId: string, adventureRooms: RoomManager): Promise<void> {
+  if (!adventureRooms.hasRoom(adventureId)) return;
+  // Adventure-level change invalidates both the `adventure` detail and every
+  // `map` subscription in that adventure. Both scopes share adventureRooms.
+  const [detail, pairs] = await Promise.all([
+    snapshotAdventureDetail(db, adventureId),
+    fetchAdventureMapPairs(db, adventureId),
+  ]);
+  if (!detail) return;
+  adventureRooms.broadcast(adventureId, encodeUpdate('adventure', adventureId, detail));
+  for (const pair of pairs) {
+    // `map` subs room by adventureId; clients filter by `key === mapId`.
+    adventureRooms.broadcast(adventureId, encodeUpdate('map', pair.map.id, pair));
+  }
 }
 
 // pg_notify via parameters escapes the payload; safer than manual quoting.
@@ -161,6 +198,14 @@ export async function notifyAdventurePlayers(adventureId: string): Promise<void>
 
 export async function notifyAdventureSpritesheets(adventureId: string): Promise<void> {
   await notify(CH_ADVENTURE_SPRITESHEETS, adventureId);
+}
+
+export async function notifyUserProfile(userId: string): Promise<void> {
+  await notify(CH_USER_PROFILE, userId);
+}
+
+export async function notifyAdventureDetail(adventureId: string): Promise<void> {
+  await notify(CH_ADVENTURE_DETAIL, adventureId);
 }
 
 /** Fire NOTIFYs concurrently; log and swallow failures so callers don't have
