@@ -1,43 +1,50 @@
 import type { WebSocket } from 'ws';
 
-export class MapRoomManager {
+/**
+ * Key → set of WebSockets with broadcast. Used for maps (keyed by mapId),
+ * adventures (keyed by adventureId) and users (keyed by userId).
+ */
+export class RoomManager {
   private rooms = new Map<string, Set<WebSocket>>();
 
-  join(mapId: string, ws: WebSocket): void {
-    let room = this.rooms.get(mapId);
+  join(key: string, ws: WebSocket): void {
+    let room = this.rooms.get(key);
     if (!room) {
       room = new Set();
-      this.rooms.set(mapId, room);
+      this.rooms.set(key, room);
     }
     room.add(ws);
   }
 
-  leave(mapId: string, ws: WebSocket): void {
-    const room = this.rooms.get(mapId);
+  leave(key: string, ws: WebSocket): void {
+    const room = this.rooms.get(key);
     if (room) {
       room.delete(ws);
       if (room.size === 0) {
-        this.rooms.delete(mapId);
+        this.rooms.delete(key);
       }
     }
   }
 
-  /** Broadcast a message to all clients in a room. */
-  broadcast(mapId: string, message: string): void {
-    const room = this.rooms.get(mapId);
+  broadcast(key: string, message: string): void {
+    const room = this.rooms.get(key);
     if (!room) return;
     for (const ws of room) {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(message);
-      }
+      if (ws.readyState === ws.OPEN) ws.send(message);
     }
   }
 
-  hasRoom(mapId: string): boolean {
-    return this.rooms.has(mapId);
+  hasRoom(key: string): boolean {
+    return this.rooms.has(key);
   }
 
-  roomSize(mapId: string): number {
-    return this.rooms.get(mapId)?.size ?? 0;
+  roomSize(key: string): number {
+    return this.rooms.get(key)?.size ?? 0;
   }
+}
+
+export interface Rooms {
+  mapRooms: RoomManager;
+  adventureRooms: RoomManager;
+  userRooms: RoomManager;
 }

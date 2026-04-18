@@ -24,20 +24,30 @@ function HonoContextProvider(props: IContextProviderProps) {
   useEffect(() => {
     const storageService = new HonoStorage(apiClient);
     const resolveImageUrl = createResolveImageUrl(storageService);
+    let currentDataService: HonoDataService | undefined;
 
-    return auth.onAuthStateChanged(user => {
+    const unsub = auth.onAuthStateChanged(user => {
+      // Tear down the previous session's WebSocket before replacing context.
+      currentDataService?.dispose();
       if (user) {
+        currentDataService = new HonoDataService(apiClient, user.uid);
         setUserContext({
           user,
-          dataService: new HonoDataService(apiClient, user.uid),
+          dataService: currentDataService,
           functionsService: new HonoFunctionsService(apiClient),
           storageService,
           resolveImageUrl,
         });
       } else {
+        currentDataService = undefined;
         setUserContext({ user: null });
       }
     }, e => console.error('Authentication state error:', e));
+
+    return () => {
+      unsub();
+      currentDataService?.dispose();
+    };
   }, [auth, apiClient]);
 
   return (
