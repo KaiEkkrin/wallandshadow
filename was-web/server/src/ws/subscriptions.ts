@@ -1,9 +1,10 @@
-import { eq } from 'drizzle-orm';
-import type { Changes, ICharacter } from '@wallandshadow/shared';
+import { eq, and } from 'drizzle-orm';
+import type { Changes, ICharacter, MapType, UserLevel } from '@wallandshadow/shared';
 import type { Db } from '../db/connection.js';
 import {
   adventures,
   adventurePlayers,
+  maps as mapsTable,
   spritesheets,
   users,
 } from '../db/schema.js';
@@ -45,6 +46,45 @@ export interface SpritesheetRowPayload {
 
 export interface MapChangesScopePayload {
   changes: Changes[];
+}
+
+export interface MapRowPayload {
+  adventureId: string;
+  id: string;
+  name: string;
+  description: string;
+  ty: string;
+  ffa: boolean;
+  imagePath: string;
+}
+
+export interface MapSummaryRowPayload {
+  adventureId: string;
+  id: string;
+  name: string;
+  description: string;
+  ty: string;
+  imagePath: string;
+}
+
+export interface AdventureDetailPayload extends AdventureRowPayload {
+  maps: MapSummaryRowPayload[];
+}
+
+export interface MapScopePayload {
+  adventure: AdventureRowPayload;
+  map: MapRowPayload;
+}
+
+export interface ProfilePayload {
+  me: {
+    uid: string;
+    email: string | null;
+    emailVerified: boolean;
+    name: string;
+    level: UserLevel;
+  };
+  adventures: AdventureRowPayload[];
 }
 
 /** The full list of adventures user X is a member of — matches GET /api/adventures. */
@@ -150,5 +190,205 @@ export async function snapshotMapChanges(database: Db, mapId: string): Promise<M
   if (baseRow) out.push(baseRow.changes as Changes);
   for (const row of incrementalRows) out.push(row.changes as Changes);
   return { changes: out };
+}
+
+/** Shared row fetcher used by both the REST `GET /api/auth/me` and the WS `profile` snapshot. */
+export async function fetchMeRow(database: Db, uid: string) {
+  const [user] = await database.select({
+    id: users.id,
+    email: users.email,
+    emailVerified: users.emailVerified,
+    name: users.name,
+    level: users.level,
+  }).from(users).where(eq(users.id, uid)).limit(1);
+  return user;
+}
+
+export async function snapshotProfile(database: Db, uid: string): Promise<ProfilePayload | null> {
+  const [me, advs] = await Promise.all([
+    fetchMeRow(database, uid),
+    snapshotAdventures(database, uid),
+  ]);
+  if (!me) return null;
+  return {
+    me: {
+      uid: me.id,
+      email: me.email,
+      emailVerified: me.emailVerified,
+      name: me.name,
+      level: me.level as UserLevel,
+    },
+    adventures: advs,
+  };
+}
+
+/** Adventure detail (metadata + maps list) — matches GET /api/adventures/:id. */
+export async function snapshotAdventureDetail(
+  database: Db,
+  adventureId: string,
+): Promise<AdventureDetailPayload | null> {
+  const [advRows, mapRows] = await Promise.all([
+    database
+      .select({
+        id: adventures.id,
+        name: adventures.name,
+        description: adventures.description,
+        ownerId: adventures.ownerId,
+        imagePath: adventures.imagePath,
+        ownerName: users.name,
+      })
+      .from(adventures)
+      .innerJoin(users, eq(adventures.ownerId, users.id))
+      .where(eq(adventures.id, adventureId))
+      .limit(1),
+    database
+      .select({
+        id: mapsTable.id,
+        name: mapsTable.name,
+        description: mapsTable.description,
+        ty: mapsTable.ty,
+        imagePath: mapsTable.imagePath,
+      })
+      .from(mapsTable)
+      .where(eq(mapsTable.adventureId, adventureId)),
+  ]);
+
+  const adv = advRows[0];
+  if (!adv) return null;
+  return {
+    id: adv.id,
+    name: adv.name,
+    description: adv.description,
+    owner: adv.ownerId,
+    ownerName: adv.ownerName,
+    imagePath: adv.imagePath,
+    maps: mapRows.map(m => ({
+      adventureId,
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      ty: m.ty as MapType,
+      imagePath: m.imagePath,
+    })),
+  };
+}
+
+/** { map, adventure } — matches the pair HonoDataService.get('map') composes today. */
+export async function snapshotMap(
+  database: Db,
+  adventureId: string,
+  mapId: string,
+): Promise<MapScopePayload | null> {
+  const [mapRows, advRows] = await Promise.all([
+    database
+      .select({
+        id: mapsTable.id,
+        name: mapsTable.name,
+        description: mapsTable.description,
+        ty: mapsTable.ty,
+        ffa: mapsTable.ffa,
+        imagePath: mapsTable.imagePath,
+      })
+      .from(mapsTable)
+      .where(and(eq(mapsTable.id, mapId), eq(mapsTable.adventureId, adventureId)))
+      .limit(1),
+    database
+      .select({
+        id: adventures.id,
+        name: adventures.name,
+        description: adventures.description,
+        ownerId: adventures.ownerId,
+        imagePath: adventures.imagePath,
+        ownerName: users.name,
+      })
+      .from(adventures)
+      .innerJoin(users, eq(adventures.ownerId, users.id))
+      .where(eq(adventures.id, adventureId))
+      .limit(1),
+  ]);
+
+  const mapRow = mapRows[0];
+  const advRow = advRows[0];
+  if (!mapRow || !advRow) return null;
+  return {
+    adventure: {
+      id: advRow.id,
+      name: advRow.name,
+      description: advRow.description,
+      owner: advRow.ownerId,
+      ownerName: advRow.ownerName,
+      imagePath: advRow.imagePath,
+    },
+    map: {
+      adventureId,
+      id: mapRow.id,
+      name: mapRow.name,
+      description: mapRow.description,
+      ty: mapRow.ty,
+      ffa: mapRow.ffa,
+      imagePath: mapRow.imagePath,
+    },
+  };
+}
+
+/**
+ * Fetch the adventure row + every map row in one pair of queries, then build
+ * all `{ adventure, map }` scope payloads locally. This is what the NOTIFY
+ * fan-out calls so a single adventure-level NOTIFY doesn't become O(maps)
+ * round-trips to Postgres.
+ */
+export async function fetchAdventureMapPairs(
+  database: Db,
+  adventureId: string,
+): Promise<MapScopePayload[]> {
+  const [advRows, mapRows] = await Promise.all([
+    database
+      .select({
+        id: adventures.id,
+        name: adventures.name,
+        description: adventures.description,
+        ownerId: adventures.ownerId,
+        imagePath: adventures.imagePath,
+        ownerName: users.name,
+      })
+      .from(adventures)
+      .innerJoin(users, eq(adventures.ownerId, users.id))
+      .where(eq(adventures.id, adventureId))
+      .limit(1),
+    database
+      .select({
+        id: mapsTable.id,
+        name: mapsTable.name,
+        description: mapsTable.description,
+        ty: mapsTable.ty,
+        ffa: mapsTable.ffa,
+        imagePath: mapsTable.imagePath,
+      })
+      .from(mapsTable)
+      .where(eq(mapsTable.adventureId, adventureId)),
+  ]);
+
+  const adv = advRows[0];
+  if (!adv) return [];
+  const advPayload: AdventureRowPayload = {
+    id: adv.id,
+    name: adv.name,
+    description: adv.description,
+    owner: adv.ownerId,
+    ownerName: adv.ownerName,
+    imagePath: adv.imagePath,
+  };
+  return mapRows.map(m => ({
+    adventure: advPayload,
+    map: {
+      adventureId,
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      ty: m.ty,
+      ffa: m.ffa,
+      imagePath: m.imagePath,
+    },
+  }));
 }
 
