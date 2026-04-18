@@ -28,11 +28,21 @@ import {
   MapRow,
   PlayerRow,
   InviteDetailRow,
+  SpritesheetRow,
 } from './honoApi';
-import { MapWebSocket } from './honoWebSocket';
+import { HonoWebSocket, SubscriptionHandlers } from './honoWebSocket';
 import { PollingWatch } from './pollingWatch';
 
 const POLL_INTERVAL_MS = 500;
+
+interface PlayersScopeData {
+  adventure: AdventureRow | null;
+  players: PlayerRow[];
+}
+
+interface MapChangesSnapshot {
+  changes: Changes[];
+}
 
 // ── Reference types ──────────────────────────────────────────────────────────
 
@@ -250,10 +260,31 @@ function passthroughConverter<T>(): IConverter<T> {
 export class HonoDataService implements IDataService {
   private readonly api: HonoApiClient;
   private readonly uid: string;
+  private socket: HonoWebSocket | null = null;
 
   constructor(api: HonoApiClient, uid: string) {
     this.api = api;
     this.uid = uid;
+  }
+
+  /**
+   * Lazily open the multiplexed WS. Waits until the API has a token before
+   * the first subscribe so we never connect unauthenticated.
+   */
+  private getSocket(): HonoWebSocket {
+    if (!this.socket) {
+      const token = this.api.getToken();
+      if (!token) throw new Error('Not authenticated');
+      this.socket = new HonoWebSocket(this.api.baseUrl, token);
+    }
+    return this.socket;
+  }
+
+  dispose(): void {
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
   }
 
   // ── IDataView CRUD ──────────────────────────────────────────────────────
@@ -581,10 +612,16 @@ export class HonoDataService implements IDataService {
   // ── Map changes ─────────────────────────────────────────────────────────
 
   async addChanges(adventureId: string, _uid: string, mapId: string, changes: Change[]): Promise<void> {
-    await this.api.addMapChanges(adventureId, mapId, changes);
+    await this.getSocket().sendMapChange(adventureId, mapId, changes);
   }
 
-  // ── Watch methods (polling) ─────────────────────────────────────────────
+  // ── Watch methods ───────────────────────────────────────────────────────
+  //
+  // `watch` for a single document ref still polls: the refs it covers change
+  // infrequently, the shape is heterogeneous, and a per-path subscription
+  // would add server surface for little gain. The four scope-specific
+  // watchers below (adventures, players, spritesheets, changes) are the
+  // hot paths and go over the multiplexed WebSocket.
 
   watch<T>(
     d: IDataReference<T>,
@@ -602,14 +639,11 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    const w = new PollingWatch(
-      () => this.api.getAdventures().then(rows => rows.map(r => ({
-        id: r.id,
-        record: adventureRowToIAdventure(r),
-      }))),
-      onNext, onError, 500,
-    );
-    return () => w.stop();
+    const emit = (rows: AdventureRow[]) => onNext(rows.map(r => ({
+      id: r.id,
+      record: adventureRowToIAdventure(r),
+    })));
+    return this.subscribe<AdventureRow[]>('adventures', undefined, emit, onError);
   }
 
   watchChanges(
@@ -619,14 +653,21 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    const token = this.api.getToken();
-    if (!token) {
-      onError?.(new Error('Not authenticated'));
+    try {
+      const sub = this.getSocket().subscribe('mapChanges', mapId, {
+        onSnapshot: (data) => {
+          const snap = data as MapChangesSnapshot;
+          for (const c of snap.changes) onNext(c);
+        },
+        onUpdate: (data) => onNext(data as Changes),
+        onError,
+      });
+      return () => sub.unsubscribe();
+    } catch (e) {
+      console.error('watchChanges subscribe failed:', e);
+      onError?.(e instanceof Error ? e : new Error(String(e)));
       return () => {};
     }
-
-    const ws = new MapWebSocket(this.api.baseUrl, mapId, token, onNext, onError);
-    return () => ws.close();
   }
 
   watchPlayers(
@@ -635,14 +676,11 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    const w = new PollingWatch(
-      () => Promise.all([
-        this.api.getPlayers(adventureId).catch(e => isNotFound(e) ? [] as PlayerRow[] : Promise.reject(e)),
-        this.api.getAdventure(adventureId).catch(() => emptyAdventureRow(adventureId)),
-      ]).then(([players, adv]) => players.map(p => playerRowToIPlayer(p, adv))),
-      onNext, onError, 500,
-    );
-    return () => w.stop();
+    const emit = (payload: PlayersScopeData) => {
+      const adv = payload.adventure ?? emptyAdventureRow(adventureId);
+      onNext(payload.players.map(p => playerRowToIPlayer(p, adv)));
+    };
+    return this.subscribe<PlayersScopeData>('players', adventureId, emit, onError);
   }
 
   watchSharedAdventures(
@@ -651,13 +689,13 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    const w = new PollingWatch(
-      () => this.api.getAdventures().then(rows =>
-        rows.filter(r => r.owner !== this.uid)
-          .map(r => adventureRowToSelfPlayer(r, this.uid))),
-      onNext, onError, 500,
+    // Shared adventures are just the subset of this user's adventures not
+    // owned by them. Derive from the same subscription.
+    const emit = (rows: AdventureRow[]) => onNext(
+      rows.filter(r => r.owner !== this.uid)
+        .map(r => adventureRowToSelfPlayer(r, this.uid)),
     );
-    return () => w.stop();
+    return this.subscribe<AdventureRow[]>('adventures', undefined, emit, onError);
   }
 
   watchSpritesheets(
@@ -666,17 +704,34 @@ export class HonoDataService implements IDataService {
     onError?: ((error: Error) => void) | undefined,
     _onCompletion?: (() => void) | undefined
   ): () => void {
-    const w = new PollingWatch(
-      () => this.api.getSpritesheets(adventureId)
-        .catch(e => isNotFound(e) ? [] : Promise.reject(e))
-        .then(rows => rows.map(r => new HonoDataAndReference<ISpritesheet>(
-          r.id,
-          `adventures/${adventureId}/spritesheets/${r.id}`,
-          passthroughConverter(),
-          spritesheetRowToISpritesheet(r),
-        ))),
-      onNext, onError, 500,
-    );
-    return () => w.stop();
+    const emit = (rows: SpritesheetRow[]) => onNext(rows.map(r => new HonoDataAndReference<ISpritesheet>(
+      r.id,
+      `adventures/${adventureId}/spritesheets/${r.id}`,
+      passthroughConverter(),
+      spritesheetRowToISpritesheet(r),
+    )));
+    return this.subscribe<SpritesheetRow[]>('spritesheets', adventureId, emit, onError);
+  }
+
+  /** Thin adapter: treat snapshot + update frames the same from the caller's view. */
+  private subscribe<T>(
+    scope: 'adventures' | 'players' | 'spritesheets',
+    id: string | undefined,
+    emit: (data: T) => void,
+    onError?: (error: Error) => void,
+  ): () => void {
+    try {
+      const handlers: SubscriptionHandlers = {
+        onSnapshot: data => emit(data as T),
+        onUpdate: data => emit(data as T),
+        onError,
+      };
+      const sub = this.getSocket().subscribe(scope, id, handlers);
+      return () => sub.unsubscribe();
+    } catch (e) {
+      console.error(`${scope} subscribe failed:`, e);
+      onError?.(e instanceof Error ? e : new Error(String(e)));
+      return () => {};
+    }
   }
 }

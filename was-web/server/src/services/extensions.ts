@@ -30,7 +30,13 @@ import {
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
-import { notifyMapChange } from '../ws/notify.js';
+import {
+  notifyMapChange,
+  notifyAdventuresUser,
+  notifyAdventuresUsers,
+  notifyAdventurePlayers,
+  notifySafe,
+} from '../ws/notify.js';
 import {
   adventures,
   adventurePlayers,
@@ -197,6 +203,7 @@ export async function createAdventure(
     });
   });
 
+  await notifySafe(notifyAdventuresUser(uid));
   return id;
 }
 
@@ -211,8 +218,15 @@ export async function deleteAdventure(db: Db, uid: string, adventureId: string):
     throwApiError('not-found', 'Adventure not found');
   }
 
+  // Capture members now so we can notify them after CASCADE wipes the rows.
+  const memberRows = await db.select({ userId: adventurePlayers.userId })
+    .from(adventurePlayers)
+    .where(eq(adventurePlayers.adventureId, adventureId));
+
   // CASCADE handles maps, map_changes, adventure_players, spritesheets, invites
   await db.delete(adventures).where(eq(adventures.id, adventureId));
+
+  await notifySafe(notifyAdventuresUsers(memberRows.map(r => r.userId)));
 }
 
 // ─── Maps ────────────────────────────────────────────────────────────────────
@@ -565,6 +579,14 @@ export async function updateAdventure(
   await db.update(adventures)
     .set(fields)
     .where(eq(adventures.id, adventureId));
+
+  const memberRows = await db.select({ userId: adventurePlayers.userId })
+    .from(adventurePlayers)
+    .where(eq(adventurePlayers.adventureId, adventureId));
+  await notifySafe(
+    notifyAdventuresUsers(memberRows.map(r => r.userId)),
+    notifyAdventurePlayers(adventureId),
+  );
 }
 
 export async function updateMap(
@@ -603,6 +625,11 @@ export async function updatePlayer(
       eq(adventurePlayers.adventureId, adventureId),
       eq(adventurePlayers.userId, playerId),
     ));
+
+  await notifySafe(
+    notifyAdventurePlayers(adventureId),
+    notifyAdventuresUser(playerId),
+  );
 }
 
 export async function leaveAdventure(db: Db, uid: string, adventureId: string): Promise<void> {
@@ -621,6 +648,11 @@ export async function leaveAdventure(db: Db, uid: string, adventureId: string): 
       eq(adventurePlayers.adventureId, adventureId),
       eq(adventurePlayers.userId, uid),
     ));
+
+  await notifySafe(
+    notifyAdventurePlayers(adventureId),
+    notifyAdventuresUser(uid),
+  );
 }
 
 // ─── Map changes ─────────────────────────────────────────────────────────────
@@ -663,7 +695,7 @@ export async function addMapChanges(
     // download them. Orphans are reconciled at consolidation time.
     await syncMapImagesFromChanges(tx, mapId, chs);
   });
-  await notifyMapChange(mapId, id).catch(e => console.error('NOTIFY failed:', e));
+  await notifySafe(notifyMapChange(mapId, id));
   return id;
 }
 
@@ -686,7 +718,7 @@ export async function joinAdventure(
 
   const adventureId = invite.adventureId;
 
-  return await db.transaction(async (tx) => {
+  const joinedAdventureId = await db.transaction(async (tx) => {
     // Get adventure owner's policy for player cap
     const [adventure] = await tx.select({ ownerId: adventures.ownerId, name: adventures.name })
       .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
@@ -732,4 +764,11 @@ export async function joinAdventure(
 
     return adventureId;
   });
+
+  await notifySafe(
+    notifyAdventurePlayers(joinedAdventureId),
+    notifyAdventuresUser(uid),
+  );
+
+  return joinedAdventureId;
 }

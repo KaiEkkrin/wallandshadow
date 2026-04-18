@@ -1,4 +1,4 @@
-import type { Change, ICharacter, IInviteExpiryPolicy, MapType, UserLevel } from '@wallandshadow/shared';
+import type { ICharacter, IInviteExpiryPolicy, MapType, UserLevel } from '@wallandshadow/shared';
 
 // ── Response types ───────────────────────────────────────────────────────────
 
@@ -220,10 +220,6 @@ export class HonoApiClient {
 
   deleteMap(adventureId: string, mapId: string): Promise<void> {
     return this.request('DELETE', `/api/adventures/${adventureId}/maps/${mapId}`);
-  }
-
-  addMapChanges(adventureId: string, mapId: string, chs: Change[]): Promise<{ id: string }> {
-    return this.request('POST', `/api/adventures/${adventureId}/maps/${mapId}/changes`, { chs });
   }
 
   // ── Invites ────────────────────────────────────────────────────────���──────
