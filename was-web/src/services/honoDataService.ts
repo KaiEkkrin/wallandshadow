@@ -43,6 +43,8 @@ interface PlayersScopeData {
 
 interface MapChangesSnapshot {
   changes: Changes[];
+  lastSeq: string | null;
+  full: boolean;
 }
 
 // ── Reference types ──────────────────────────────────────────────────────────
@@ -707,7 +709,8 @@ export class HonoDataService implements IDataService {
     mapId: string,
     onNext: (changes: Changes) => void,
     onError?: ((error: Error) => void) | undefined,
-    _onCompletion?: (() => void) | undefined
+    _onCompletion?: (() => void) | undefined,
+    onSubscribed?: (() => void) | undefined,
   ): () => void {
     try {
       const sub = this.getSocket().subscribe('mapChanges', mapId, {
@@ -715,8 +718,12 @@ export class HonoDataService implements IDataService {
           const snap = data as MapChangesSnapshot;
           for (const c of snap.changes) onNext(c);
         },
-        onUpdate: (data) => onNext(data as Changes),
+        onUpdate: (data) => {
+          const { changes } = data as { seq: string; changes: Changes };
+          onNext(changes);
+        },
         onError,
+        onSubscribed,
       });
       return () => sub.unsubscribe();
     } catch (e) {

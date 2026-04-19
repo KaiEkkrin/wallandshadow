@@ -13,9 +13,10 @@ import {
   fetchAdventureMapPairs,
 } from './subscriptions.js';
 
-// map_changes carries `<mapId>:<changeId>` and forwards the stored JSONB
-// verbatim to preserve incremental-application semantics. All other channels
-// carry a single id and the listener re-queries a fresh snapshot.
+// map_changes carries `<mapId>:<changeId>:<seq>` and forwards the stored JSONB
+// wrapped in { seq, changes } so clients can track their last-seen seq for
+// catch-up on reconnect. All other channels carry a single id and the listener
+// re-queries a fresh snapshot.
 const CH_MAP_CHANGES = 'map_changes';
 const CH_ADVENTURES_USER = 'adventures_user';
 const CH_ADVENTURE_PLAYERS = 'adventure_players';
@@ -115,11 +116,13 @@ export async function startNotifyListener(
 // ── Per-channel handlers ────────────────────────────────────────────────────
 
 async function handleMapChanges(payload: string, mapRooms: RoomManager): Promise<void> {
-  const sep = payload.indexOf(':');
-  if (sep === -1) return;
-  const mapId = payload.slice(0, sep);
-  const changeId = payload.slice(sep + 1);
-  if (!mapId || !changeId) return;
+  // Payload format: `<mapId>:<changeId>:<seq>`. UUIDs contain only hex + dashes
+  // (no colons), so splitting on ':' is unambiguous.
+  const parts = payload.split(':');
+  const mapId = parts[0];
+  const changeId = parts[1];
+  const seq = parts[2];
+  if (!mapId || !changeId || !seq) return;
   if (!mapRooms.hasRoom(mapId)) return;
 
   const [row] = await db.select({ changes: mapChanges.changes })
@@ -128,7 +131,7 @@ async function handleMapChanges(payload: string, mapRooms: RoomManager): Promise
     .limit(1);
   if (!row) return;
 
-  mapRooms.broadcast(mapId, encodeUpdate('mapChanges', mapId, row.changes));
+  mapRooms.broadcast(mapId, encodeUpdate('mapChanges', mapId, { seq, changes: row.changes }));
 }
 
 async function handleAdventuresUser(userId: string, userRooms: RoomManager): Promise<void> {
@@ -180,8 +183,8 @@ async function notify(channel: string, payload: string): Promise<void> {
   await pool.query('SELECT pg_notify($1, $2)', [channel, payload]);
 }
 
-export async function notifyMapChange(mapId: string, changeId: string): Promise<void> {
-  await notify(CH_MAP_CHANGES, `${mapId}:${changeId}`);
+export async function notifyMapChange(mapId: string, changeId: string, seq: string): Promise<void> {
+  await notify(CH_MAP_CHANGES, `${mapId}:${changeId}:${seq}`);
 }
 
 export async function notifyAdventuresUser(userId: string): Promise<void> {

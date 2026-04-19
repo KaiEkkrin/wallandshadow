@@ -106,6 +106,7 @@ interface SubscribeFrame {
   subId: number;
   scope: UpdateScope;
   id?: string;
+  lastSeq?: string;  // mapChanges scope only: last seq seen by client for catch-up
 }
 interface UnsubscribeFrame {
   type: 'unsubscribe';
@@ -117,6 +118,7 @@ interface MapChangeFrame {
   adventureId: string;
   mapId: string;
   chs: Change[];
+  idempotencyKey?: string;  // client-generated UUID for deduplication on reconnect
 }
 
 type ClientFrame = SubscribeFrame | UnsubscribeFrame | MapChangeFrame;
@@ -205,9 +207,11 @@ async function handleMapChange(
     // addMapChanges performs its own membership + map lookup, so we don't
     // need to pre-validate. It inserts and fires NOTIFY, which feeds the
     // broadcast back to every subscribed socket in the room.
-    const changeId = await addMapChanges(db, state.uid, frame.adventureId, frame.mapId, frame.chs);
+    const { id, seq } = await addMapChanges(
+      db, state.uid, frame.adventureId, frame.mapId, frame.chs, frame.idempotencyKey,
+    );
     if (frame.ackId !== undefined) {
-      sendIfOpen(ws, { type: 'mapChangeAck', ackId: frame.ackId, id: changeId });
+      sendIfOpen(ws, { type: 'mapChangeAck', ackId: frame.ackId, id, seq });
     }
   } catch (e) {
     if (!(e instanceof HTTPException)) {
@@ -284,7 +288,7 @@ async function resolveSubscribe(
         .from(maps).where(eq(maps.id, mapId)).limit(1);
       if (!mapRow) throw new Error('Map not found');
       await assertAdventureMember(db, uid, mapRow.adventureId);
-      return { key: mapId, data: await snapshotMapChanges(db, mapId) };
+      return { key: mapId, data: await snapshotMapChanges(db, mapId, frame.lastSeq) };
     }
   }
 }

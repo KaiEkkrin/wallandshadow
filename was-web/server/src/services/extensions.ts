@@ -56,16 +56,16 @@ import dayjs from 'dayjs';
 /** Fetch base and incremental map changes in parallel. */
 export async function fetchMapChanges(db: Db, mapId: string) {
   const [baseRows, incrementalRows] = await Promise.all([
-    db.select({ id: mapChanges.id, changes: mapChanges.changes })
+    db.select({ id: mapChanges.id, seq: mapChanges.seq, changes: mapChanges.changes })
       .from(mapChanges)
-      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.incremental, false)))
+      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, true)))
       .limit(1),
-    db.select({ id: mapChanges.id, changes: mapChanges.changes })
+    db.select({ id: mapChanges.id, seq: mapChanges.seq, changes: mapChanges.changes })
       .from(mapChanges)
-      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.incremental, true)))
-      .orderBy(mapChanges.createdAt),
+      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false)))
+      .orderBy(mapChanges.seq),
   ]);
-  return { baseRow: baseRows[0] as { id: string; changes: unknown } | undefined, incrementalRows };
+  return { baseRow: baseRows[0] as { id: string; seq: bigint; changes: unknown } | undefined, incrementalRows };
 }
 
 // ─── Map images junction ─────────────────────────────────────────────────────
@@ -349,15 +349,14 @@ export async function cloneMap(
 
     // Copy the consolidated base state to the new map
     if (baseChange !== undefined) {
-      const baseChangeRow = {
-        id: id, // deterministic: base row id == map id
+      await tx.insert(mapChanges).values({
+        id: uuidv7(),
         mapId: id,
         changes: baseChange as unknown as object,
-        incremental: false,
+        isBase: true,
         resync: baseChange.resync ?? false,
         userId: uid,
-      };
-      await tx.insert(mapChanges).values(baseChangeRow);
+      });
       await syncMapImagesFromChanges(tx, id, baseChange.chs);
     }
   });
@@ -382,97 +381,107 @@ async function tryConsolidateMapChanges(
   syncChanges?: (tokenDict: ITokenDictionary) => void,
 ): Promise<ConsolidateResult> {
   const converter = createChangesConverter();
+  let notifyInfo: { id: string; seq: string } | undefined;
 
-  // Fetch base change row (id == mapId by convention)
-  const baseRows = await db.select({ id: mapChanges.id, changes: mapChanges.changes })
-    .from(mapChanges)
-    .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.incremental, false)))
-    .limit(1);
-  const baseRow = baseRows[0];
-  const baseChange: Changes | undefined = baseRow
-    ? converter.convert(baseRow.changes as Record<string, unknown>)
-    : undefined;
+  // All reads and writes happen inside a single transaction. The exclusive
+  // advisory lock (acquired first, released on commit) prevents concurrent
+  // writes from getting a seq lower than the new base's seq, which would
+  // strand those incrementals on connected clients.
+  const result = await db.transaction(async (tx): Promise<ConsolidateResult> => {
+    const lockRows = await tx.execute(
+      sql`SELECT pg_try_advisory_xact_lock(hashtext(${mapId})) AS acquired`,
+    );
+    const acquired = (lockRows.rows[0] as { acquired: boolean }).acquired;
+    if (!acquired) return { baseChange: undefined, isNew: false };
 
-  // Fetch up to 499 incremental changes
-  const incrementalRows = await db.select({ id: mapChanges.id, changes: mapChanges.changes })
-    .from(mapChanges)
-    .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.incremental, true)))
-    .orderBy(mapChanges.createdAt)
-    .limit(499);
+    const baseRows = await tx.select({ id: mapChanges.id, seq: mapChanges.seq, changes: mapChanges.changes })
+      .from(mapChanges)
+      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, true)))
+      .limit(1);
+    const baseRow = baseRows[0];
+    const baseChange: Changes | undefined = baseRow
+      ? converter.convert(baseRow.changes as Record<string, unknown>)
+      : undefined;
 
-  if (incrementalRows.length === 0) {
-    return { baseChange, isNew: false };
-  }
+    // Fetch up to 499 incremental changes ordered by seq
+    const incrementalRows = await tx.select({ id: mapChanges.id, changes: mapChanges.changes })
+      .from(mapChanges)
+      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false)))
+      .orderBy(mapChanges.seq)
+      .limit(499);
 
-  // Look up owner policy for object cap
-  const [user] = await db.select({ level: users.level })
-    .from(users).where(eq(users.id, m.owner)).limit(1);
-  const ownerPolicy = getUserPolicy((user?.level ?? 'standard') as UserLevel);
-
-  // Replay all changes through SimpleChangeTracker
-  const tokenDict = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
-  const outlineTokenDict = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
-  const tracker = new SimpleChangeTracker(
-    new FeatureDictionary<GridCoord, StripedArea>(coordString),
-    new FeatureDictionary<GridCoord, StripedArea>(coordString),
-    tokenDict,
-    outlineTokenDict,
-    new FeatureDictionary<GridEdge, IFeature<GridEdge>>(edgeString),
-    new FeatureDictionary<GridCoord, IAnnotation>(coordString),
-    new IdDictionary<IMapImage>(),
-    ownerPolicy,
-  );
-
-  if (baseChange !== undefined) {
-    trackChanges(m, tracker, baseChange.chs, baseChange.user);
-  }
-
-  let isResync = resync;
-  for (const row of incrementalRows) {
-    const ch = converter.convert(row.changes as Record<string, unknown>);
-    const success = trackChanges(m, tracker, ch.chs, ch.user);
-    if (success === false) {
-      isResync = true;
+    if (incrementalRows.length === 0) {
+      return { baseChange, isNew: false };
     }
-  }
 
-  syncChanges?.(tokenDict);
-  const consolidated: Change[] = tracker.getConsolidated();
+    // Look up owner policy for object cap
+    const [user] = await tx.select({ level: users.level })
+      .from(users).where(eq(users.id, m.owner)).limit(1);
+    const ownerPolicy = getUserPolicy((user?.level ?? 'standard') as UserLevel);
 
-  // Write consolidated state atomically.
-  // Use the adventure owner as the user — the base change contains all users' changes
-  // merged together, and trackChanges enforces ownership (e.g. only the owner can edit
-  // areas). Using the consolidator's UID would cause trackChange to reject owner-only
-  // operations when a player triggers consolidation.
-  const newBaseChange: Changes = {
-    chs: consolidated,
-    timestamp: Date.now(),
-    incremental: false,
-    user: m.owner,
-    resync: isResync,
-  };
+    // Replay all changes through SimpleChangeTracker
+    const tokenDict = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
+    const outlineTokenDict = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
+    const tracker = new SimpleChangeTracker(
+      new FeatureDictionary<GridCoord, StripedArea>(coordString),
+      new FeatureDictionary<GridCoord, StripedArea>(coordString),
+      tokenDict,
+      outlineTokenDict,
+      new FeatureDictionary<GridEdge, IFeature<GridEdge>>(edgeString),
+      new FeatureDictionary<GridCoord, IAnnotation>(coordString),
+      new IdDictionary<IMapImage>(),
+      ownerPolicy,
+    );
 
-  await db.transaction(async (tx) => {
+    if (baseChange !== undefined) {
+      trackChanges(m, tracker, baseChange.chs, baseChange.user);
+    }
+
+    let isResync = resync;
+    for (const row of incrementalRows) {
+      const ch = converter.convert(row.changes as Record<string, unknown>);
+      const success = trackChanges(m, tracker, ch.chs, ch.user);
+      if (success === false) {
+        isResync = true;
+      }
+    }
+
+    syncChanges?.(tokenDict);
+    const consolidated: Change[] = tracker.getConsolidated();
+
+    // Use the adventure owner as the consolidated-state author — the base change
+    // contains all users' changes merged together, and trackChanges enforces
+    // ownership (e.g. only the owner can edit areas). Using the consolidator's UID
+    // would cause trackChange to reject owner-only operations when a player triggers
+    // consolidation.
+    const newBaseChange: Changes = {
+      chs: consolidated,
+      timestamp: Date.now(),
+      incremental: false,
+      user: m.owner,
+      resync: isResync,
+    };
+
+    let returning: { id: string; seq: bigint }[];
     if (baseRow) {
-      // Lock the base row and update it
-      await tx.execute(sql`SELECT id FROM map_changes WHERE id = ${baseRow.id} FOR UPDATE`);
-      await tx.update(mapChanges)
+      returning = await tx.update(mapChanges)
         .set({ changes: newBaseChange as unknown as object, resync: isResync, userId: uid })
-        .where(eq(mapChanges.id, baseRow.id));
+        .where(eq(mapChanges.id, baseRow.id))
+        .returning({ id: mapChanges.id, seq: mapChanges.seq });
     } else {
-      // First consolidation: insert base row using map ID as its ID
-      await tx.insert(mapChanges).values({
-        id: mapId,
+      // First consolidation: fresh UUID, not the map ID.
+      returning = await tx.insert(mapChanges).values({
+        id: uuidv7(),
         mapId,
         changes: newBaseChange as unknown as object,
-        incremental: false,
+        isBase: true,
         resync: isResync,
         userId: uid,
-      }).onConflictDoUpdate({
-        target: mapChanges.id,
-        set: { changes: newBaseChange as unknown as object, resync: isResync, userId: uid },
-      });
+      }).returning({ id: mapChanges.id, seq: mapChanges.seq });
     }
+
+    const returnedRow = returning[0];
+    if (!returnedRow) throwApiError('internal', 'Failed to write consolidated base change');
 
     // Delete the processed incremental rows
     const ids = incrementalRows.map(r => r.id);
@@ -482,12 +491,18 @@ async function tryConsolidateMapChanges(
     // Images that were added but then removed between consolidations drop
     // out here, which revokes access for non-owners.
     await replaceMapImages(tx, mapId, consolidated);
+
+    notifyInfo = { id: returnedRow.id, seq: returnedRow.seq.toString() };
+    return { baseChange: newBaseChange, isNew: true };
   });
 
-  const baseId = baseRow?.id ?? mapId;
-  await notifyMapChange(mapId, baseId).catch(e => console.error('NOTIFY failed:', e));
+  if (notifyInfo) {
+    await notifyMapChange(mapId, notifyInfo.id, notifyInfo.seq).catch(e =>
+      console.error('NOTIFY failed:', e),
+    );
+  }
 
-  return { baseChange: newBaseChange, isNew: true };
+  return result;
 }
 
 export async function consolidateMapChanges(
@@ -671,7 +686,8 @@ export async function addMapChanges(
   adventureId: string,
   mapId: string,
   chs: Change[],
-): Promise<string> {
+  idempotencyKey?: string,
+): Promise<{ id: string; seq: string }> {
   await assertAdventureMember(db, uid, adventureId);
 
   const [mapRow] = await db.select({ id: maps.id })
@@ -682,7 +698,6 @@ export async function addMapChanges(
     throwApiError('not-found', 'Map not found');
   }
 
-  const id = uuidv7();
   const changesDoc: Changes = {
     chs,
     timestamp: Date.now(),
@@ -690,21 +705,60 @@ export async function addMapChanges(
     user: uid,
     resync: false,
   };
+
+  let result: { id: string; seq: string } | undefined;
+
   await db.transaction(async (tx) => {
-    await tx.insert(mapChanges).values({
-      id,
-      mapId,
-      changes: changesDoc as unknown as object,
-      incremental: true,
-      resync: false,
-      userId: uid,
-    });
+    // Shared advisory lock: compatible with other writes, but blocks if an
+    // exclusive consolidation lock is held. Ensures all incrementals get a
+    // seq higher than the base row written at the end of consolidation.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(hashtext(${mapId}))`);
+
+    const id = uuidv7();
+    let returning: { id: string; seq: bigint }[];
+
+    if (idempotencyKey) {
+      returning = await tx.insert(mapChanges).values({
+        id,
+        mapId,
+        changes: changesDoc as unknown as object,
+        isBase: false,
+        resync: false,
+        userId: uid,
+        idempotencyKey,
+      }).onConflictDoNothing().returning({ id: mapChanges.id, seq: mapChanges.seq });
+
+      if (returning.length === 0) {
+        // Duplicate submission: fetch the existing row by idempotency key.
+        returning = await tx.select({ id: mapChanges.id, seq: mapChanges.seq })
+          .from(mapChanges)
+          .where(eq(mapChanges.idempotencyKey, idempotencyKey))
+          .limit(1);
+      }
+    } else {
+      returning = await tx.insert(mapChanges).values({
+        id,
+        mapId,
+        changes: changesDoc as unknown as object,
+        isBase: false,
+        resync: false,
+        userId: uid,
+      }).returning({ id: mapChanges.id, seq: mapChanges.seq });
+    }
+
+    const row = returning[0];
+    if (!row) throwApiError('internal', 'Failed to insert map change');
+
     // Record any new placed-image paths so other adventure members can
     // download them. Orphans are reconciled at consolidation time.
     await syncMapImagesFromChanges(tx, mapId, chs);
+
+    result = { id: row.id, seq: row.seq.toString() };
   });
-  await notifySafe(notifyMapChange(mapId, id));
-  return id;
+
+  if (!result) throwApiError('internal', 'Failed to insert map change');
+  await notifySafe(notifyMapChange(mapId, result.id, result.seq));
+  return result;
 }
 
 // ─── Invites ─────────────────────────────────────────────────────────────────

@@ -102,6 +102,7 @@ interface ServerFrame {
   message?: string;
   ackId?: number;
   id?: string;
+  seq?: string;
   error?: string;
 }
 
@@ -211,7 +212,8 @@ describe('mapChanges subscription', () => {
     const ws = await connectWs(token);
     send(ws, { type: 'subscribe', subId: 1, scope: 'mapChanges', id: mId });
     const snap = await waitForFrame(ws, f => f.type === 'snapshot' && f.subId === 1);
-    const payload = snap.data as { changes: Changes[] };
+    const payload = snap.data as { changes: Changes[]; lastSeq: string | null; full: boolean };
+    expect(payload.full).toBe(true);
     expect(payload.changes.length).toBeGreaterThan(0);
     // The consolidated base comes first
     expect(payload.changes[0].incremental).toBe(false);
@@ -258,10 +260,12 @@ describe('mapChanges subscription', () => {
       waitForFrame(peer, f => f.type === 'roomUpdate' && f.scope === 'mapChanges' && f.key === mId),
     ]);
     expect(ack.id).toBeTruthy();
+    expect(ack.seq).toBeTruthy();
     expect(ack.error).toBeUndefined();
-    const data = update.data as Changes;
-    expect(data.incremental).toBe(true);
-    expect(data.chs[0].cat).toBe(ChangeCategory.Token);
+    const data = update.data as { seq: string; changes: Changes };
+    expect(data.seq).toBeTruthy();
+    expect(data.changes.incremental).toBe(true);
+    expect(data.changes.chs[0].cat).toBe(ChangeCategory.Token);
 
     writer.close();
     peer.close();
@@ -310,6 +314,69 @@ describe('mapChanges subscription', () => {
     ]);
     expect(gotFrame).toBe(false);
     ws.close();
+  });
+
+  test('reconnect with lastSeq receives delta snapshot (full: false)', async () => {
+    const { token, uid } = await registerUser(app, 'WsLastSeq1');
+    const aId = await createAdventure(token);
+    const mId = await createMap(token, aId);
+
+    // Subscribe and receive initial empty snapshot
+    const ws1 = await connectWs(token);
+    send(ws1, { type: 'subscribe', subId: 1, scope: 'mapChanges', id: mId });
+    const snap1 = await waitForFrame(ws1, f => f.type === 'snapshot' && f.subId === 1);
+    const p1 = snap1.data as { changes: Changes[]; lastSeq: string | null; full: boolean };
+    expect(p1.full).toBe(true);
+
+    // Post a change via REST so the socket receives an update
+    await postMapChanges(app, token, aId, mId, [createAddToken1(uid)]);
+    const update = await waitForFrame(ws1, f => f.type === 'roomUpdate' && f.scope === 'mapChanges' && f.key === mId);
+    const updateData = update.data as { seq: string; changes: Changes };
+    const seenSeq = updateData.seq;
+    ws1.close();
+
+    // Reconnect with lastSeq — should receive delta (no base, full: false)
+    const ws2 = await connectWs(token);
+    send(ws2, { type: 'subscribe', subId: 1, scope: 'mapChanges', id: mId, lastSeq: seenSeq });
+    const snap2 = await waitForFrame(ws2, f => f.type === 'snapshot' && f.subId === 1);
+    const p2 = snap2.data as { changes: Changes[]; lastSeq: string | null; full: boolean };
+    expect(p2.full).toBe(false);
+    expect(p2.changes).toHaveLength(0); // no new changes after seenSeq
+    ws2.close();
+  });
+
+  test('reconnect after consolidation triggers full reload (full: true)', async () => {
+    const { token, uid } = await registerUser(app, 'WsLastSeq2');
+    const aId = await createAdventure(token);
+    const mId = await createMap(token, aId);
+
+    // Post a change and consolidate it
+    await postMapChanges(app, token, aId, mId, [createAddToken1(uid)]);
+    await apiPost(app, `/api/adventures/${aId}/maps/${mId}/consolidate`, {}, token);
+
+    // Subscribe and grab lastSeq from snapshot
+    const ws1 = await connectWs(token);
+    send(ws1, { type: 'subscribe', subId: 1, scope: 'mapChanges', id: mId });
+    const snap1 = await waitForFrame(ws1, f => f.type === 'snapshot' && f.subId === 1);
+    const p1 = snap1.data as { changes: Changes[]; lastSeq: string | null; full: boolean };
+    expect(p1.full).toBe(true);
+    expect(p1.lastSeq).toBeTruthy();
+    const lastSeq = p1.lastSeq!;
+    ws1.close();
+
+    // Add another incremental, then consolidate again — lastSeq is now stale
+    await postMapChanges(app, token, aId, mId, [createAddWall1()]);
+    await apiPost(app, `/api/adventures/${aId}/maps/${mId}/consolidate`, {}, token);
+
+    // Reconnect with the stale lastSeq — should get a full reload
+    const ws2 = await connectWs(token);
+    send(ws2, { type: 'subscribe', subId: 1, scope: 'mapChanges', id: mId, lastSeq });
+    const snap2 = await waitForFrame(ws2, f => f.type === 'snapshot' && f.subId === 1);
+    const p2 = snap2.data as { changes: Changes[]; lastSeq: string | null; full: boolean };
+    expect(p2.full).toBe(true);
+    expect(p2.changes.length).toBeGreaterThan(0);
+    expect(p2.changes[0].incremental).toBe(false); // base comes first
+    ws2.close();
   });
 
   test('close prunes all subscribed rooms', async () => {

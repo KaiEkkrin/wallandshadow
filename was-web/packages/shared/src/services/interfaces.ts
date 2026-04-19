@@ -139,7 +139,8 @@ export interface IDataService extends IDataView {
     mapId: string,
     onNext: (changes: Changes) => void,
     onError?: ((error: Error) => void) | undefined,
-    onCompletion?: (() => void) | undefined
+    onCompletion?: (() => void) | undefined,
+    onSubscribed?: (() => void) | undefined  // called when a full-reload snapshot arrives
   ): () => void;
 
   // Watches the players in a particular adventure.

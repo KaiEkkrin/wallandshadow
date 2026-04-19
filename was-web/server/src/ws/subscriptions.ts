@@ -1,10 +1,11 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, gt } from 'drizzle-orm';
 import type { Changes, ICharacter, MapType, UserLevel } from '@wallandshadow/shared';
 import type { Db } from '../db/connection.js';
 import {
   adventures,
   adventurePlayers,
   maps as mapsTable,
+  mapChanges,
   spritesheets,
   users,
 } from '../db/schema.js';
@@ -46,6 +47,8 @@ export interface SpritesheetRowPayload {
 
 export interface MapChangesScopePayload {
   changes: Changes[];
+  lastSeq: string | null;  // seq of the last change in this payload, null if no changes
+  full: boolean;           // true = client should reset before applying; false = delta
 }
 
 export interface MapRowPayload {
@@ -183,13 +186,58 @@ export async function snapshotSpritesheets(database: Db, adventureId: string): P
   }));
 }
 
-/** Base + incremental change documents for a map, in apply order. */
-export async function snapshotMapChanges(database: Db, mapId: string): Promise<MapChangesScopePayload> {
+/** Base + incremental change documents for a map, in apply order.
+ *
+ * If `lastSeq` is provided and still exists as an incremental row, returns only
+ * the delta (changes with seq > lastSeq, full: false). If the seq has been
+ * consolidated away, falls back to a full reload (full: true).
+ */
+export async function snapshotMapChanges(
+  database: Db,
+  mapId: string,
+  lastSeq?: string,
+): Promise<MapChangesScopePayload> {
+  if (lastSeq !== undefined) {
+    const seqBig = BigInt(lastSeq);
+
+    // Check whether the client's last-seen incremental still exists
+    const [existing] = await database
+      .select({ seq: mapChanges.seq })
+      .from(mapChanges)
+      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false), eq(mapChanges.seq, seqBig)))
+      .limit(1);
+
+    if (existing) {
+      // Delta path: send only what the client hasn't seen yet
+      const deltaRows = await database
+        .select({ seq: mapChanges.seq, changes: mapChanges.changes })
+        .from(mapChanges)
+        .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false), gt(mapChanges.seq, seqBig)))
+        .orderBy(mapChanges.seq);
+
+      const out = deltaRows.map(r => r.changes as Changes);
+      const newLastSeq = deltaRows.length > 0
+        ? deltaRows[deltaRows.length - 1].seq.toString()
+        : lastSeq;
+      return { changes: out, lastSeq: newLastSeq, full: false };
+    }
+    // Fall through to full reload — the seq was consolidated.
+  }
+
+  // Full reload
   const { baseRow, incrementalRows } = await fetchMapChanges(database, mapId);
   const out: Changes[] = [];
   if (baseRow) out.push(baseRow.changes as Changes);
   for (const row of incrementalRows) out.push(row.changes as Changes);
-  return { changes: out };
+
+  let lastSeqOut: string | null = null;
+  if (incrementalRows.length > 0) {
+    lastSeqOut = incrementalRows[incrementalRows.length - 1].seq.toString();
+  } else if (baseRow) {
+    lastSeqOut = baseRow.seq.toString();
+  }
+
+  return { changes: out, lastSeq: lastSeqOut, full: true };
 }
 
 /** Shared row fetcher used by both the REST `GET /api/auth/me` and the WS `profile` snapshot. */
