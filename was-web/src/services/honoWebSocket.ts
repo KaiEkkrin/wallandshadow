@@ -1,6 +1,9 @@
 import { Change, Changes, UpdateScope, createChangesConverter } from '@wallandshadow/shared';
 
 // Wire-compatible with was-web/server/src/ws/{handler,notify,subscriptions}.ts.
+// Application-specific close code: token verification failed.
+// Kept in sync with the server constant in ws/handler.ts.
+const WS_CLOSE_AUTH_REJECTED = 4001;
 
 export type { UpdateScope };
 
@@ -54,6 +57,11 @@ interface ActiveSubscription {
  * and every pending map-change ack for this tab's data service. Auto-reconnects
  * with exponential backoff; on reconnect it re-sends each active `subscribe`
  * so callers never see a blip beyond one extra snapshot.
+ *
+ * If the server closes the connection with code 4001 (auth failure), retrying
+ * is stopped and `onAuthFailure` is called so the app can redirect to login.
+ * On each reconnect the token is fetched fresh via `getToken()`, so a silently
+ * renewed OIDC token is picked up automatically.
  */
 export class HonoWebSocket {
   private ws: WebSocket | null = null;
@@ -61,7 +69,9 @@ export class HonoWebSocket {
   private reconnectDelay = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-  private readonly url: string;
+  private readonly baseHttpUrl: string;
+  private readonly getToken: () => string | null;
+  private readonly onAuthFailure: () => void;
   private readonly changesConverter = createChangesConverter();
 
   private nextSubId = 1;
@@ -75,16 +85,20 @@ export class HonoWebSocket {
   private readonly sendQueue: string[] = [];
   private static readonly SEND_QUEUE_LIMIT = 256;
 
-  constructor(baseUrl: string, token: string) {
+  constructor(baseUrl: string, getToken: () => string | null, onAuthFailure: () => void) {
     // In dev, __HONO_WS_BASE__ is injected by Vite's `define` to point directly
     // at the Hono server (e.g. 'http://localhost:3000'), bypassing Vite's unreliable
     // WS proxy. In production it's '' (same origin).
-    const httpUrl = __HONO_WS_BASE__ || baseUrl || window.location.origin;
-    const wsProtocol = httpUrl.startsWith('https') ? 'wss' : 'ws';
-    const host = httpUrl.replace(/^https?:\/\//, '');
-    this.url = `${wsProtocol}://${host}/ws?token=${encodeURIComponent(token)}`;
-
+    this.baseHttpUrl = __HONO_WS_BASE__ || baseUrl || window.location.origin;
+    this.getToken = getToken;
+    this.onAuthFailure = onAuthFailure;
     this.connect();
+  }
+
+  private buildUrl(token: string): string {
+    const wsProtocol = this.baseHttpUrl.startsWith('https') ? 'wss' : 'ws';
+    const host = this.baseHttpUrl.replace(/^https?:\/\//, '');
+    return `${wsProtocol}://${host}/ws?token=${encodeURIComponent(token)}`;
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -142,8 +156,14 @@ export class HonoWebSocket {
   private connect(): void {
     if (this.closed) return;
 
+    const token = this.getToken();
+    if (!token) {
+      this.onAuthFailure();
+      return;
+    }
+
     try {
-      this.ws = new WebSocket(this.url);
+      this.ws = new WebSocket(this.buildUrl(token));
     } catch (e) {
       console.error('WebSocket connect failed:', e);
       this.failPendingAcks(e);
@@ -166,9 +186,16 @@ export class HonoWebSocket {
     };
 
     this.ws.onmessage = (event) => this.onMessage(event.data as string);
-    this.ws.onclose = () => {
+    this.ws.onclose = (event: CloseEvent) => {
       this.failPendingAcks(new Error('WebSocket closed'));
-      if (!this.closed) this.scheduleReconnect();
+      if (this.closed) return;
+      if (event.code === WS_CLOSE_AUTH_REJECTED) {
+        // Server explicitly rejected our token. Stop retrying — the app needs
+        // to re-authenticate rather than loop forever with an expired token.
+        this.onAuthFailure();
+      } else {
+        this.scheduleReconnect();
+      }
     };
     this.ws.onerror = () => { /* surfaced via onclose */ };
   }

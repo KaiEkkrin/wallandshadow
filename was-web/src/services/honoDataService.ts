@@ -261,6 +261,7 @@ function passthroughConverter<T>(): IConverter<T> {
 export class HonoDataService implements IDataService {
   private readonly api: HonoApiClient;
   private readonly uid: string;
+  private readonly onAuthFailure: () => void;
   private socket: HonoWebSocket | null = null;
 
   /**
@@ -271,20 +272,23 @@ export class HonoDataService implements IDataService {
    */
   private readonly lastEmitJson = new Map<string, string>();
 
-  constructor(api: HonoApiClient, uid: string) {
+  constructor(api: HonoApiClient, uid: string, onAuthFailure: () => void) {
     this.api = api;
     this.uid = uid;
+    this.onAuthFailure = onAuthFailure;
   }
 
   /**
-   * Lazily open the multiplexed WS. Waits until the API has a token before
-   * the first subscribe so we never connect unauthenticated.
+   * Lazily open the multiplexed WS. The token is fetched fresh on every
+   * reconnect via the callback so silently-renewed OIDC tokens are picked up.
    */
   private getSocket(): HonoWebSocket {
     if (!this.socket) {
-      const token = this.api.getToken();
-      if (!token) throw new Error('Not authenticated');
-      this.socket = new HonoWebSocket(this.api.baseUrl, token);
+      this.socket = new HonoWebSocket(
+        this.api.baseUrl,
+        () => this.api.getToken(),
+        this.onAuthFailure,
+      );
     }
     return this.socket;
   }
