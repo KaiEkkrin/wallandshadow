@@ -154,6 +154,14 @@ export default defineConfig({
       // to ws://localhost:5000/ rather than ws://0.0.0.0:5000/ (which Firefox rejects).
       host: 'localhost',
     },
+    // Pre-transform the entry point at startup so it's in Vite's module cache
+    // before the browser requests it. Without this, HMR-triggered full reloads
+    // race against Vite's init phase: the browser requests @react-refresh and
+    // index.tsx before Vite is ready to serve them, causing module load failures
+    // that leave the static banner ("Wall & Shadow is loading.") stuck on screen.
+    warmup: {
+      clientFiles: ['./src/index.tsx'],
+    },
     proxy: {
       // Proxy /api requests to the Hono server.
       // WebSocket goes directly to the Hono server (see __HONO_WS_BASE__ above)
