@@ -3,6 +3,7 @@ import {
   uuid,
   text,
   boolean,
+  bigint,
   integer,
   timestamp,
   jsonb,
@@ -81,13 +82,21 @@ export const mapImages = pgTable('map_images', {
 export const mapChanges = pgTable('map_changes', {
   id: uuid('id').primaryKey(),
   mapId: uuid('map_id').notNull().references(() => maps.id, { onDelete: 'cascade' }),
+  seq: bigint('seq', { mode: 'bigint' }).generatedAlwaysAsIdentity().notNull(),
+  isBase: boolean('is_base').notNull().default(false),
   changes: jsonb('changes').notNull(),
-  incremental: boolean('incremental').notNull(),
   resync: boolean('resync').notNull().default(false),
   userId: uuid('user_id').references(() => users.id),
+  idempotencyKey: uuid('idempotency_key'),
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
-  index('map_changes_lookup_idx').on(t.mapId, t.incremental, t.createdAt),
+  index('map_changes_map_seq_idx').on(t.mapId, t.seq)
+    .where(sql`is_base = false`),
+  uniqueIndex('map_changes_base_idx').on(t.mapId)
+    .where(sql`is_base = true`),
+  uniqueIndex('map_changes_idempotency_key_idx').on(t.idempotencyKey)
+    .where(sql`idempotency_key IS NOT NULL`),
+  check('map_changes_resync_check', sql`resync = false OR is_base = true`),
 ]);
 
 export const images = pgTable('images', {

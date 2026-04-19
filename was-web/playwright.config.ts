@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * Tests run against the Hono REST API server and the Vite dev server.
  * Each test is fully isolated (unique users via UUID emails) so tests
- * run in parallel across 50% of available CPU cores.
+ * run in parallel across multiple workers.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -21,7 +21,11 @@ export default defineConfig({
   fullyParallel: !process.env.CI, // Parallel locally (isolated via unique users), serial in CI
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 1 : '50%', // Serial in CI, 50% of cores locally
+  // Serial in CI. Locally, 2 workers keeps Playwright's Firefox dev build
+  // under its per-process memory ceiling — at 10 workers we saw
+  // NS_ERROR_OUT_OF_MEMORY and zombie browser processes that ignored the
+  // test timeout, even with 20+ GB of host memory free.
+  workers: process.env.CI ? 1 : 2,
 
   // Reporter configuration
   reporter: [

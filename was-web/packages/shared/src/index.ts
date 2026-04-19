@@ -28,3 +28,4 @@ export * from './services/converter';
 export * from './services/helpers';
 export * from './services/interfaces';
 export * from './services/request';
+export * from './services/wsProtocol';

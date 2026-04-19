@@ -2,19 +2,13 @@ import { Hono } from 'hono';
 import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { db } from '../db/connection.js';
 import {
-  adventures,
-  adventurePlayers,
-  maps,
-  users,
-} from '../db/schema.js';
-import { eq } from 'drizzle-orm';
-import {
   createAdventure,
   deleteAdventure,
   updateAdventure,
   leaveAdventure,
   assertAdventureMember,
 } from '../services/extensions.js';
+import { snapshotAdventures, snapshotAdventureDetail } from '../ws/subscriptions.js';
 
 export const adventureRoutes = new Hono<{ Variables: AuthVariables }>();
 
@@ -24,29 +18,7 @@ adventureRoutes.use('/*', authMiddleware);
 
 adventureRoutes.get('/adventures', async (c) => {
   const uid = c.get('uid');
-
-  const rows = await db
-    .select({
-      id: adventures.id,
-      name: adventures.name,
-      description: adventures.description,
-      ownerId: adventures.ownerId,
-      imagePath: adventures.imagePath,
-      ownerName: users.name,
-    })
-    .from(adventurePlayers)
-    .innerJoin(adventures, eq(adventurePlayers.adventureId, adventures.id))
-    .innerJoin(users, eq(adventures.ownerId, users.id))
-    .where(eq(adventurePlayers.userId, uid));
-
-  return c.json(rows.map(r => ({
-    id: r.id,
-    name: r.name,
-    description: r.description,
-    owner: r.ownerId,
-    ownerName: r.ownerName,
-    imagePath: r.imagePath,
-  })));
+  return c.json(await snapshotAdventures(db, uid));
 });
 
 // ── Get one adventure ────────────────────────────────────────────────────────
@@ -55,53 +27,14 @@ adventureRoutes.get('/adventures/:id', async (c) => {
   const uid = c.get('uid');
   const adventureId = c.req.param('id');
 
-  await assertAdventureMember(db, uid, adventureId);
-
-  const [adv] = await db
-    .select({
-      id: adventures.id,
-      name: adventures.name,
-      description: adventures.description,
-      ownerId: adventures.ownerId,
-      imagePath: adventures.imagePath,
-      ownerName: users.name,
-    })
-    .from(adventures)
-    .innerJoin(users, eq(adventures.ownerId, users.id))
-    .where(eq(adventures.id, adventureId))
-    .limit(1);
-
-  if (!adv) {
+  const [, detail] = await Promise.all([
+    assertAdventureMember(db, uid, adventureId),
+    snapshotAdventureDetail(db, adventureId),
+  ]);
+  if (!detail) {
     return c.json({ error: 'Adventure not found' }, 404);
   }
-
-  const mapRows = await db
-    .select({
-      id: maps.id,
-      name: maps.name,
-      description: maps.description,
-      ty: maps.ty,
-      imagePath: maps.imagePath,
-    })
-    .from(maps)
-    .where(eq(maps.adventureId, adventureId));
-
-  return c.json({
-    id: adv.id,
-    name: adv.name,
-    description: adv.description,
-    owner: adv.ownerId,
-    ownerName: adv.ownerName,
-    imagePath: adv.imagePath,
-    maps: mapRows.map(m => ({
-      adventureId,
-      id: m.id,
-      name: m.name,
-      description: m.description,
-      ty: m.ty,
-      imagePath: m.imagePath,
-    })),
-  });
+  return c.json(detail);
 });
 
 // ── Create adventure ─────────────────────────────────────────────────────────

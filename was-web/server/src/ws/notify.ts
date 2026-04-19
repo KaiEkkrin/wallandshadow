@@ -1,55 +1,88 @@
 import pg from 'pg';
-import { db } from '../db/connection.js';
-import { pool } from '../db/connection.js';
+import type { UpdateScope } from '@wallandshadow/shared';
+import { db, pool } from '../db/connection.js';
 import { mapChanges } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import type { MapRoomManager } from './rooms.js';
+import { logger } from '../services/logger.js';
+import type { RoomManager, Rooms } from './rooms.js';
+import {
+  snapshotPlayers,
+  snapshotSpritesheets,
+  snapshotProfile,
+  snapshotAdventureDetail,
+  fetchAdventureMapPairs,
+} from './subscriptions.js';
 
-const CHANNEL = 'map_changes';
+// map_changes carries `<mapId>:<changeId>:<seq>` and forwards the stored JSONB
+// wrapped in { seq, changes } so clients can track their last-seen seq for
+// catch-up on reconnect. All other channels carry a single id and the listener
+// re-queries a fresh snapshot.
+const CH_MAP_CHANGES = 'map_changes';
+const CH_ADVENTURES_USER = 'adventures_user';
+const CH_ADVENTURE_PLAYERS = 'adventure_players';
+const CH_ADVENTURE_SPRITESHEETS = 'adventure_spritesheets';
+const CH_USER_PROFILE = 'user_profile';
+const CH_ADVENTURE_DETAIL = 'adventure_detail';
+
+function encodeUpdate(scope: UpdateScope, key: string, data: unknown): string {
+  return JSON.stringify({ type: 'roomUpdate', scope, key, data });
+}
 
 /**
- * Start a PostgreSQL LISTEN connection that broadcasts new map changes
- * to WebSocket rooms. NOTIFY payload is `mapId:changeId`.
+ * Start a PostgreSQL LISTEN connection that fans NOTIFYs out to the right
+ * WebSocket rooms. Listens on all four channels on a single client to avoid
+ * holding multiple dedicated connections.
  */
 export async function startNotifyListener(
   connectionString: string,
-  rooms: MapRoomManager,
+  rooms: Rooms,
 ): Promise<{ stop: () => Promise<void> }> {
   let client = new pg.Client({ connectionString });
   let stopped = false;
 
-  function onNotification(msg: pg.Notification) {
-    if (msg.channel !== CHANNEL || !msg.payload) return;
+  async function onNotification(msg: pg.Notification) {
+    if (!msg.payload) return;
 
-    const sep = msg.payload.indexOf(':');
-    if (sep === -1) return;
-    const mapId = msg.payload.slice(0, sep);
-    const changeId = msg.payload.slice(sep + 1);
-    if (!mapId || !changeId) return;
-
-    if (!rooms.hasRoom(mapId)) return;
-
-    db.select({ changes: mapChanges.changes })
-      .from(mapChanges)
-      .where(eq(mapChanges.id, changeId))
-      .limit(1)
-      .then(([row]) => {
-        if (row) {
-          rooms.broadcast(mapId, JSON.stringify(row.changes));
-        }
-      })
-      .catch(e => console.error('Failed to fetch change for broadcast:', e));
+    try {
+      switch (msg.channel) {
+        case CH_MAP_CHANGES:
+          await handleMapChanges(msg.payload, rooms.mapRooms);
+          return;
+        case CH_ADVENTURES_USER:
+          await handleAdventuresUser(msg.payload, rooms.userRooms);
+          return;
+        case CH_ADVENTURE_PLAYERS:
+          await handleAdventurePlayers(msg.payload, rooms.adventureRooms);
+          return;
+        case CH_ADVENTURE_SPRITESHEETS:
+          await handleAdventureSpritesheets(msg.payload, rooms.adventureRooms);
+          return;
+        case CH_USER_PROFILE:
+          await handleUserProfile(msg.payload, rooms.userRooms);
+          return;
+        case CH_ADVENTURE_DETAIL:
+          await handleAdventureDetail(msg.payload, rooms.adventureRooms);
+          return;
+      }
+    } catch (e) {
+      logger.logError(`NOTIFY handler failed on channel ${msg.channel}`, e);
+    }
   }
 
   async function connect() {
     await client.connect();
-    await client.query(`LISTEN ${CHANNEL}`);
+    await client.query(`LISTEN ${CH_MAP_CHANGES}`);
+    await client.query(`LISTEN ${CH_ADVENTURES_USER}`);
+    await client.query(`LISTEN ${CH_ADVENTURE_PLAYERS}`);
+    await client.query(`LISTEN ${CH_ADVENTURE_SPRITESHEETS}`);
+    await client.query(`LISTEN ${CH_USER_PROFILE}`);
+    await client.query(`LISTEN ${CH_ADVENTURE_DETAIL}`);
     client.on('notification', onNotification);
     client.on('error', onError);
   }
 
   function onError(e: Error) {
-    console.error('LISTEN client error:', e);
+    logger.logWarning('LISTEN client error; will reconnect', e);
     if (!stopped) {
       setTimeout(reconnect, 3000);
     }
@@ -57,13 +90,13 @@ export async function startNotifyListener(
 
   async function reconnect() {
     if (stopped) return;
-    try { await client.end().catch(() => {}); } catch { /* ignore */ }
+    try { await client.end().catch(() => {}); } catch { /* client already dead; expected */ }
     client = new pg.Client({ connectionString });
     try {
       await connect();
-      console.log('LISTEN client reconnected');
+      logger.logInfo('LISTEN client reconnected');
     } catch (e) {
-      console.error('Reconnect to LISTEN failed:', e);
+      logger.logError('Reconnect to LISTEN failed', e);
       if (!stopped) {
         setTimeout(reconnect, 5000);
       }
@@ -75,15 +108,113 @@ export async function startNotifyListener(
   return {
     stop: async () => {
       stopped = true;
-      await client.end().catch(() => {});
+      await client.end().catch(e => logger.logWarning('LISTEN client end() during shutdown failed', e));
     },
   };
 }
 
-/**
- * Issue a NOTIFY so the LISTEN handler can fetch and broadcast the change.
- */
-export async function notifyMapChange(mapId: string, changeId: string): Promise<void> {
-  const payload = `${mapId}:${changeId}`.replaceAll("'", "''");
-  await pool.query(`NOTIFY ${CHANNEL}, '${payload}'`);
+// ── Per-channel handlers ────────────────────────────────────────────────────
+
+async function handleMapChanges(payload: string, mapRooms: RoomManager): Promise<void> {
+  // Payload format: `<mapId>:<changeId>:<seq>`. UUIDs contain only hex + dashes
+  // (no colons), so splitting on ':' is unambiguous.
+  const parts = payload.split(':');
+  const mapId = parts[0];
+  const changeId = parts[1];
+  const seq = parts[2];
+  if (!mapId || !changeId || !seq) return;
+  if (!mapRooms.hasRoom(mapId)) return;
+
+  const [row] = await db.select({ changes: mapChanges.changes })
+    .from(mapChanges)
+    .where(eq(mapChanges.id, changeId))
+    .limit(1);
+  if (!row) return;
+
+  mapRooms.broadcast(mapId, encodeUpdate('mapChanges', mapId, { seq, changes: row.changes }));
+}
+
+async function handleAdventuresUser(userId: string, userRooms: RoomManager): Promise<void> {
+  if (!userRooms.hasRoom(userId)) return;
+  // profile embeds adventures, so one query feeds both scopes.
+  const profile = await snapshotProfile(db, userId);
+  if (!profile) return;
+  userRooms.broadcast(userId, encodeUpdate('adventures', userId, profile.adventures));
+  userRooms.broadcast(userId, encodeUpdate('profile', userId, profile));
+}
+
+async function handleAdventurePlayers(adventureId: string, adventureRooms: RoomManager): Promise<void> {
+  if (!adventureRooms.hasRoom(adventureId)) return;
+  const data = await snapshotPlayers(db, adventureId);
+  adventureRooms.broadcast(adventureId, encodeUpdate('players', adventureId, data));
+}
+
+async function handleAdventureSpritesheets(adventureId: string, adventureRooms: RoomManager): Promise<void> {
+  if (!adventureRooms.hasRoom(adventureId)) return;
+  const data = await snapshotSpritesheets(db, adventureId);
+  adventureRooms.broadcast(adventureId, encodeUpdate('spritesheets', adventureId, data));
+}
+
+async function handleUserProfile(userId: string, userRooms: RoomManager): Promise<void> {
+  if (!userRooms.hasRoom(userId)) return;
+  const data = await snapshotProfile(db, userId);
+  if (!data) return;
+  userRooms.broadcast(userId, encodeUpdate('profile', userId, data));
+}
+
+async function handleAdventureDetail(adventureId: string, adventureRooms: RoomManager): Promise<void> {
+  if (!adventureRooms.hasRoom(adventureId)) return;
+  // Adventure-level change invalidates both the `adventure` detail and every
+  // `map` subscription in that adventure. Both scopes share adventureRooms.
+  const [detail, pairs] = await Promise.all([
+    snapshotAdventureDetail(db, adventureId),
+    fetchAdventureMapPairs(db, adventureId),
+  ]);
+  if (!detail) return;
+  adventureRooms.broadcast(adventureId, encodeUpdate('adventure', adventureId, detail));
+  for (const pair of pairs) {
+    // `map` subs room by adventureId; clients filter by `key === mapId`.
+    adventureRooms.broadcast(adventureId, encodeUpdate('map', pair.map.id, pair));
+  }
+}
+
+// pg_notify via parameters escapes the payload; safer than manual quoting.
+async function notify(channel: string, payload: string): Promise<void> {
+  await pool.query('SELECT pg_notify($1, $2)', [channel, payload]);
+}
+
+export async function notifyMapChange(mapId: string, changeId: string, seq: string): Promise<void> {
+  await notify(CH_MAP_CHANGES, `${mapId}:${changeId}:${seq}`);
+}
+
+export async function notifyAdventuresUser(userId: string): Promise<void> {
+  await notify(CH_ADVENTURES_USER, userId);
+}
+
+export async function notifyAdventuresUsers(userIds: string[]): Promise<void> {
+  await Promise.all(userIds.map(id => notify(CH_ADVENTURES_USER, id)));
+}
+
+export async function notifyAdventurePlayers(adventureId: string): Promise<void> {
+  await notify(CH_ADVENTURE_PLAYERS, adventureId);
+}
+
+export async function notifyAdventureSpritesheets(adventureId: string): Promise<void> {
+  await notify(CH_ADVENTURE_SPRITESHEETS, adventureId);
+}
+
+export async function notifyUserProfile(userId: string): Promise<void> {
+  await notify(CH_USER_PROFILE, userId);
+}
+
+export async function notifyAdventureDetail(adventureId: string): Promise<void> {
+  await notify(CH_ADVENTURE_DETAIL, adventureId);
+}
+
+/** Fire NOTIFYs concurrently; log and swallow failures so callers don't have
+ * to repeat the same Promise.all + catch boilerplate. NOTIFY failures must not
+ * fail the mutation — if the listener is briefly gone, clients will poll the
+ * REST fallback (or miss a live update). */
+export function notifySafe(...promises: Promise<void>[]): Promise<void> {
+  return Promise.all(promises).then(() => {}, e => logger.logError('NOTIFY failed', e));
 }
