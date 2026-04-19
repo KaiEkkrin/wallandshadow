@@ -1,4 +1,4 @@
-import { Change, Changes, UpdateScope, createChangesConverter } from '@wallandshadow/shared';
+import { Change, UpdateScope, createChangesConverter } from '@wallandshadow/shared';
 
 // Wire-compatible with was-web/server/src/ws/{handler,notify,subscriptions}.ts.
 // Application-specific close code: token verification failed.
@@ -39,6 +39,7 @@ export interface SubscriptionHandlers {
   onSnapshot: (data: unknown) => void;
   onUpdate: (data: unknown) => void;
   onError?: (error: Error) => void;
+  onSubscribed?: () => void;  // called when a full-reload mapChanges snapshot arrives
 }
 
 interface OutgoingFrame {
@@ -49,6 +50,7 @@ interface OutgoingFrame {
 interface ActiveSubscription {
   scope: UpdateScope;
   id?: string;
+  lastSeq?: string;  // last seq seen for mapChanges subscriptions; sent on reconnect
   handlers: SubscriptionHandlers;
 }
 
@@ -109,7 +111,7 @@ export class HonoWebSocket {
     handlers: SubscriptionHandlers,
   ): { unsubscribe: () => void } {
     const subId = this.nextSubId++;
-    this.subs.set(subId, { scope, id, handlers });
+    this.subs.set(subId, { scope, id, lastSeq: undefined, handlers });
     this.sendFrame({ type: 'subscribe', subId, scope, id });
 
     return {
@@ -178,7 +180,13 @@ export class HonoWebSocket {
       // frames in the queue keep their order.
       this.pruneQueueForReconnect();
       for (const [subId, sub] of this.subs) {
-        this.writeFrame({ type: 'subscribe', subId, scope: sub.scope, id: sub.id });
+        this.writeFrame({
+          type: 'subscribe',
+          subId,
+          scope: sub.scope,
+          id: sub.id,
+          ...(sub.scope === 'mapChanges' && sub.lastSeq !== undefined ? { lastSeq: sub.lastSeq } : {}),
+        });
       }
       while (this.sendQueue.length > 0) {
         this.rawSend(this.sendQueue.shift()!);
@@ -247,7 +255,17 @@ export class HonoWebSocket {
       case 'snapshot': {
         const sub = this.subs.get(frame.subId);
         if (!sub) return;
-        sub.handlers.onSnapshot(this.decode(frame.scope, frame.data));
+        const decoded = this.decode(frame.scope, frame.data);
+        if (frame.scope === 'mapChanges') {
+          const snap = frame.data as { lastSeq?: string | null; full?: boolean };
+          if (snap.full) {
+            sub.lastSeq = snap.lastSeq ?? undefined;
+            sub.handlers.onSubscribed?.();
+          } else if (snap.lastSeq !== undefined && snap.lastSeq !== null) {
+            sub.lastSeq = snap.lastSeq;
+          }
+        }
+        sub.handlers.onSnapshot(decoded);
         return;
       }
       case 'roomUpdate': {
@@ -258,6 +276,10 @@ export class HonoWebSocket {
         for (const [, sub] of this.subs) {
           if (sub.scope !== frame.scope) continue;
           if (!isUserScoped && sub.id !== frame.key) continue;
+          if (frame.scope === 'mapChanges') {
+            const raw = frame.data as { seq?: string };
+            if (raw.seq) sub.lastSeq = raw.seq;
+          }
           sub.handlers.onUpdate(this.decode(frame.scope, frame.data));
         }
         return;
@@ -278,16 +300,19 @@ export class HonoWebSocket {
     }
   }
 
-  // For mapChanges we run the payload through the shared Changes converter so
-  // downstream code receives the same Changes object shape it always has.
+  // For mapChanges, run payloads through the shared Changes converter.
+  // Snapshot frames carry { changes: Changes[], lastSeq: string|null, full: boolean }.
+  // Update frames carry { seq: string, changes: Changes }.
   private decode(scope: UpdateScope, data: unknown): unknown {
     if (scope !== 'mapChanges') return data;
-    if (Array.isArray((data as { changes?: unknown[] })?.changes)) {
-      const arr = (data as { changes: Record<string, unknown>[] }).changes;
-      return { changes: arr.map(c => this.changesConverter.convert(c)) as Changes[] };
+    const d = data as Record<string, unknown>;
+    if (Array.isArray(d.changes)) {
+      // Snapshot: decode each Changes in the array
+      const arr = d.changes as Record<string, unknown>[];
+      return { ...d, changes: arr.map(c => this.changesConverter.convert(c)) };
     }
-    // Update frames carry a single Changes object.
-    return this.changesConverter.convert(data as Record<string, unknown>);
+    // Update: decode the single Changes object
+    return { seq: d.seq, changes: this.changesConverter.convert(d.changes as Record<string, unknown>) };
   }
 
   // ── Frame send plumbing ──────────────────────────────────────────────────

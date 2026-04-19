@@ -683,7 +683,9 @@ export function watchChangesAndConsolidate(
           .catch(e => onError?.("Consolidate call failed", e));
       }
     },
-    (e: Error) => onError?.("Watch changes failed for map " + mapId, e)
+    (e: Error) => onError?.("Watch changes failed for map " + mapId, e),
+    undefined,
+    () => { seenBaseChange = false; }  // reset on full-reload so base change is re-applied
   );
 
   return () => {
