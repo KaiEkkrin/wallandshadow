@@ -1,4 +1,4 @@
-import { eq, and, gt } from 'drizzle-orm';
+import { eq, and, gte } from 'drizzle-orm';
 import type { Changes, ICharacter, MapType, UserLevel } from '@wallandshadow/shared';
 import type { Db } from '../db/connection.js';
 import {
@@ -200,26 +200,22 @@ export async function snapshotMapChanges(
   if (lastSeq !== undefined) {
     const seqBig = BigInt(lastSeq);
 
-    // Check whether the client's last-seen incremental still exists
-    const [existing] = await database
-      .select({ seq: mapChanges.seq })
+    // Fetch all incrementals at or after lastSeq in one query. If the first
+    // row is exactly seqBig the seq still exists (not yet consolidated) and
+    // we can return the delta. If the result is empty or starts after seqBig,
+    // the seq was consolidated — fall through to full reload.
+    const candidateRows = await database
+      .select({ seq: mapChanges.seq, changes: mapChanges.changes })
       .from(mapChanges)
-      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false), eq(mapChanges.seq, seqBig)))
-      .limit(1);
+      .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false), gte(mapChanges.seq, seqBig)))
+      .orderBy(mapChanges.seq);
 
-    if (existing) {
-      // Delta path: send only what the client hasn't seen yet
-      const deltaRows = await database
-        .select({ seq: mapChanges.seq, changes: mapChanges.changes })
-        .from(mapChanges)
-        .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false), gt(mapChanges.seq, seqBig)))
-        .orderBy(mapChanges.seq);
-
-      const out = deltaRows.map(r => r.changes as Changes);
+    if (candidateRows.length > 0 && candidateRows[0].seq === seqBig) {
+      const deltaRows = candidateRows.slice(1);
       const newLastSeq = deltaRows.length > 0
         ? deltaRows[deltaRows.length - 1].seq.toString()
         : lastSeq;
-      return { changes: out, lastSeq: newLastSeq, full: false };
+      return { changes: deltaRows.map(r => r.changes as Changes), lastSeq: newLastSeq, full: false };
     }
     // Fall through to full reload — the seq was consolidated.
   }

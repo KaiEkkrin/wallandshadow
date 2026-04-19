@@ -381,13 +381,12 @@ async function tryConsolidateMapChanges(
   syncChanges?: (tokenDict: ITokenDictionary) => void,
 ): Promise<ConsolidateResult> {
   const converter = createChangesConverter();
-  let notifyInfo: { id: string; seq: string } | undefined;
 
   // All reads and writes happen inside a single transaction. The exclusive
   // advisory lock (acquired first, released on commit) prevents concurrent
   // writes from getting a seq lower than the new base's seq, which would
   // strand those incrementals on connected clients.
-  const result = await db.transaction(async (tx): Promise<ConsolidateResult> => {
+  const txResult = await db.transaction(async (tx): Promise<ConsolidateResult & { notifyInfo?: { id: string; seq: string } }> => {
     const lockRows = await tx.execute(
       sql`SELECT pg_try_advisory_xact_lock(hashtext(${mapId})) AS acquired`,
     );
@@ -492,17 +491,17 @@ async function tryConsolidateMapChanges(
     // out here, which revokes access for non-owners.
     await replaceMapImages(tx, mapId, consolidated);
 
-    notifyInfo = { id: returnedRow.id, seq: returnedRow.seq.toString() };
-    return { baseChange: newBaseChange, isNew: true };
+    return { baseChange: newBaseChange, isNew: true, notifyInfo: { id: returnedRow.id, seq: returnedRow.seq.toString() } };
   });
 
+  const { notifyInfo, baseChange, isNew } = txResult;
   if (notifyInfo) {
     await notifyMapChange(mapId, notifyInfo.id, notifyInfo.seq).catch(e =>
       console.error('NOTIFY failed:', e),
     );
   }
 
-  return result;
+  return { baseChange, isNew };
 }
 
 export async function consolidateMapChanges(
@@ -706,44 +705,34 @@ export async function addMapChanges(
     resync: false,
   };
 
-  let result: { id: string; seq: string } | undefined;
-
-  await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     // Shared advisory lock: compatible with other writes, but blocks if an
     // exclusive consolidation lock is held. Ensures all incrementals get a
     // seq higher than the base row written at the end of consolidation.
     await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(hashtext(${mapId}))`);
 
     const id = uuidv7();
-    let returning: { id: string; seq: bigint }[];
+    const values = {
+      id,
+      mapId,
+      changes: changesDoc as unknown as object,
+      isBase: false as const,
+      resync: false as const,
+      userId: uid,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+    };
 
-    if (idempotencyKey) {
-      returning = await tx.insert(mapChanges).values({
-        id,
-        mapId,
-        changes: changesDoc as unknown as object,
-        isBase: false,
-        resync: false,
-        userId: uid,
-        idempotencyKey,
-      }).onConflictDoNothing().returning({ id: mapChanges.id, seq: mapChanges.seq });
+    let returning: { id: string; seq: bigint }[] = await tx.insert(mapChanges)
+      .values(values)
+      .onConflictDoNothing()
+      .returning({ id: mapChanges.id, seq: mapChanges.seq });
 
-      if (returning.length === 0) {
-        // Duplicate submission: fetch the existing row by idempotency key.
-        returning = await tx.select({ id: mapChanges.id, seq: mapChanges.seq })
-          .from(mapChanges)
-          .where(eq(mapChanges.idempotencyKey, idempotencyKey))
-          .limit(1);
-      }
-    } else {
-      returning = await tx.insert(mapChanges).values({
-        id,
-        mapId,
-        changes: changesDoc as unknown as object,
-        isBase: false,
-        resync: false,
-        userId: uid,
-      }).returning({ id: mapChanges.id, seq: mapChanges.seq });
+    if (returning.length === 0 && idempotencyKey) {
+      // Duplicate submission: fetch the existing row by idempotency key.
+      returning = await tx.select({ id: mapChanges.id, seq: mapChanges.seq })
+        .from(mapChanges)
+        .where(eq(mapChanges.idempotencyKey, idempotencyKey))
+        .limit(1);
     }
 
     const row = returning[0];
@@ -753,10 +742,9 @@ export async function addMapChanges(
     // download them. Orphans are reconciled at consolidation time.
     await syncMapImagesFromChanges(tx, mapId, chs);
 
-    result = { id: row.id, seq: row.seq.toString() };
+    return { id: row.id, seq: row.seq.toString() };
   });
 
-  if (!result) throwApiError('internal', 'Failed to insert map change');
   await notifySafe(notifyMapChange(mapId, result.id, result.seq));
   return result;
 }
