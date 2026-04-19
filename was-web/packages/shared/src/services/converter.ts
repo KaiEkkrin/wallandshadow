@@ -548,7 +548,6 @@ export function createChangesConverter() {
   const changeConverter = new ChangeConverter(newTokenDict);
   return new RecursingConverter<Changes>({
     chs: [],
-    timestamp: 0,
     incremental: true,
     resync: false,
     user: ""
