@@ -796,7 +796,11 @@ export class HonoDataService implements IDataService {
         onError,
       };
       const sub = this.getSocket().subscribe(scope, id, handlers);
-      return () => sub.unsubscribe();
+      return () => {
+        sub.unsubscribe();
+        // Clear so the next subscription for this key always sees its snapshot as fresh.
+        this.lastEmitJson.delete(cacheKey);
+      };
     } catch (e) {
       console.error(`${scope} subscribe failed:`, e);
       onError?.(e instanceof Error ? e : new Error(String(e)));
