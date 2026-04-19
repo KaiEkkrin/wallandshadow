@@ -21,6 +21,9 @@ import {
 import type { Change, UpdateScope } from '@wallandshadow/shared';
 
 const WS_PATH = '/ws';
+// Application-specific close code: token verification failed.
+// Kept in sync with the client constant in honoWebSocket.ts.
+const WS_CLOSE_AUTH_REJECTED = 4001;
 
 // Which manager each scope lives in. `players` and `spritesheets` share the
 // adventure rooms — they always concern the same adventureId, and messages
@@ -68,7 +71,12 @@ export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
         uid = await resolveTokenToUid(token);
       } catch (e) {
         logger.logWarning('WebSocket auth rejected', e);
-        socket.destroy();
+        // Complete the handshake so we can send a typed close code (4001).
+        // A raw socket.destroy() would look identical to a network error on the
+        // client, making auth failure indistinguishable from "server is down".
+        wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+          ws.close(WS_CLOSE_AUTH_REJECTED, 'Unauthorized');
+        });
         return;
       }
 

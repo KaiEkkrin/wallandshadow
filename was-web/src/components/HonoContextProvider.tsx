@@ -26,11 +26,21 @@ function HonoContextProvider(props: IContextProviderProps) {
     const resolveImageUrl = createResolveImageUrl(storageService);
     let currentDataService: HonoDataService | undefined;
 
+    // Guard prevents multiple in-flight redirects if OIDC expiry and WS 4001
+    // both fire in the same session.
+    let authFailureRedirected = false;
+    const onAuthFailure = () => {
+      if (!authFailureRedirected) {
+        authFailureRedirected = true;
+        window.location.replace('/login');
+      }
+    };
+
     const unsub = auth.onAuthStateChanged(user => {
       // Tear down the previous session's WebSocket before replacing context.
       currentDataService?.dispose();
       if (user) {
-        currentDataService = new HonoDataService(apiClient, user.uid);
+        currentDataService = new HonoDataService(apiClient, user.uid, onAuthFailure);
         setUserContext({
           user,
           dataService: currentDataService,

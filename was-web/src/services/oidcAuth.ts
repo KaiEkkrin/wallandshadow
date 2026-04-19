@@ -64,3 +64,22 @@ export async function oidcSignOut(): Promise<void> {
 export function getOidcBearerToken(user: OidcUser): string {
   return user.id_token ?? user.access_token;
 }
+
+/**
+ * Subscribe to oidc-client-ts silent-renew events so callers can keep an
+ * in-memory token reference up to date without a page reload.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToTokenRenewal(
+  onRenewed: (token: string) => void,
+  onExpired: () => void,
+): () => void {
+  const manager = getUserManager();
+  const handleLoaded = (user: OidcUser) => onRenewed(getOidcBearerToken(user));
+  manager.events.addUserLoaded(handleLoaded);
+  manager.events.addUserUnloaded(onExpired);
+  return () => {
+    manager.events.removeUserLoaded(handleLoaded);
+    manager.events.removeUserUnloaded(onExpired);
+  };
+}
