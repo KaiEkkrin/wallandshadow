@@ -455,7 +455,6 @@ async function tryConsolidateMapChanges(
     // consolidation.
     const newBaseChange: Changes = {
       chs: consolidated,
-      timestamp: Date.now(),
       incremental: false,
       user: m.owner,
       resync: isResync,
@@ -699,7 +698,6 @@ export async function addMapChanges(
 
   const changesDoc: Changes = {
     chs,
-    timestamp: Date.now(),
     incremental: true,
     user: uid,
     resync: false,

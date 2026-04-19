@@ -2,13 +2,10 @@ import { IAnnotation } from "./annotation";
 import { GridCoord, GridEdge } from "./coord";
 import { IFeature, IToken, StripedArea } from "./feature";
 import { IMapImage } from "./image";
-import { Timestamp } from './types';
 
 // This represents a collection of changes all made to the map at once.
 export type Changes = {
   chs: Change[];
-  timestamp: Timestamp | number; // initialise this to `serverTimestamp`;
-                                 // use the number instead for testing only
   incremental: boolean;
   resync: boolean; // true if the recipient of this change should do a resync
                    // (only if incremental === false)
