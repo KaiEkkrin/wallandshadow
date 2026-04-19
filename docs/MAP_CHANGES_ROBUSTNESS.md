@@ -1,3 +1,97 @@
+## Proposed `map_changes` schema
+
+```typescript
+export const mapChanges = pgTable('map_changes', {
+  id: uuid('id').primaryKey().$defaultFn(() => uuidv7()),
+  mapId: uuid('map_id').notNull().references(() => maps.id, { onDelete: 'cascade' }),
+  seq: bigint('seq', { mode: 'bigint' }).generatedAlwaysAsIdentity().notNull(),
+  isBase: boolean('is_base').notNull().default(false),
+  changes: jsonb('changes').notNull(),
+  resync: boolean('resync').notNull().default(false),
+  userId: uuid('user_id').references(() => users.id),
+  idempotencyKey: uuid('idempotency_key'),
+  createdAt: tstz('created_at').notNull().defaultNow(),
+}, (t) => [
+  // Incremental catch-up: ordered by seq for a specific map
+  index('map_changes_map_seq_idx').on(t.mapId, t.seq)
+    .where(sql`is_base = false`),
+  // Exactly one base change per map
+  uniqueIndex('map_changes_base_idx').on(t.mapId)
+    .where(sql`is_base = true`),
+  // Idempotent inserts from clients
+  uniqueIndex('map_changes_idempotency_key_idx').on(t.idempotencyKey)
+    .where(sql`idempotency_key IS NOT NULL`),
+  // resync is only meaningful on the base row
+  check('map_changes_resync_check', sql`resync = false OR is_base = true`),
+]);
+```
+
+### Changes from current schema
+
+| Column / index | Action | Reason |
+|---|---|---|
+| `incremental BOOLEAN` | **Remove** | Replaced by `is_base` (inverted, clearer name) |
+| `is_base BOOLEAN NOT NULL DEFAULT false` | **Add** | Replaces `incremental` and the `id = mapId` base-row convention; partial unique index enforces one base per map |
+| `seq BIGINT GENERATED ALWAYS AS IDENTITY` | **Add** | Monotonic ordering column; enables client catch-up and deterministic consolidation ordering. Uses a PostgreSQL sequence internally — sequence lock is lightweight, not a table lock, so concurrent inserts don't block each other |
+| `idempotency_key UUID` | **Add** | Nullable, client-provided. Server does `INSERT … ON CONFLICT (idempotency_key) DO NOTHING`. Base rows (server-written) leave this NULL |
+| `id UUID PRIMARY KEY` | **Keep** | Stays as UUID rather than switching to a BIGINT PK — a PK type change cascades across FKs and NOTIFY payloads; `seq` serves the ordering role cleanly as a separate column |
+| `created_at` | **Keep** | Still useful for audit |
+| `resync` | **Keep + constrain** | `CHECK (resync = false OR is_base = true)` makes it explicit that `resync` is only meaningful on the base row |
+| `(map_id, incremental, created_at)` index | **Remove** | Replaced by the two partial indexes below |
+| `(map_id, seq) WHERE is_base = false` | **Add** | Efficient incremental catch-up query |
+| `UNIQUE (map_id) WHERE is_base = true` | **Add** | Database-enforced one-base-per-map invariant |
+| `UNIQUE (idempotency_key) WHERE idempotency_key IS NOT NULL` | **Add** | Enforces idempotency at the database level |
+
+### Advisory lock protocol
+
+The `seq` column's usefulness rests on a key ordering invariant:
+
+> **Every incremental row always has `seq` greater than the current base row's `seq`.**
+
+Without enforcement, this invariant can be broken: a write that commits *during* a consolidation transaction gets a lower seq than the base row written at the end of that transaction. The result is a "stranded" incremental — connected clients apply it, then receive the base broadcast and reset, silently losing its effects. The inconsistency persists until the next consolidation.
+
+The invariant is enforced by a **shared/exclusive PostgreSQL advisory lock keyed on `map_id`**:
+
+| Operation | Lock acquired |
+|---|---|
+| `addMapChanges` | `pg_advisory_xact_lock_shared(mapId)` |
+| `consolidateMapChanges` | `pg_advisory_xact_lock(mapId)` (exclusive) |
+| reads (snapshot, catch-up) | none — MVCC provides per-statement consistency |
+
+Multiple writes run concurrently (shared locks are compatible with each other). Consolidation blocks until all in-flight writes commit, then runs uncontested. Any write that arrives after consolidation starts waits until consolidation commits, then proceeds — getting a seq higher than the base's seq, satisfying the invariant.
+
+Both lock variants are transaction-level (`_xact_`): released automatically on commit or rollback, safe for use with connection pools, no risk of leaking.
+
+Reads need no lock because a single `SELECT` statement is already consistent under PostgreSQL's MVCC (it sees a point-in-time snapshot), and the catch-up two-query path is safe at READ COMMITTED isolation (explained below).
+
+### Catch-up protocol enabled by this schema
+
+When a client reconnects with `lastSeq`:
+
+```sql
+-- Does the client's seq still exist as an incremental?
+SELECT 1 FROM map_changes
+  WHERE map_id = $mapId AND is_base = false AND seq = $lastSeq;
+
+-- Yes → send only the delta (no lock needed; MVCC is sufficient)
+SELECT * FROM map_changes
+  WHERE map_id = $mapId AND is_base = false AND seq > $lastSeq
+  ORDER BY seq;
+
+-- No → seq was consolidated; send a full reload
+-- The advisory lock invariant guarantees the base row has the lowest seq,
+-- so ORDER BY seq returns base first, then all incrementals.
+SELECT * FROM map_changes
+  WHERE map_id = $mapId
+  ORDER BY seq;
+```
+
+**Why the two-query catch-up is safe at READ COMMITTED**: if consolidation commits between the two queries, the incremental the client last saw (seq X) is now in the base. The new incrementals returned by query 2 were authored on top of the consolidated state — which equals the client's current state — so they apply correctly.
+
+**Why reads need no lock**: a single `SELECT` statement always sees a consistent snapshot under MVCC. The full-reload query is a single statement, so it will see either the pre-consolidation world or the post-consolidation world, never a partial mix.
+
+---
+
 ## Easy review issues
 
 * **Consolidation race condition**: Use a postgres advisory lock keyed on mapID to prevent concurrent consolidates.
