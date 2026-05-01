@@ -26,9 +26,11 @@ DEVCONTAINER_DIR="/workspaces/wallandshadow/.devcontainer"
 mkdir -p "$DEVCONTAINER_DIR/.cache/firebase"
 mkdir -p "$DEVCONTAINER_DIR/.config"
 mkdir -p "$DEVCONTAINER_DIR/.claude"
+mkdir -p "$DEVCONTAINER_DIR/.local/share/nvim"
+mkdir -p "$DEVCONTAINER_DIR/.local/state/nvim"
 
 # Create parent directories in home if they don't exist
-mkdir -p "$HOME/.cache"
+mkdir -p "$HOME/.cache" "$HOME/.local/share" "$HOME/.local/state"
 
 # Create symlinks from home directory to workspace
 # Use $HOME instead of /home/node for Podman rootless compatibility
@@ -37,8 +39,9 @@ mkdir -p "$HOME/.cache"
 # IMPORTANT: The Claude CLI installer (Dockerfile) creates ~/.claude as a real
 # directory during the image build. ln -sfn cannot replace a directory — it creates
 # the symlink *inside* the directory instead. We must remove any real directory
-# first so the symlink points where we expect. Same precaution for ~/.config.
-for dir in "$HOME/.claude" "$HOME/.config"; do
+# first so the symlink points where we expect. Same precaution for ~/.config and
+# the nvim data/state dirs (a previous container life may have populated them).
+for dir in "$HOME/.claude" "$HOME/.config" "$HOME/.local/share/nvim" "$HOME/.local/state/nvim"; do
     if [ -d "$dir" ] && [ ! -L "$dir" ]; then
         rm -rf "$dir"
     fi
@@ -48,11 +51,15 @@ ln -sfn "$DEVCONTAINER_DIR/.config" "$HOME/.config"
 ln -sfn "$DEVCONTAINER_DIR/.claude" "$HOME/.claude"
 mkdir -p "$DEVCONTAINER_DIR/.cache/ms-playwright"
 ln -sfn "$DEVCONTAINER_DIR/.cache/ms-playwright" "$HOME/.cache/ms-playwright"
+ln -sfn "$DEVCONTAINER_DIR/.local/share/nvim" "$HOME/.local/share/nvim"
+ln -sfn "$DEVCONTAINER_DIR/.local/state/nvim" "$HOME/.local/state/nvim"
 
 echo "   ✅ \$HOME/.cache/firebase -> .devcontainer/.cache/firebase"
 echo "   ✅ \$HOME/.config -> .devcontainer/.config"
 echo "   ✅ \$HOME/.claude -> .devcontainer/.claude"
 echo "   ✅ \$HOME/.cache/ms-playwright -> .devcontainer/.cache/ms-playwright"
+echo "   ✅ \$HOME/.local/share/nvim -> .devcontainer/.local/share/nvim"
+echo "   ✅ \$HOME/.local/state/nvim -> .devcontainer/.local/state/nvim"
 echo ""
 
 # Clone dot-config into ~/.config so neovim, zellij, etc. pick up the shared config.

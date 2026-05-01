@@ -374,8 +374,10 @@ The repository is mounted as a bind mount at `/workspaces/wallandshadow`. Cache 
 - `~/.cache/firebase` → `.devcontainer/.cache/firebase`
 - `~/.config` → `.devcontainer/.config`
 - `~/.claude` → `.devcontainer/.claude`
+- `~/.local/share/nvim` → `.devcontainer/.local/share/nvim` (lazy.nvim plugins, Mason LSPs, treesitter parsers)
+- `~/.local/state/nvim` → `.devcontainer/.local/state/nvim` (undo, shada, lazy readme cache)
 
-This keeps cache/config persistent across container rebuilds while maintaining good performance on Linux.
+This keeps cache/config persistent across container rebuilds while maintaining good performance on Linux. The nvim symlinks in particular avoid a ~1 GB re-download (plugins + Mason packages + parser rebuilds) on every recreate.
 
 ### Environment Variables
 
