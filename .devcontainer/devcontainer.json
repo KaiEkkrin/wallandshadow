@@ -22,7 +22,16 @@
     "--shm-size=2g",
     "--userns=keep-id",
     "--tmpfs=/tmp:rw,exec,mode=1777",
-    "--env-file=${localWorkspaceFolder}/.devcontainer/.env"
+    "--env-file=${localWorkspaceFolder}/.devcontainer/.env",
+    // Publish browser-facing ports so they're accessible from the host regardless of
+    // whether the devcontainer CLI or VS Code is used. The devcontainer CLI does not
+    // honour forwardPorts (github.com/devcontainers/cli/issues/22), so explicit -p
+    // flags are the only reliable mechanism. VS Code's own forwarding is redundant
+    // but harmless when these are also published.
+    "-p=3000:3000",
+    "-p=5000:5000",
+    "-p=9001:9001",
+    "-p=9323:9323"
   ],
 
   // With --userns=keep-id the host UID is already mapped to the same UID inside the
@@ -32,6 +41,8 @@
   "containerEnv": {
     "IS_LOCAL_DEV": "true",
     "FORCE_COLOR": "true",
+    "EDITOR": "nvim",
+    "VISUAL": "nvim",
     "GOOGLE_APPLICATION_CREDENTIALS": "/workspaces/wallandshadow/was-web/firebase-admin-credentials.json",
     // PostgreSQL: data directory (pg_ctl and psql pick this up automatically)
     "PGDATA": "/workspaces/wallandshadow/.devcontainer/.pgdata",

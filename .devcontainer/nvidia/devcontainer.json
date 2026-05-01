@@ -18,7 +18,13 @@
     "--shm-size=2g",
     "--userns=keep-id",
     "--tmpfs=/tmp:rw,exec,mode=1777",
-    "--device=nvidia.com/gpu=all"
+    "--device=nvidia.com/gpu=all",
+    // Publish browser-facing ports explicitly — the devcontainer CLI does not honour
+    // forwardPorts (github.com/devcontainers/cli/issues/22).
+    "-p=3000:3000",
+    "-p=5000:5000",
+    "-p=9001:9001",
+    "-p=9323:9323"
   ],
 
   "updateRemoteUserUID": false,
@@ -26,6 +32,8 @@
   "containerEnv": {
     "IS_LOCAL_DEV": "true",
     "FORCE_COLOR": "true",
+    "EDITOR": "nvim",
+    "VISUAL": "nvim",
     "GOOGLE_APPLICATION_CREDENTIALS": "/workspaces/wallandshadow/was-web/firebase-admin-credentials.json",
     "NVIDIA_VISIBLE_DEVICES": "all",
     "NVIDIA_DRIVER_CAPABILITIES": "all",

@@ -23,7 +23,13 @@
     "--device=/dev/dri",
     "--security-opt=seccomp=unconfined",
     "--group-add=video",
-    "--group-add=render"
+    "--group-add=render",
+    // Publish browser-facing ports explicitly — the devcontainer CLI does not honour
+    // forwardPorts (github.com/devcontainers/cli/issues/22).
+    "-p=3000:3000",
+    "-p=5000:5000",
+    "-p=9001:9001",
+    "-p=9323:9323"
   ],
 
   "updateRemoteUserUID": false,
@@ -31,6 +37,8 @@
   "containerEnv": {
     "IS_LOCAL_DEV": "true",
     "FORCE_COLOR": "true",
+    "EDITOR": "nvim",
+    "VISUAL": "nvim",
     "GOOGLE_APPLICATION_CREDENTIALS": "/workspaces/wallandshadow/was-web/firebase-admin-credentials.json",
     "PGDATA": "/workspaces/wallandshadow/.devcontainer/.pgdata",
     "DATABASE_URL": "postgresql://was:wasdev@localhost:5432/wallandshadow",

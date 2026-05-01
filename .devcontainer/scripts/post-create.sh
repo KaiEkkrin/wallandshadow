@@ -55,6 +55,24 @@ echo "   ✅ \$HOME/.claude -> .devcontainer/.claude"
 echo "   ✅ \$HOME/.cache/ms-playwright -> .devcontainer/.cache/ms-playwright"
 echo ""
 
+# Clone dot-config into ~/.config so neovim, zellij, etc. pick up the shared config.
+# Uses HTTPS (no SSH key setup needed in the container; push from the host instead).
+# Existing untracked dirs (e.g. Code/ from VS Code) are preserved; tracked files are
+# force-checked-out so the dot-config content is always authoritative.
+echo "📝 Setting up dot-config..."
+CONFIG_DIR="$DEVCONTAINER_DIR/.config"
+if [ ! -d "$CONFIG_DIR/.git" ]; then
+    echo "   Cloning dot-config from GitHub..."
+    git init "$CONFIG_DIR"
+    git -C "$CONFIG_DIR" remote add origin https://github.com/KaiEkkrin/dot-config.git
+    git -C "$CONFIG_DIR" fetch origin main
+    git -C "$CONFIG_DIR" checkout -f main
+    echo "   ✅ dot-config checked out"
+else
+    echo "   ✅ dot-config already present (skipping clone)"
+fi
+echo ""
+
 # Check for Firebase admin credentials (only relevant on the legacy-firebase branch,
 # which is the only branch that still contains firebase.json / functions/)
 FIREBASE_CONFIG="/workspaces/wallandshadow/was-web/firebase.json"
