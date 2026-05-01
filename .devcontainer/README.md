@@ -1,8 +1,8 @@
 # Wall & Shadow Dev Container
 
-Complete development environment for Wall & Shadow with Node.js 22, PostgreSQL 17, MinIO, Firebase Emulator Suite, and optional GPU support for Playwright/WebGL tests.
+Complete development environment for Wall & Shadow with Node.js 22, PostgreSQL 17, MinIO, and optional GPU support for Playwright/WebGL tests. Also includes a full terminal toolchain: neovim (LazyVim), zellij, ripgrep, fd, fzf, lazygit, Rust, and tree-sitter. Editor config is synced from [KaiEkkrin/dot-config](https://github.com/KaiEkkrin/dot-config) on first launch.
 
-Both the existing Firebase stack and the new self-hosted stack (PostgreSQL + Hono API + MinIO) run inside the same container — no external Compose setup needed.
+The self-hosted stack (PostgreSQL + Hono API + MinIO) runs inside the container — no external Compose setup needed.
 
 ## Prerequisites
 
@@ -12,28 +12,114 @@ Both the existing Firebase stack and the new self-hosted stack (PostgreSQL + Hon
    - Other Linux: see [Podman installation](https://podman.io/docs/installation)
    - Verify rootless mode: `podman info | grep rootless` (should show `true`)
 
-2. **Visual Studio Code** with **Dev Containers** extension
+2. **One of**:
+   - **VS Code** with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) — for a GUI workflow
+   - **`devcontainer` CLI** — for a terminal-only workflow (already installed on the host)
 
-   - Install VS Code: https://code.visualstudio.com/
-   - Install extension: `ms-vscode-remote.remote-containers`
+3. **Configure Podman as the container runtime** (required for both VS Code and the CLI)
 
-3. **Configure VS Code to use Podman**
-
-   Open VS Code settings (`Ctrl+,`) and add:
-
+   VS Code settings (`Ctrl+,`):
    ```json
-   {
-     "dev.containers.dockerPath": "podman"
-   }
+   { "dev.containers.dockerPath": "podman" }
    ```
 
-   Or set the Podman socket in your shell profile:
-
+   Or export in your shell profile so the CLI picks it up:
    ```bash
    export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
    ```
 
-## Quick Start
+## Terminal Development (devcontainer CLI)
+
+Use this workflow when you don't want VS Code — e.g. developing over SSH, or in a tmux/zellij session on the host.
+
+### Build the container image
+
+From the repository root (takes ~15–20 min first time; brew and rustup are installed during the build):
+
+```bash
+devcontainer build --workspace-folder .
+```
+
+### Start the container
+
+```bash
+devcontainer up --workspace-folder .
+```
+
+On first launch this runs the post-create script: installs yarn dependencies, initialises PostgreSQL, clones dot-config into `~/.config`, etc. PostgreSQL and MinIO start automatically on every subsequent launch.
+
+### Connect a terminal
+
+```bash
+# Open zellij (recommended — gives you panes and tabs)
+devcontainer exec --workspace-folder . zellij
+
+# Or drop straight into bash
+devcontainer exec --workspace-folder . bash
+```
+
+### Port access from the host
+
+The devcontainer CLI does not implement `forwardPorts` ([open issue](https://github.com/devcontainers/cli/issues/22)), so the following ports are published via explicit `-p` flags in `runArgs` and are directly accessible on the host as soon as the container is running:
+
+| Port | Service |
+| ---- | ------- |
+| 3000 | Hono API server |
+| 5000 | Vite dev server |
+| 9001 | MinIO Console |
+| 9323 | Playwright Report |
+
+Database ports (5432, 9000) are intentionally not published to avoid conflicts with host services.
+
+### Rebuild after Dockerfile changes
+
+```bash
+devcontainer up --workspace-folder . --remove-existing-container
+```
+
+This recreates the container from the updated image. PostgreSQL data, MinIO data, dot-config, and all other content in `.devcontainer/` persist because they live in the bind-mounted workspace.
+
+If the container looks wrong after a rebuild (e.g. a tool is missing that the Dockerfile installs), the CLI may have reused a cached image layer. Force a full image rebuild with:
+
+```bash
+devcontainer build --no-cache --workspace-folder .
+devcontainer up --workspace-folder . --remove-existing-container
+```
+
+VS Code equivalent: **F1 → "Dev Containers: Rebuild Container Without Cache"**.
+
+### dot-config sync
+
+`~/.config` inside the container is a clone of [KaiEkkrin/dot-config](https://github.com/KaiEkkrin/dot-config). It is:
+
+- **Cloned** (HTTPS) the first time `devcontainer up` runs.
+- **Pulled** (`--ff-only`) on every subsequent container start.
+
+To push changes back to the repo, do so from the **host** — the workspace is bind-mounted so `git push` works there without needing SSH keys inside the container. If you later want to push from inside the container, switch the remote:
+
+```bash
+git -C ~/.config remote set-url origin git@github.com:KaiEkkrin/dot-config.git
+```
+
+### Available tools
+
+| Tool | How installed | Update |
+| --- | --- | --- |
+| `nvim` (neovim) | Homebrew | `brew upgrade neovim` |
+| `zellij` | Homebrew | `brew upgrade zellij` |
+| `rg` (ripgrep) | Homebrew | `brew upgrade ripgrep` |
+| `fd` | Homebrew | `brew upgrade fd` |
+| `fzf` | Homebrew | `brew upgrade fzf` |
+| `lazygit` | Homebrew | `brew upgrade lazygit` |
+| `tree-sitter` | npm (global) | `npm update -g tree-sitter-cli` |
+| `cargo` / `rustup` | rustup | `rustup update` |
+| `brew` itself | — | `brew update && brew upgrade` |
+
+Neovim opens with LazyVim (from dot-config). Mason installs LSPs on first use — neovim will prompt on first open.
+
+---
+
+## Quick Start (VS Code)
 
 ### Initial Setup
 
@@ -288,8 +374,10 @@ The repository is mounted as a bind mount at `/workspaces/wallandshadow`. Cache 
 - `~/.cache/firebase` → `.devcontainer/.cache/firebase`
 - `~/.config` → `.devcontainer/.config`
 - `~/.claude` → `.devcontainer/.claude`
+- `~/.local/share/nvim` → `.devcontainer/.local/share/nvim` (lazy.nvim plugins, Mason LSPs, treesitter parsers)
+- `~/.local/state/nvim` → `.devcontainer/.local/state/nvim` (undo, shada, lazy readme cache)
 
-This keeps cache/config persistent across container rebuilds while maintaining good performance on Linux.
+This keeps cache/config persistent across container rebuilds while maintaining good performance on Linux. The nvim symlinks in particular avoid a ~1 GB re-download (plugins + Mason packages + parser rebuilds) on every recreate.
 
 ### Environment Variables
 

@@ -6,6 +6,8 @@
 
 .cache/
 .claude/
+.claude.json
 .config/
+.local/
 .minio-data/
 .pgdata/

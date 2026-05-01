@@ -61,6 +61,11 @@ else
     done
 fi
 
+echo "📝 Updating dot-config..."
+git -C "$HOME/.config" pull --ff-only origin main 2>/dev/null \
+    && echo "   ✅ dot-config up to date" \
+    || echo "   ℹ️  dot-config pull skipped (offline or local changes)"
+
 echo ""
 echo "🔄 Wall & Shadow dev container started!"
 echo ""
