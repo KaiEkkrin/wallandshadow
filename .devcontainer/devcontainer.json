@@ -41,6 +41,7 @@
   "containerEnv": {
     "IS_LOCAL_DEV": "true",
     "FORCE_COLOR": "true",
+    "LANG": "C.UTF-8",
     "EDITOR": "nvim",
     "VISUAL": "nvim",
     "GOOGLE_APPLICATION_CREDENTIALS": "/workspaces/wallandshadow/was-web/firebase-admin-credentials.json",
