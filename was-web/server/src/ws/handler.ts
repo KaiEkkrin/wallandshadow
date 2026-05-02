@@ -44,12 +44,28 @@ const SCOPE_ROOMS: Record<UpdateScope, 'mapRooms' | 'adventureRooms' | 'userRoom
 interface ActiveSub {
   subId: number;
   scope: UpdateScope;
+  // Room key — what `RoomManager` indexes by. For `map` this is adventureId
+  // because map subs share the adventure room; for everything else it equals
+  // `entityKey`.
   key: string;
+  // The id the wire `key` field will carry on `roomUpdate` frames for this
+  // subscription (mapId for `map`, adventureId for adventure/players/
+  // spritesheets/mapChanges, uid for adventures/profile). Used by the NOTIFY
+  // handlers to filter per-socket so the adventure-detail fan-out doesn't
+  // ship every map's frame to every socket in the room.
+  entityKey: string;
 }
 
 // Per-socket state: which uid, which subscriptions are currently active.
 // `WeakMap` avoids attaching custom fields to the ws instance.
 const socketState = new WeakMap<WebSocket, { uid: string; subs: Map<number, ActiveSub> }>();
+
+/** Read the active subscriptions for a socket. Used by NOTIFY handlers that
+ * fan out multiple frames to the same room and need to filter by which
+ * scope/entity each socket actually subscribed to. */
+export function getSocketSubs(ws: WebSocket): ReadonlyMap<number, ActiveSub> | undefined {
+  return socketState.get(ws)?.subs;
+}
 
 export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
   return async (request: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -160,10 +176,10 @@ async function handleSubscribe(
   }
 
   try {
-    const { key, data } = await resolveSubscribe(state.uid, frame);
+    const { key, entityKey, data } = await resolveSubscribe(state.uid, frame);
     const manager = rooms[SCOPE_ROOMS[frame.scope]];
     manager.join(key, ws);
-    state.subs.set(frame.subId, { subId: frame.subId, scope: frame.scope, key });
+    state.subs.set(frame.subId, { subId: frame.subId, scope: frame.scope, key, entityKey });
 
     sendIfOpen(ws, {
       type: 'snapshot',
@@ -229,15 +245,15 @@ async function handleMapChange(
 async function resolveSubscribe(
   uid: string,
   frame: SubscribeFrame,
-): Promise<{ key: string; data: unknown }> {
+): Promise<{ key: string; entityKey: string; data: unknown }> {
   switch (frame.scope) {
     case 'adventures':
-      return { key: uid, data: await snapshotAdventures(db, uid) };
+      return { key: uid, entityKey: uid, data: await snapshotAdventures(db, uid) };
 
     case 'profile': {
       const data = await snapshotProfile(db, uid);
       if (!data) throw new Error('User not found');
-      return { key: uid, data };
+      return { key: uid, entityKey: uid, data };
     }
 
     case 'players': {
@@ -246,7 +262,7 @@ async function resolveSubscribe(
         assertAdventureMember(db, uid, adventureId),
         snapshotPlayers(db, adventureId),
       ]);
-      return { key: adventureId, data };
+      return { key: adventureId, entityKey: adventureId, data };
     }
 
     case 'spritesheets': {
@@ -255,7 +271,7 @@ async function resolveSubscribe(
         assertAdventureMember(db, uid, adventureId),
         snapshotSpritesheets(db, adventureId),
       ]);
-      return { key: adventureId, data };
+      return { key: adventureId, entityKey: adventureId, data };
     }
 
     case 'adventure': {
@@ -265,7 +281,7 @@ async function resolveSubscribe(
         snapshotAdventureDetail(db, adventureId),
       ]);
       if (!data) throw new Error('Adventure not found');
-      return { key: adventureId, data };
+      return { key: adventureId, entityKey: adventureId, data };
     }
 
     case 'map': {
@@ -278,8 +294,10 @@ async function resolveSubscribe(
         snapshotMap(db, mapRow.adventureId, mapId),
       ]);
       if (!pair) throw new Error('Map not found');
-      // Room keyed by adventureId; client filters incoming updates by mapId.
-      return { key: mapRow.adventureId, data: pair };
+      // Room keyed by adventureId so adventure-level NOTIFYs reach every map
+      // view in one place; entityKey is the mapId so NOTIFY handlers and
+      // client-side routing can filter updates back down to a specific map.
+      return { key: mapRow.adventureId, entityKey: mapId, data: pair };
     }
 
     case 'mapChanges': {
@@ -288,7 +306,7 @@ async function resolveSubscribe(
         .from(maps).where(eq(maps.id, mapId)).limit(1);
       if (!mapRow) throw new Error('Map not found');
       await assertAdventureMember(db, uid, mapRow.adventureId);
-      return { key: mapId, data: await snapshotMapChanges(db, mapId, frame.lastSeq) };
+      return { key: mapId, entityKey: mapId, data: await snapshotMapChanges(db, mapId, frame.lastSeq) };
     }
   }
 }

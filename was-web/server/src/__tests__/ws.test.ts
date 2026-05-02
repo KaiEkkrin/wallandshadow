@@ -143,6 +143,23 @@ function waitForFrame(
   });
 }
 
+// Buffer every frame that arrives within `ms`. Used to assert that no
+// unexpected frames followed a known trigger (e.g. that an adventure-only
+// subscriber received only the `adventure` roomUpdate, not the per-map ones).
+function collectFrames(ws: WebSocket, ms: number): Promise<ServerFrame[]> {
+  return new Promise(resolve => {
+    const frames: ServerFrame[] = [];
+    const handler = (data: WebSocket.Data) => {
+      try { frames.push(JSON.parse(data.toString()) as ServerFrame); } catch { /* ignore */ }
+    };
+    ws.on('message', handler);
+    setTimeout(() => {
+      ws.off('message', handler);
+      resolve(frames);
+    }, ms);
+  });
+}
+
 function waitForClose(ws: WebSocket, timeoutMs = 5000): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('WS close timeout')), timeoutMs);
@@ -662,6 +679,99 @@ describe('map subscription', () => {
     send(ws, { type: 'subscribe', subId: 1, scope: 'map', id: mId });
     const err = await waitForFrame(ws, f => f.type === 'subscribeError' && f.subId === 1);
     expect(err.message).toMatch(/Adventure not found/);
+    ws.close();
+  });
+});
+
+// `notifyAdventureDetail` (fired on createMap/updateMap/deleteMap/cloneMap)
+// invalidates both the `adventure` detail and every `map` subscription in
+// that adventure. The server should send each connected socket only the
+// frames it actually subscribed to — the previous implementation broadcast
+// `1 + N` frames to every socket in the adventure room regardless of which
+// scopes/maps that socket was watching.
+describe('adventure-detail NOTIFY fan-out filtering', () => {
+  test('adventure subscriber and map subscriber both still receive their frames', async () => {
+    // Regression guard: per-socket filtering must not drop legitimate
+    // deliveries. One socket subscribes to `adventure`, another to `map` for
+    // the same map. updateMap on that map fires notifyAdventureDetail; both
+    // sockets should see their respective roomUpdate.
+    const { token } = await registerUser(app, 'WsFanoutBoth');
+    const aId = await createAdventure(token);
+    const mId = await createMap(token, aId, 'Before');
+
+    const advWs = await connectWs(token);
+    send(advWs, { type: 'subscribe', subId: 1, scope: 'adventure', id: aId });
+    await waitForFrame(advWs, f => f.type === 'snapshot' && f.subId === 1);
+
+    const mapWs = await connectWs(token);
+    send(mapWs, { type: 'subscribe', subId: 1, scope: 'map', id: mId });
+    await waitForFrame(mapWs, f => f.type === 'snapshot' && f.subId === 1);
+
+    const advUpdate = waitForFrame(advWs,
+      f => f.type === 'roomUpdate' && f.scope === 'adventure' && f.key === aId);
+    const mapUpdate = waitForFrame(mapWs,
+      f => f.type === 'roomUpdate' && f.scope === 'map' && f.key === mId);
+
+    const res = await apiPatch(app, `/api/adventures/${aId}/maps/${mId}`, { name: 'After' }, token);
+    expect(res.status).toBe(204);
+
+    const [adv, map] = await Promise.all([advUpdate, mapUpdate]);
+    expect((adv.data as { name: string }).name).toBeTruthy();
+    expect((map.data as { map: { name: string } }).map.name).toBe('After');
+
+    advWs.close();
+    mapWs.close();
+  });
+
+  test('adventure-only subscriber does not receive per-map frames', async () => {
+    // Without per-socket filtering, an `adventure` subscriber receives 1
+    // adventure frame + N map frames per adventure-level NOTIFY.
+    const { token } = await registerUser(app, 'WsFanoutAdvOnly');
+    const aId = await createAdventure(token);
+    const mA = await createMap(token, aId, 'A');
+    await createMap(token, aId, 'B');
+
+    const ws = await connectWs(token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'adventure', id: aId });
+    await waitForFrame(ws, f => f.type === 'snapshot' && f.subId === 1);
+
+    // Trigger notifyAdventureDetail and grab everything that arrives.
+    const collector = collectFrames(ws, 600);
+    const res = await apiPatch(app, `/api/adventures/${aId}/maps/${mA}`, { name: 'A2' }, token);
+    expect(res.status).toBe(204);
+    const frames = await collector;
+
+    const updates = frames.filter(f => f.type === 'roomUpdate');
+    const adventureFrames = updates.filter(f => f.scope === 'adventure' && f.key === aId);
+    const mapFrames = updates.filter(f => f.scope === 'map');
+    expect(adventureFrames).toHaveLength(1);
+    expect(mapFrames).toHaveLength(0);
+
+    ws.close();
+  });
+
+  test('map subscriber does not receive frames for unrelated maps', async () => {
+    // A socket subscribed to map A should not receive a `map` frame for map
+    // B just because B was the one being mutated. (Pre-fix the server
+    // broadcasts every map's frame to every socket in the adventure room.)
+    const { token } = await registerUser(app, 'WsFanoutOneMap');
+    const aId = await createAdventure(token);
+    const mA = await createMap(token, aId, 'A');
+    const mB = await createMap(token, aId, 'B');
+
+    const ws = await connectWs(token);
+    send(ws, { type: 'subscribe', subId: 1, scope: 'map', id: mA });
+    await waitForFrame(ws, f => f.type === 'snapshot' && f.subId === 1);
+
+    const collector = collectFrames(ws, 600);
+    const res = await apiPatch(app, `/api/adventures/${aId}/maps/${mB}`, { name: 'B2' }, token);
+    expect(res.status).toBe(204);
+    const frames = await collector;
+
+    const mapFrames = frames.filter(f => f.type === 'roomUpdate' && f.scope === 'map');
+    expect(mapFrames.every(f => f.key === mA)).toBe(true);
+    expect(mapFrames.some(f => f.key === mB)).toBe(false);
+
     ws.close();
   });
 });

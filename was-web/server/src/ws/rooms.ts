@@ -34,6 +34,16 @@ export class RoomManager {
     }
   }
 
+  /** Iterate OPEN sockets in a room. Used by NOTIFY handlers that want to
+   * send a per-socket-tailored frame instead of one fixed broadcast. */
+  forEachInRoom(key: string, fn: (ws: WebSocket) => void): void {
+    const room = this.rooms.get(key);
+    if (!room) return;
+    for (const ws of room) {
+      if (ws.readyState === ws.OPEN) fn(ws);
+    }
+  }
+
   hasRoom(key: string): boolean {
     return this.rooms.has(key);
   }

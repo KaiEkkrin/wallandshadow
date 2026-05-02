@@ -5,6 +5,7 @@ import { mapChanges } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { logger } from '../services/logger.js';
 import type { RoomManager, Rooms } from './rooms.js';
+import { getSocketSubs } from './handler.js';
 import {
   snapshotPlayers,
   snapshotSpritesheets,
@@ -165,17 +166,44 @@ async function handleUserProfile(userId: string, userRooms: RoomManager): Promis
 async function handleAdventureDetail(adventureId: string, adventureRooms: RoomManager): Promise<void> {
   if (!adventureRooms.hasRoom(adventureId)) return;
   // Adventure-level change invalidates both the `adventure` detail and every
-  // `map` subscription in that adventure. Both scopes share adventureRooms.
+  // `map` subscription in that adventure. The room also holds `players` and
+  // `spritesheets` subs (they share the adventure room), and a single socket
+  // typically subscribes to one adventure + one map. Filtering per-socket
+  // here keeps fan-out proportional to *interest* — without it, every socket
+  // in the room receives 1 + N frames per change regardless of what it
+  // subscribed to.
   const [detail, pairs] = await Promise.all([
     snapshotAdventureDetail(db, adventureId),
     fetchAdventureMapPairs(db, adventureId),
   ]);
   if (!detail) return;
-  adventureRooms.broadcast(adventureId, encodeUpdate('adventure', adventureId, detail));
+
+  const adventureFrame = encodeUpdate('adventure', adventureId, detail);
+  const mapFrameById = new Map<string, string>();
   for (const pair of pairs) {
-    // `map` subs room by adventureId; clients filter by `key === mapId`.
-    adventureRooms.broadcast(adventureId, encodeUpdate('map', pair.map.id, pair));
+    mapFrameById.set(pair.map.id, encodeUpdate('map', pair.map.id, pair));
   }
+
+  adventureRooms.forEachInRoom(adventureId, ws => {
+    const subs = getSocketSubs(ws);
+    if (!subs) return;
+    let wantsAdventure = false;
+    // Set dedupes the (rare) case of two subIds on one socket pointing at the
+    // same map.
+    const wantedMapIds = new Set<string>();
+    for (const sub of subs.values()) {
+      if (sub.scope === 'adventure' && sub.entityKey === adventureId) {
+        wantsAdventure = true;
+      } else if (sub.scope === 'map') {
+        wantedMapIds.add(sub.entityKey);
+      }
+    }
+    if (wantsAdventure) ws.send(adventureFrame);
+    for (const mapId of wantedMapIds) {
+      const frame = mapFrameById.get(mapId);
+      if (frame) ws.send(frame);
+    }
+  });
 }
 
 // pg_notify via parameters escapes the payload; safer than manual quoting.

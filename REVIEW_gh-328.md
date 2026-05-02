@@ -34,9 +34,11 @@ Either generate a UUID in `sendMapChange` and pass it through to the server, or 
 
 **Resolution:** Now `await notifySafe(notifyMapChange(mapId, notifyInfo.id, notifyInfo.seq))`, matching the rest of the file.
 
-### Low — Adventure detail NOTIFY fan-out is O(maps × subscribers)
+### ~~Low — Adventure detail NOTIFY fan-out is O(maps × subscribers)~~ ✅ Fixed
 
 `notify.ts:165-179` (`handleAdventureDetail`) sends `1 + N` frames per adventure-level change to every socket subscribed to the adventure room (the comment correctly notes this saves DB round-trips, but doesn't address WS sends). For an adventure with 50 maps and 6 connected players, a single rename triggers ~306 frames. Probably fine at current scale, but worth a comment acknowledging the network cost trade-off, or filter at the server by which mapIds each socket actually subscribed to.
+
+**Resolution:** `ActiveSub` now tracks an `entityKey` (mapId for `map` subs, adventureId/uid otherwise), `RoomManager` exposes `forEachInRoom`, and `handleAdventureDetail` walks the room per-socket — sending the `adventure` frame only to sockets that subscribed to it and each `map` frame only to sockets watching that mapId. Fan-out is now proportional to interest (e.g. 50 maps × 6 sockets each watching one map drops from ~306 sends to ~12). New tests in `ws.test.ts > adventure-detail NOTIFY fan-out filtering` cover the regression-guard and both anti-spam cases. As a side benefit, `players`/`spritesheets`-only subscribers (which share the adventure room) no longer receive spurious adventure-detail frames.
 
 ### Low — Subscribe error messages are surfaced verbatim
 
