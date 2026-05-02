@@ -14,6 +14,8 @@
 }
 
 {{ domain_prod }} {
+    encode zstd gzip
+
     reverse_proxy localhost:{{ app_port_prod }}
 
     header {
@@ -25,6 +27,8 @@
 }
 
 {{ domain_test }} {
+    encode zstd gzip
+
     reverse_proxy localhost:{{ app_port_test }}
 
     header {
