@@ -30,10 +30,3 @@ ui-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# firebase
-/.firebase
-/firebase-debug.log*
-/firestore-debug.log*
-
-# firebase admin credentials for emulators (but not the symlink in public/)
-/firebase-admin-credentials.json

@@ -212,9 +212,6 @@
     }
   </style>
 
-  <!-- Preconnect to Firebase CDN for faster auth check -->
-  <link rel="preconnect" href="https://www.gstatic.com">
-
   <!-- Load Google Font for logo -->
   <link href="https://fonts.googleapis.com/css?family=Princess+Sofia" rel="stylesheet">
 </head>
@@ -240,38 +237,5 @@
     v0.0.0
   </a>
 
-  <!-- Minimal auth check - only loads Firebase Auth SDK if already logged in -->
-  <script type="module">
-    // Check if we have a cached auth state before loading Firebase
-    const hasSession = document.cookie.includes('__session');
-
-    // Only check auth if user might be logged in and came directly to root
-    if (hasSession && window.location.pathname === '/') {
-      // Fetch Firebase config from hosting (same as main app)
-      fetch('/__/firebase/init.json?v=2')
-        .then(response => response.json())
-        .then(config => {
-          // Load Firebase SDK and check auth state
-          return Promise.all([
-            import('https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js'),
-            import('https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js')
-          ]).then(([{ initializeApp }, { getAuth, onAuthStateChanged }]) => {
-            const app = initializeApp(config);
-            const auth = getAuth(app);
-
-            // If user is logged in, redirect to app
-            onAuthStateChanged(auth, (user) => {
-              if (user && window.location.pathname === '/') {
-                window.location.href = '/app';
-              }
-            });
-          });
-        })
-        .catch(err => {
-          // Silently fail - user can still navigate manually
-          console.debug('Auth check skipped:', err);
-        });
-    }
-  </script>
 </body>
 </html>

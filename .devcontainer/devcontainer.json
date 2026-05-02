@@ -44,7 +44,6 @@
     "LANG": "C.UTF-8",
     "EDITOR": "nvim",
     "VISUAL": "nvim",
-    "GOOGLE_APPLICATION_CREDENTIALS": "/workspaces/wallandshadow/was-web/firebase-admin-credentials.json",
     // PostgreSQL: data directory (pg_ctl and psql pick this up automatically)
     "PGDATA": "/workspaces/wallandshadow/.devcontainer/.pgdata",
     "DATABASE_URL": "postgresql://was:wasdev@localhost:5432/wallandshadow",
@@ -61,7 +60,6 @@
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
         "dreamcatcher45.podmanager",
-        "toba.vsfire",
         "dsznajder.es7-react-js-snippets",
         "vitest.vitest-explorer",
         "ms-playwright.playwright",
@@ -72,7 +70,7 @@
         "editor.tabSize": 2,
         "editor.formatOnSave": true,
         "typescript.tsdk": "was-web/node_modules/typescript/lib",
-        "eslint.workingDirectories": ["was-web", "was-web/functions"],
+        "eslint.workingDirectories": ["was-web"],
         "files.exclude": {
           "**/.git": true,
           "**/.DS_Store": true,
@@ -84,44 +82,16 @@
     }
   },
 
-  "forwardPorts": [3000, 3400, 4000, 5000, 5001, 7000, 8080, 9005, 9099, 9199, 9229, 9323, 5432, 9000, 9001],
+  "forwardPorts": [3000, 5000, 9229, 9323, 5432, 9000, 9001],
 
   "portsAttributes": {
     "3000": {
       "label": "Hono API Server",
       "onAutoForward": "notify"
     },
-    "3400": {
-      "label": "Firebase Hosting",
-      "onAutoForward": "notify"
-    },
-    "4000": {
-      "label": "Firebase Emulator UI",
-      "onAutoForward": "notify"
-    },
     "5000": {
       "label": "React Dev Server",
       "onAutoForward": "notify"
-    },
-    "5001": {
-      "label": "Firebase Functions",
-      "onAutoForward": "notify"
-    },
-    "8080": {
-      "label": "Firestore Emulator",
-      "onAutoForward": "silent"
-    },
-    "9005": {
-      "label": "Firestore Debug",
-      "onAutoForward": "silent"
-    },
-    "9099": {
-      "label": "Firebase Auth",
-      "onAutoForward": "silent"
-    },
-    "9199": {
-      "label": "Firebase Storage",
-      "onAutoForward": "silent"
     },
     "9229": {
       "label": "Node Debug",

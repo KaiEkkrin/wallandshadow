@@ -23,7 +23,6 @@ echo "🔗 Setting up cache and config symlinks..."
 DEVCONTAINER_DIR="/workspaces/wallandshadow/.devcontainer"
 
 # Create actual directories within .devcontainer
-mkdir -p "$DEVCONTAINER_DIR/.cache/firebase"
 mkdir -p "$DEVCONTAINER_DIR/.config"
 mkdir -p "$DEVCONTAINER_DIR/.claude"
 mkdir -p "$DEVCONTAINER_DIR/.local/share/nvim"
@@ -46,7 +45,6 @@ for dir in "$HOME/.claude" "$HOME/.config" "$HOME/.local/share/nvim" "$HOME/.loc
         rm -rf "$dir"
     fi
 done
-ln -sfn "$DEVCONTAINER_DIR/.cache/firebase" "$HOME/.cache/firebase"
 ln -sfn "$DEVCONTAINER_DIR/.config" "$HOME/.config"
 ln -sfn "$DEVCONTAINER_DIR/.claude" "$HOME/.claude"
 mkdir -p "$DEVCONTAINER_DIR/.cache/ms-playwright"
@@ -54,7 +52,6 @@ ln -sfn "$DEVCONTAINER_DIR/.cache/ms-playwright" "$HOME/.cache/ms-playwright"
 ln -sfn "$DEVCONTAINER_DIR/.local/share/nvim" "$HOME/.local/share/nvim"
 ln -sfn "$DEVCONTAINER_DIR/.local/state/nvim" "$HOME/.local/state/nvim"
 
-echo "   ✅ \$HOME/.cache/firebase -> .devcontainer/.cache/firebase"
 echo "   ✅ \$HOME/.config -> .devcontainer/.config"
 echo "   ✅ \$HOME/.claude -> .devcontainer/.claude"
 echo "   ✅ \$HOME/.cache/ms-playwright -> .devcontainer/.cache/ms-playwright"
@@ -80,34 +77,6 @@ else
 fi
 echo ""
 
-# Check for Firebase admin credentials (only relevant on the legacy-firebase branch,
-# which is the only branch that still contains firebase.json / functions/)
-FIREBASE_CONFIG="/workspaces/wallandshadow/was-web/firebase.json"
-CREDS_FILE="/workspaces/wallandshadow/was-web/firebase-admin-credentials.json"
-if [ -f "$FIREBASE_CONFIG" ]; then
-    if [ ! -f "$CREDS_FILE" ]; then
-        echo "⚠️  WARNING: Firebase admin credentials not found!"
-        echo ""
-        echo "📝 To enable full Firebase Functions and Firestore emulator functionality:"
-        echo "   1. Open Firebase Console: https://console.firebase.google.com/"
-        echo "   2. Select or create your Firebase project"
-        echo "   3. Go to Project Settings > Service Accounts"
-        echo "   4. Click 'Generate new private key'"
-        echo "   5. Save the downloaded JSON file as:"
-        echo "      was-web/firebase-admin-credentials.json"
-        echo ""
-        echo "   The dev container will work without this file, but some features"
-        echo "   will be limited. You can add it later and restart the container."
-        echo ""
-    else
-        echo "✅ Firebase admin credentials found"
-        echo ""
-    fi
-else
-    echo "ℹ️  Skipping Firebase admin credentials check (no firebase.json — main branch)"
-    echo ""
-fi
-
 # Install web app dependencies
 echo "📦 Installing web app dependencies..."
 cd /workspaces/wallandshadow/was-web
@@ -129,23 +98,6 @@ else
     yarn install
 fi
 echo ""
-
-# Install Firebase Functions dependencies (legacy-firebase branch only)
-FUNCTIONS_DIR="/workspaces/wallandshadow/was-web/functions"
-if [ -d "$FUNCTIONS_DIR" ]; then
-    echo "📦 Installing Firebase Functions dependencies..."
-    cd "$FUNCTIONS_DIR"
-    if [ -f "yarn.lock" ]; then
-        echo "   Using yarn.lock for deterministic install..."
-        yarn install --frozen-lockfile || yarn install
-    else
-        yarn install
-    fi
-    echo ""
-else
-    echo "ℹ️  Skipping Firebase Functions install (no was-web/functions — main branch)"
-    echo ""
-fi
 
 # Install Playwright browsers for E2E tests
 echo "🎭 Installing Playwright browsers..."
@@ -187,37 +139,11 @@ mkdir -p "$MINIO_DATA"
 echo "   ✅ MinIO data directory ready"
 echo ""
 
-# Firebase setup (legacy-firebase branch only)
-if [ -f "$FIREBASE_CONFIG" ]; then
-    echo "🔥 Setting up Firebase..."
-    cd /workspaces/wallandshadow/was-web
-
-    # Try to login (may already be logged in)
-    firebase login --no-localhost || echo "   Firebase login skipped (already logged in or running non-interactively)"
-
-    # Check if a Firebase project is configured
-    CURRENT_PROJECT=$(firebase use 2>/dev/null | grep "Now using" || echo "")
-    if [ -z "$CURRENT_PROJECT" ]; then
-        echo "   No Firebase project configured yet."
-        echo "   You can run 'firebase use <project-id>' to select a project"
-        echo "   or 'firebase use --add' to add a new project alias."
-    else
-        echo "   $CURRENT_PROJECT"
-    fi
-    echo ""
-else
-    echo "ℹ️  Skipping Firebase setup (no firebase.json — main branch)"
-    echo ""
-fi
-
 echo "✅ Setup complete!"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📚 Quick Start Guide"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "  Start Firebase dev server (existing stack):"
-echo "    cd was-web && yarn start"
 echo ""
 echo "  Connect to PostgreSQL:"
 echo "    psql -h localhost -U was wallandshadow"

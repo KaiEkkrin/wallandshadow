@@ -16,22 +16,6 @@ server/src/__tests__/
 **/*.test.ts
 **/test-results
 
-# Firebase (not used in new stack)
-functions/src/
-functions/lib/
-functions/node_modules/
-firebase-admin-credentials.json
-public/firebase-admin-credentials.json
-firebase-debug.log*
-firestore-debug.log*
-firestore.rules
-firestore.indexes.json
-storage.rules
-firebase.json
-firebase.test.json
-.firebaserc
-.firebase/
-
 # Dev container and environment
 .devcontainer/
 .env
