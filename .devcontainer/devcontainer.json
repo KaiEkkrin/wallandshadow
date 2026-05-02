@@ -30,6 +30,7 @@
     // but harmless when these are also published.
     "-p=3000:3000",
     "-p=5000:5000",
+    "-p=9000:9000",
     "-p=9001:9001",
     "-p=9323:9323"
   ],

@@ -66,10 +66,11 @@ The devcontainer CLI does not implement `forwardPorts` ([open issue](https://git
 | ---- | ------- |
 | 3000 | Hono API server |
 | 5000 | Vite dev server |
+| 9000 | MinIO API |
 | 9001 | MinIO Console |
 | 9323 | Playwright Report |
 
-Database ports (5432, 9000) are intentionally not published to avoid conflicts with host services.
+Database port 5432 is intentionally not published to avoid conflicts with host services.
 
 ### Rebuild after Dockerfile changes
 
