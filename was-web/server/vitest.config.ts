@@ -15,6 +15,7 @@ export default defineConfig({
     env: {
       DATABASE_URL: 'postgresql://was:wasdev@localhost:5432/wallandshadow_test',
       S3_BUCKET: 'wallandshadow-test',
+      DISABLE_RATE_LIMIT: 'true',
     },
   },
   resolve: {

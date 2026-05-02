@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { emailIsValid, passwordIsValid } from '@wallandshadow/shared';
+import { loginRateLimiter, registerRateLimiter } from '../middleware/rateLimiters.js';
 import { db } from '../db/connection.js';
 import { users, adventurePlayers } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -54,7 +55,7 @@ authRoutes.patch('/me', authMiddleware, async (c) => {
 
 // ── Local auth (disabled when AUTH_MODE=oidc) ───────────────────────────────
 
-authRoutes.post('/register', async (c) => {
+authRoutes.post('/register', registerRateLimiter, async (c) => {
   if (process.env.AUTH_MODE === 'oidc') {
     return c.json({ error: 'Local registration is disabled' }, 403);
   }
@@ -92,7 +93,7 @@ authRoutes.post('/register', async (c) => {
   return c.json({ token, uid: id }, 201);
 });
 
-authRoutes.post('/login', async (c) => {
+authRoutes.post('/login', loginRateLimiter, async (c) => {
   if (process.env.AUTH_MODE === 'oidc') {
     return c.json({ error: 'Local login is disabled' }, 403);
   }
