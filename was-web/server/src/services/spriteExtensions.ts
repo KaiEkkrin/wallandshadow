@@ -16,10 +16,7 @@ import { v7 as uuidv7 } from 'uuid';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-
-const execFileAsync = promisify(execFile);
+import sharp from 'sharp';
 
 async function createMontage(
   storage: IStorage,
@@ -33,9 +30,7 @@ async function createMontage(
   try {
     logger.logInfo('downloading: ' + sources);
     const downloaded = await Promise.all(sources.map(async s => {
-      if (s === '') {
-        return 'null:';
-      }
+      if (s === '') return null;
       const tmpPath = path.join(tmp, uuidv7());
       await storage.ref(s).download(tmpPath);
       tmpPaths.push(tmpPath);
@@ -45,17 +40,28 @@ async function createMontage(
     const { columns, rows } = fromSpriteGeometryString(geometry);
     const tileWidth = Math.floor(1024 / columns);
     const tileHeight = Math.floor(1024 / rows);
-    logger.logInfo('spawning montage');
+    logger.logInfo('assembling spritesheet');
+
+    const composites = (await Promise.all(
+      downloaded.map(async (p, i) => {
+        if (p === null) return null;
+        const buf = await sharp(p).resize(tileWidth, tileHeight, { fit: 'fill' }).toBuffer();
+        return {
+          input: buf,
+          left: (i % columns) * tileWidth,
+          top: Math.floor(i / columns) * tileHeight,
+        };
+      }),
+    )).filter((c): c is NonNullable<typeof c> => c !== null);
+
     const tmpSheetPath = path.join(tmp, `${uuidv7()}.png`);
     tmpPaths.push(tmpSheetPath);
-    await execFileAsync('montage', [
-      '-geometry', `${tileWidth}x${tileHeight}`,
-      '-tile', `${columns}x${rows}`,
-      '-alpha', 'background',
-      '-background', 'transparent',
-      ...downloaded,
-      `PNG32:${tmpSheetPath}`,
-    ]);
+    await sharp({
+      create: { width: 1024, height: 1024, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .composite(composites)
+      .png()
+      .toFile(tmpSheetPath);
 
     const spritePath = getSpritePathFromId(newSheetId);
     logger.logInfo(`uploading: ${spritePath}`);
@@ -63,9 +69,8 @@ async function createMontage(
     await sheetRef.upload(tmpSheetPath, { contentType: 'image/png' });
     return sheetRef;
   } finally {
-    await Promise.all(tmpPaths
-      .filter(p => p !== 'null:')
-      .map(p => fs.unlink(p).catch(() => { /* best-effort cleanup */ })),
+    await Promise.all(
+      tmpPaths.map(p => fs.unlink(p).catch(() => {})),
     );
   }
 }
