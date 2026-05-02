@@ -22,13 +22,17 @@ Either generate a UUID in `sendMapChange` and pass it through to the server, or 
 
 **Resolution:** `sendMapChange()` now generates a UUIDv7 per call and embeds it in the frame; the key is in the encoded JSON so a queued-and-replayed frame carries the same key on reconnect, triggering the server's dedup branch. New test `ws.test.ts > mapChange with duplicate idempotencyKey is deduped server-side` covers `extensions.ts:728-734`.
 
-### Medium — `pruneQueueForReconnect` relies on JSON key order
+### ~~Medium — `pruneQueueForReconnect` relies on JSON key order~~ ✅ Fixed
 
 `honoWebSocket.ts:228-234` checks `frame.startsWith('{"type":"subscribe"')`. Modern engines do preserve insertion order for string keys, and `OutgoingFrame` puts `type` first, but a future refactor that constructs frames with a different key order (or adds a Babel/swc transform) would silently break dedup, creating mysterious duplicate-subscribe storms on reconnect. Cheap fix: parse, check `f.type`, re-stringify; or use a small typed wrapper around the queue.
 
-### Low — Inconsistent NOTIFY failure logging
+**Resolution:** `sendQueue` is now `OutgoingFrame[]` instead of `string[]`; frames are stringified at send time and `pruneQueueForReconnect` checks `frame.type` directly. No JSON-shape dependency.
+
+### ~~Low — Inconsistent NOTIFY failure logging~~ ✅ Fixed
 
 `extensions.ts:498-500` (in `tryConsolidateMapChanges`) uses `console.error('NOTIFY failed:', e)` directly, whereas everywhere else in the file uses `notifySafe(...)` which routes through `logger.logError`. Switch to `notifySafe(notifyMapChange(mapId, notifyInfo.id, notifyInfo.seq))` for consistency, or wrap the NOTIFY there in a `notifySafe`.
+
+**Resolution:** Now `await notifySafe(notifyMapChange(mapId, notifyInfo.id, notifyInfo.seq))`, matching the rest of the file.
 
 ### Low — Adventure detail NOTIFY fan-out is O(maps × subscribers)
 
