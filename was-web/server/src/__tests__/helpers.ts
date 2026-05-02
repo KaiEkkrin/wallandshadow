@@ -157,7 +157,7 @@ export async function postMapChanges(
 export async function getBaseChange(mapId: string): Promise<Changes | undefined> {
   const rows = await db.select({ changes: mapChanges.changes })
     .from(mapChanges)
-    .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.incremental, false)))
+    .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, true)))
     .limit(1);
   return rows[0]?.changes as Changes | undefined;
 }

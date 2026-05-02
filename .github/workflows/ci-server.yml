@@ -60,11 +60,11 @@ jobs:
             sleep 1
           done
 
-      - name: Create MinIO bucket
+      - name: Create MinIO buckets
         run: |
           docker run --rm --network host \
             -e MC_HOST_local=http://wasdev:wasdevpass@127.0.0.1:9000 \
-            minio/mc:latest mb local/wallandshadow --ignore-existing
+            minio/mc:latest mb local/wallandshadow local/wallandshadow-test --ignore-existing
 
       - name: Install ImageMagick
         run: sudo apt-get install -y imagemagick

@@ -165,8 +165,9 @@ mapRoutes.post('/adventures/:id/maps/:mapId/changes', async (c) => {
   if (!Array.isArray(body.chs)) {
     return c.json({ error: 'chs array is required' }, 400);
   }
-  const id = await addMapChanges(db, uid, adventureId, mapId, body.chs);
-  return c.json({ id }, 201);
+  const idempotencyKey = (body as { idempotencyKey?: string }).idempotencyKey;
+  const { id, seq } = await addMapChanges(db, uid, adventureId, mapId, body.chs, idempotencyKey);
+  return c.json({ id, seq }, 201);
 });
 
 // ── Consolidate map changes ──────────────────────────────────────────────────

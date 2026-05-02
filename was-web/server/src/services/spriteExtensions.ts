@@ -9,6 +9,7 @@ import {
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
+import { notifyAdventureSpritesheets, notifySafe } from '../ws/notify.js';
 import { adventures, adventurePlayers, spritesheets } from '../db/schema.js';
 import { eq, and, gt, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
@@ -286,5 +287,6 @@ export async function addSprites(
     })));
   }
 
+  await notifySafe(notifyAdventureSpritesheets(adventureId));
   return found;
 }

@@ -1,31 +1,80 @@
 import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import { resolveTokenToUid } from '../auth/resolveToken.js';
 import { db } from '../db/connection.js';
 import { maps } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { assertAdventureMember, fetchMapChanges } from '../services/extensions.js';
-import type { MapRoomManager } from './rooms.js';
+import { HTTPException } from 'hono/http-exception';
+import { assertAdventureMember, addMapChanges } from '../services/extensions.js';
+import { logger } from '../services/logger.js';
+import type { Rooms } from './rooms.js';
+import {
+  snapshotAdventures,
+  snapshotPlayers,
+  snapshotSpritesheets,
+  snapshotMapChanges,
+  snapshotProfile,
+  snapshotAdventureDetail,
+  snapshotMap,
+} from './subscriptions.js';
+import type { Change, UpdateScope } from '@wallandshadow/shared';
 
-const WS_PATH_RE = /^\/ws\/maps\/([0-9a-f-]+)/;
+const WS_PATH = '/ws';
+// Application-specific close code: token verification failed.
+// Kept in sync with the client constant in honoWebSocket.ts.
+const WS_CLOSE_AUTH_REJECTED = 4001;
 
-/**
- * Handle an HTTP upgrade request for a WebSocket connection.
- * Validates JWT, checks adventure membership, joins the map room,
- * and sends initial state (base + incremental changes).
- */
-export function createUpgradeHandler(wss: WebSocketServer, rooms: MapRoomManager) {
+// Which manager each scope lives in. `players` and `spritesheets` share the
+// adventure rooms — they always concern the same adventureId, and messages
+// are tagged with `scope` so the client routes them correctly.
+const SCOPE_ROOMS: Record<UpdateScope, 'mapRooms' | 'adventureRooms' | 'userRooms'> = {
+  adventures: 'userRooms',
+  profile: 'userRooms',
+  players: 'adventureRooms',
+  spritesheets: 'adventureRooms',
+  adventure: 'adventureRooms',
+  // `map` subscriptions room by adventureId so a single adventure-level
+  // NOTIFY can reach every map view in that adventure; the wire `key` is the
+  // mapId and the client filters on it.
+  map: 'adventureRooms',
+  mapChanges: 'mapRooms',
+};
+
+interface ActiveSub {
+  subId: number;
+  scope: UpdateScope;
+  // Room key — what `RoomManager` indexes by. For `map` this is adventureId
+  // because map subs share the adventure room; for everything else it equals
+  // `entityKey`.
+  key: string;
+  // The id the wire `key` field will carry on `roomUpdate` frames for this
+  // subscription (mapId for `map`, adventureId for adventure/players/
+  // spritesheets/mapChanges, uid for adventures/profile). Used by the NOTIFY
+  // handlers to filter per-socket so the adventure-detail fan-out doesn't
+  // ship every map's frame to every socket in the room.
+  entityKey: string;
+}
+
+// Per-socket state: which uid, which subscriptions are currently active.
+// `WeakMap` avoids attaching custom fields to the ws instance.
+const socketState = new WeakMap<WebSocket, { uid: string; subs: Map<number, ActiveSub> }>();
+
+/** Read the active subscriptions for a socket. Used by NOTIFY handlers that
+ * fan out multiple frames to the same room and need to filter by which
+ * scope/entity each socket actually subscribed to. */
+export function getSocketSubs(ws: WebSocket): ReadonlyMap<number, ActiveSub> | undefined {
+  return socketState.get(ws)?.subs;
+}
+
+export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
   return async (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     try {
       const url = new URL(request.url ?? '', `http://${request.headers.host ?? 'localhost'}`);
-
-      const match = WS_PATH_RE.exec(url.pathname);
-      if (!match) {
+      if (url.pathname !== WS_PATH) {
         socket.destroy();
         return;
       }
-      const mapId = match[1];
 
       const token = url.searchParams.get('token');
       if (!token) {
@@ -36,61 +85,251 @@ export function createUpgradeHandler(wss: WebSocketServer, rooms: MapRoomManager
       let uid: string;
       try {
         uid = await resolveTokenToUid(token);
-      } catch {
-        socket.destroy();
+      } catch (e) {
+        logger.logWarning('WebSocket auth rejected', e);
+        // Complete the handshake so we can send a typed close code (4001).
+        // A raw socket.destroy() would look identical to a network error on the
+        // client, making auth failure indistinguishable from "server is down".
+        wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+          ws.close(WS_CLOSE_AUTH_REJECTED, 'Unauthorized');
+        });
         return;
       }
 
-      const [mapRow] = await db.select({ adventureId: maps.adventureId })
-        .from(maps)
-        .where(eq(maps.id, mapId))
-        .limit(1);
-      if (!mapRow) {
-        socket.destroy();
-        return;
-      }
-
-      try {
-        await assertAdventureMember(db, uid, mapRow.adventureId);
-      } catch {
-        socket.destroy();
-        return;
-      }
       wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-        rooms.join(mapId, ws);
+        socketState.set(ws, { uid, subs: new Map() });
 
-        ws.on('close', () => {
-          rooms.leave(mapId, ws);
+        ws.on('message', (data: RawData) => {
+          handleMessage(ws, rooms, data).catch(e => {
+            logger.logError('WS message handler failed', e);
+          });
         });
 
-        ws.on('error', () => {
-          rooms.leave(mapId, ws);
-        });
-
-        // Send initial state: base change + incrementals
-        sendInitialState(ws, mapId).catch(e => {
-          console.error('Failed to send initial WebSocket state:', e);
-          ws.close(1011, 'Failed to load map state');
-        });
+        ws.on('close', () => cleanupSocket(ws, rooms));
+        ws.on('error', () => cleanupSocket(ws, rooms));
       });
     } catch (e) {
-      console.error('WebSocket upgrade error:', e);
+      logger.logError('WebSocket upgrade error', e);
       socket.destroy();
     }
   };
 }
 
-/** Send the current base change and all incremental changes to a newly connected client. */
-async function sendInitialState(ws: WebSocket, mapId: string): Promise<void> {
-  const { baseRow, incrementalRows } = await fetchMapChanges(db, mapId);
+// ── Incoming message dispatch ───────────────────────────────────────────────
 
-  if (baseRow && ws.readyState === ws.OPEN) {
-    ws.send(JSON.stringify(baseRow.changes));
+interface SubscribeFrame {
+  type: 'subscribe';
+  subId: number;
+  scope: UpdateScope;
+  id?: string;
+  lastSeq?: string;  // mapChanges scope only: last seq seen by client for catch-up
+}
+interface UnsubscribeFrame {
+  type: 'unsubscribe';
+  subId: number;
+}
+interface MapChangeFrame {
+  type: 'mapChange';
+  ackId?: number;
+  adventureId: string;
+  mapId: string;
+  chs: Change[];
+  idempotencyKey?: string;  // client-generated UUID for deduplication on reconnect
+}
+
+type ClientFrame = SubscribeFrame | UnsubscribeFrame | MapChangeFrame;
+
+async function handleMessage(ws: WebSocket, rooms: Rooms, data: RawData): Promise<void> {
+  const state = socketState.get(ws);
+  if (!state) return;
+
+  let frame: ClientFrame;
+  try {
+    frame = JSON.parse(data.toString()) as ClientFrame;
+  } catch (e) {
+    logger.logWarning('Dropping malformed WS frame', e);
+    return;
   }
 
-  for (const row of incrementalRows) {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify(row.changes));
+  switch (frame.type) {
+    case 'subscribe':
+      await handleSubscribe(ws, state, rooms, frame);
+      return;
+    case 'unsubscribe':
+      handleUnsubscribe(ws, state, rooms, frame);
+      return;
+    case 'mapChange':
+      await handleMapChange(ws, state, frame);
+      return;
+  }
+}
+
+async function handleSubscribe(
+  ws: WebSocket,
+  state: { uid: string; subs: Map<number, ActiveSub> },
+  rooms: Rooms,
+  frame: SubscribeFrame,
+): Promise<void> {
+  // If the client re-uses a subId, unsubscribe the old binding first.
+  if (state.subs.has(frame.subId)) {
+    handleUnsubscribe(ws, state, rooms, { type: 'unsubscribe', subId: frame.subId });
+  }
+
+  try {
+    const { key, entityKey, data } = await resolveSubscribe(state.uid, frame);
+    const manager = rooms[SCOPE_ROOMS[frame.scope]];
+    manager.join(key, ws);
+    state.subs.set(frame.subId, { subId: frame.subId, scope: frame.scope, key, entityKey });
+
+    sendIfOpen(ws, {
+      type: 'snapshot',
+      subId: frame.subId,
+      scope: frame.scope,
+      key,
+      data,
+    });
+  } catch (e) {
+    if (!(e instanceof HTTPException)) {
+      logger.logError(`subscribe(${frame.scope}) failed unexpectedly`, e);
     }
+    const message = e instanceof Error ? e.message : String(e);
+    sendIfOpen(ws, {
+      type: 'subscribeError',
+      subId: frame.subId,
+      scope: frame.scope,
+      message,
+    });
+  }
+}
+
+function handleUnsubscribe(
+  ws: WebSocket,
+  state: { uid: string; subs: Map<number, ActiveSub> },
+  rooms: Rooms,
+  frame: UnsubscribeFrame,
+): void {
+  const sub = state.subs.get(frame.subId);
+  if (!sub) return;
+  state.subs.delete(frame.subId);
+  rooms[SCOPE_ROOMS[sub.scope]].leave(sub.key, ws);
+}
+
+async function handleMapChange(
+  ws: WebSocket,
+  state: { uid: string; subs: Map<number, ActiveSub> },
+  frame: MapChangeFrame,
+): Promise<void> {
+  try {
+    // addMapChanges performs its own membership + map lookup, so we don't
+    // need to pre-validate. It inserts and fires NOTIFY, which feeds the
+    // broadcast back to every subscribed socket in the room.
+    const { id, seq } = await addMapChanges(
+      db, state.uid, frame.adventureId, frame.mapId, frame.chs, frame.idempotencyKey,
+    );
+    if (frame.ackId !== undefined) {
+      sendIfOpen(ws, { type: 'mapChangeAck', ackId: frame.ackId, id, seq });
+    }
+  } catch (e) {
+    if (!(e instanceof HTTPException)) {
+      logger.logError('mapChange write failed unexpectedly', e);
+    }
+    const message = e instanceof Error ? e.message : String(e);
+    if (frame.ackId !== undefined) {
+      sendIfOpen(ws, { type: 'mapChangeAck', ackId: frame.ackId, error: message });
+    }
+  }
+}
+
+// ── Subscribe resolution ────────────────────────────────────────────────────
+
+async function resolveSubscribe(
+  uid: string,
+  frame: SubscribeFrame,
+): Promise<{ key: string; entityKey: string; data: unknown }> {
+  switch (frame.scope) {
+    case 'adventures':
+      return { key: uid, entityKey: uid, data: await snapshotAdventures(db, uid) };
+
+    case 'profile': {
+      const data = await snapshotProfile(db, uid);
+      if (!data) throw new Error('User not found');
+      return { key: uid, entityKey: uid, data };
+    }
+
+    case 'players': {
+      const adventureId = requireId(frame);
+      const [, data] = await Promise.all([
+        assertAdventureMember(db, uid, adventureId),
+        snapshotPlayers(db, adventureId),
+      ]);
+      return { key: adventureId, entityKey: adventureId, data };
+    }
+
+    case 'spritesheets': {
+      const adventureId = requireId(frame);
+      const [, data] = await Promise.all([
+        assertAdventureMember(db, uid, adventureId),
+        snapshotSpritesheets(db, adventureId),
+      ]);
+      return { key: adventureId, entityKey: adventureId, data };
+    }
+
+    case 'adventure': {
+      const adventureId = requireId(frame);
+      const [, data] = await Promise.all([
+        assertAdventureMember(db, uid, adventureId),
+        snapshotAdventureDetail(db, adventureId),
+      ]);
+      if (!data) throw new Error('Adventure not found');
+      return { key: adventureId, entityKey: adventureId, data };
+    }
+
+    case 'map': {
+      const mapId = requireId(frame);
+      const [mapRow] = await db.select({ adventureId: maps.adventureId })
+        .from(maps).where(eq(maps.id, mapId)).limit(1);
+      if (!mapRow) throw new Error('Map not found');
+      const [, pair] = await Promise.all([
+        assertAdventureMember(db, uid, mapRow.adventureId),
+        snapshotMap(db, mapRow.adventureId, mapId),
+      ]);
+      if (!pair) throw new Error('Map not found');
+      // Room keyed by adventureId so adventure-level NOTIFYs reach every map
+      // view in one place; entityKey is the mapId so NOTIFY handlers and
+      // client-side routing can filter updates back down to a specific map.
+      return { key: mapRow.adventureId, entityKey: mapId, data: pair };
+    }
+
+    case 'mapChanges': {
+      const mapId = requireId(frame);
+      const [mapRow] = await db.select({ adventureId: maps.adventureId })
+        .from(maps).where(eq(maps.id, mapId)).limit(1);
+      if (!mapRow) throw new Error('Map not found');
+      await assertAdventureMember(db, uid, mapRow.adventureId);
+      return { key: mapId, entityKey: mapId, data: await snapshotMapChanges(db, mapId, frame.lastSeq) };
+    }
+  }
+}
+
+function requireId(frame: SubscribeFrame): string {
+  if (!frame.id) throw new Error(`Missing id for scope ${frame.scope}`);
+  return frame.id;
+}
+
+// ── Cleanup ─────────────────────────────────────────────────────────────────
+
+function cleanupSocket(ws: WebSocket, rooms: Rooms): void {
+  const state = socketState.get(ws);
+  if (!state) return;
+  for (const sub of state.subs.values()) {
+    rooms[SCOPE_ROOMS[sub.scope]].leave(sub.key, ws);
+  }
+  state.subs.clear();
+  socketState.delete(ws);
+}
+
+function sendIfOpen(ws: WebSocket, frame: unknown): void {
+  if (ws.readyState === ws.OPEN) {
+    ws.send(JSON.stringify(frame));
   }
 }

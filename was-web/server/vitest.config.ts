@@ -11,9 +11,10 @@ export default defineConfig({
     testTimeout: 30000,
     // Tests share a database — no parallel execution
     fileParallelism: false,
-    // Use a separate database so tests don't destroy dev data
+    // Use a separate database and bucket so tests don't destroy dev data
     env: {
       DATABASE_URL: 'postgresql://was:wasdev@localhost:5432/wallandshadow_test',
+      S3_BUCKET: 'wallandshadow-test',
     },
   },
   resolve: {
