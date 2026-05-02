@@ -113,7 +113,6 @@ export interface IDataService extends IDataView {
   runTransaction<T>(fn: (dataView: IDataView) => Promise<T>): Promise<T>;
 
   // Waits until all currently pending writes have been acknowledged by the backend.
-  // Use this before calling Cloud Functions that need to see recent writes.
   // Returns a Promise that resolves when all pending writes are committed.
   waitForPendingWrites(): Promise<void>;
 

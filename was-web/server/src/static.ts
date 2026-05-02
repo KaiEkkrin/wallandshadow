@@ -1,5 +1,4 @@
 // Static file serving for production.
-// Replicates the Firebase Hosting routing and cache headers from firebase.json.
 // In local dev (no build/ directory), this is a no-op.
 
 import { Hono } from 'hono';
@@ -7,7 +6,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 
-// SPA routes that serve app.html (from firebase.json rewrites)
+// SPA routes — serve app.html
 const SPA_ROUTES = [
   '/app',
   '/app/*',

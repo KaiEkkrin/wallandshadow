@@ -1,9 +1,8 @@
 # Analytics on the Self-Hosted Stack
 
-Google Analytics is being removed as part of the Firebase decommission (see
-@docs/FIREBASE_REMOVAL.md). This document sketches, in broad strokes, what a
-non-Google-dependent analytics stack on our Hetzner deployment might look like, so we
-can decide later whether to replace GA or simply live without it.
+Google Analytics was removed. This document sketches,
+in broad strokes, what a non-Google-dependent analytics stack on our Hetzner deployment
+might look like, so we can decide later whether to replace GA or simply live without it.
 
 **Status**: unfunded. No analytics in the Hono stack today. Server request logs are the
 only source of truth for traffic.
@@ -83,13 +82,13 @@ If we do build it:
 - Dashboard: protected by the analytics tool's own auth (e.g. Plausible/Umami admin
   login) or by Caddy basic auth.
 
-## Replacing the Google Analytics consent banner
+## No consent banner needed
 
-Part of the Firebase removal is deleting `AnalyticsContextProvider`, `AnalyticsContext`,
-and the `Consent` banner. Authentication storage (OIDC tokens in localStorage / session
-cookies) is *strictly necessary* for a service the user has explicitly requested to use
-and is therefore exempt from the EU cookie/consent requirement — so removing GA alone
-is enough to remove the banner. No other persistent client state requires consent today.
+`AnalyticsContextProvider`, `AnalyticsContext`, and the `Consent` banner have been
+removed. Authentication storage (OIDC tokens in localStorage / session cookies) is
+*strictly necessary* for a service the user has explicitly requested to use and is
+therefore exempt from the EU cookie/consent requirement — so removing GA was enough to
+remove the banner. No other persistent client state requires consent today.
 
 If we pick a cookie-less analytics replacement (Plausible, Umami, or GoatCounter in
 their default configurations), the site stays consent-banner-free. If we ever pick a

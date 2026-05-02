@@ -116,23 +116,6 @@ ESLint 10.0.2 is stable as of February 2026. Both ESLint configs already use fla
 
 ---
 
-## Firebase SDK (No Action Required)
-
-**Current:** firebase ^12.0.0, firebase-admin ^13.7.0, firebase-functions ^7.0.6
-**Status:** Up to date as of 2026-03-01
-
-Firebase 12 upgrade was completed (from v11). Breaking changes were minimal — `isEqual()` removal was already addressed in v11, `firebase/vertexai` module (not used) was removed. Functions stay on v1 API (`firebase-functions/v1` import). `@firebase/rules-unit-testing` upgraded from v4 to v5.
-
-Next review: when Firebase 13 is available.
-
-### References
-
-- [Firebase Release Notes](https://firebase.google.com/support/releases)
-- [Firebase JavaScript SDK Release Notes](https://firebase.google.com/support/release-notes/js)
-- [Firebase Deprecation Policies](https://firebase.google.com/policies/changes-to-firebase/introducing-and-communicating-changes)
-
----
-
 ## Three.js Continuous Updates
 
 **Current:** ^0.183.0 (updated 2026-03-01 from 0.182)
@@ -146,9 +129,7 @@ Three.js has no formal deprecation schedule but follows a pattern of deprecating
 
 2. Review [Migration Guide](https://github.com/mrdoob/three.js/wiki/Migration-Guide) for breaking changes
 
-3. Update both packages:
-   - `was-web/package.json`
-   - `was-web/functions/package.json`
+3. Update `was-web/package.json`
 
 4. Update type definitions to match
 
@@ -235,16 +216,14 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 |----------|---------|--------|----------|
 | 1 | React Router | 7.x | ⛔ Blocked by react-router-bootstrap (no v7 support) |
 | 2 | ESLint | 10.x | ⛔ Blocked by eslint-plugin-import (no ESLint 10 support) |
-| 3 | Firebase SDK | 12.x | ✅ Done (2026-03-01) |
-| 4 | Three.js | Latest | ✅ Done to 0.183 (2026-03-01); check again in ~3 months |
-| 5 | TypeScript | 6.x | Wait for stable release (beta as of 2026-03-01) |
+| 3 | Three.js | Latest | ✅ Done to 0.183 (2026-03-01); check again in ~3 months |
+| 4 | TypeScript | 6.x | Wait for stable release (beta as of 2026-03-01) |
 
 ---
 
 ## Monitoring Recommendations
 
 1. **Subscribe to release notifications:**
-   - [Firebase Blog](https://firebase.blog/)
    - [React Blog](https://react.dev/blog)
    - [Vite Releases](https://github.com/vitejs/vite/releases)
 

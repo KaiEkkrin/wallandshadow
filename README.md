@@ -47,7 +47,15 @@ The easiest way to get started is with the VS Code dev container.
 3. Wait for the container to build (5-10 minutes first time)
 4. The dev container automatically starts PostgreSQL and MinIO.
 
-5. Start developing:
+5. Apply the database schema (first time only):
+
+   ```bash
+   cd was-web/server
+   yarn db:push       # dev database
+   yarn db:push:test  # test database
+   ```
+
+6. Start developing:
 
    ```bash
    cd was-web
@@ -59,7 +67,7 @@ The easiest way to get started is with the VS Code dev container.
    yarn dev:vite
    ```
 
-6. Open **http://localhost:5000** — register a new account or sign in via Zitadel OIDC.
+7. Open **http://localhost:5000** — register a new account or sign in via Zitadel OIDC.
 
 See `.devcontainer/README.md` for comprehensive dev container documentation.
 
@@ -68,17 +76,40 @@ See `.devcontainer/README.md` for comprehensive dev container documentation.
 PostgreSQL and MinIO start automatically when the dev container starts.
 
 ```bash
+cd was-web/server && yarn dev
+```
+
+After changing the database schema (`server/src/db/schema.ts`), re-apply it to both databases:
+
+```bash
 cd was-web/server
-
-# Apply schema to the local dev and test databases (first time, or after schema changes)
-yarn db:push
-yarn db:push:test
-
-# Start the server with hot reload
-yarn dev
+yarn db:push       # dev database
+yarn db:push:test  # test database
 ```
 
 The server runs on **http://localhost:3000** and the Vite dev server proxies `/api` and `/ws` to it.
+
+### Resetting the databases
+
+If either database gets into a bad state (e.g. a failed migration left schema drift, or you want a clean slate for testing), drop and recreate it, then re-apply the schema:
+
+**Dev database:**
+
+```bash
+psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS wallandshadow;"
+psql -h localhost -U postgres -c "CREATE DATABASE wallandshadow OWNER was;"
+cd was-web/server && yarn db:push
+```
+
+**Test database:**
+
+```bash
+psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS wallandshadow_test;"
+psql -h localhost -U postgres -c "CREATE DATABASE wallandshadow_test OWNER was;"
+cd was-web/server && yarn db:push:test
+```
+
+After a dev database reset all local app data (adventures, maps, users) is gone. After a test database reset the next `yarn test:server` run will recreate everything it needs.
 
 ### Auth modes
 
