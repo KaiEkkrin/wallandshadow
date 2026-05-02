@@ -1,3 +1,5 @@
+import { v7 as uuidv7 } from 'uuid';
+
 import { Change, UpdateScope, createChangesConverter } from '@wallandshadow/shared';
 
 // Wire-compatible with was-web/server/src/ws/{handler,notify,subscriptions}.ts.
@@ -125,9 +127,13 @@ export class HonoWebSocket {
 
   sendMapChange(adventureId: string, mapId: string, chs: Change[]): Promise<string> {
     const ackId = this.nextAckId++;
+    // Generated once and embedded in the encoded frame so a re-send after a
+    // reconnect (queued frames survive in sendQueue) carries the same key,
+    // letting the server dedupe via the partial unique index on map_changes.
+    const idempotencyKey = uuidv7();
     return new Promise<string>((resolve, reject) => {
       this.pendingAcks.set(ackId, { resolve, reject });
-      this.sendFrame({ type: 'mapChange', ackId, adventureId, mapId, chs });
+      this.sendFrame({ type: 'mapChange', ackId, adventureId, mapId, chs, idempotencyKey });
     });
   }
 

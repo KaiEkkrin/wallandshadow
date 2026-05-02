@@ -8,7 +8,7 @@ The architecture is well thought through: PostgreSQL LISTEN/NOTIFY drives broadc
 
 ## Issues
 
-### High — `idempotencyKey` is wired server-side but never set by the client
+### ~~High — `idempotencyKey` is wired server-side but never set by the client~~ ✅ Fixed
 
 The schema (`map_changes.idempotency_key`), partial unique index, `addMapChanges()` dedup branch, and WS handler `MapChangeFrame.idempotencyKey` are all in place — but `HonoWebSocket.sendMapChange()` (`honoWebSocket.ts:126-132`) never generates one, and `mapStateMachine.addChanges` doesn't pass one through.
 
@@ -19,6 +19,8 @@ This breaks the resilience the schema is designed for:
 4. On reconnect, the queued frame is re-sent → server writes the change a **second time** (no dedup key → no `onConflictDoNothing` hit).
 
 Either generate a UUID in `sendMapChange` and pass it through to the server, or strip the support. There are no tests exercising the dedup branch in `extensions.ts:728-734` either.
+
+**Resolution:** `sendMapChange()` now generates a UUIDv7 per call and embeds it in the frame; the key is in the encoded JSON so a queued-and-replayed frame carries the same key on reconnect, triggering the server's dedup branch. New test `ws.test.ts > mapChange with duplicate idempotencyKey is deduped server-side` covers `extensions.ts:728-734`.
 
 ### Medium — `pruneQueueForReconnect` relies on JSON key order
 
@@ -55,4 +57,4 @@ Either generate a UUID in `sendMapChange` and pass it through to the server, or 
 
 ## Risk summary
 
-The branch is a substantial refactor and the architecture holds together. The main blocker before merge is the missing client-side `idempotencyKey` generation — the resilience guarantees the migration creates space for aren't actually delivered today, and a reconnect during a flush *will* duplicate writes. Everything else is polish.
+The branch is a substantial refactor and the architecture holds together. ~~The main blocker before merge is the missing client-side `idempotencyKey` generation — the resilience guarantees the migration creates space for aren't actually delivered today, and a reconnect during a flush *will* duplicate writes.~~ Client-side `idempotencyKey` now fixed. Everything else is polish.

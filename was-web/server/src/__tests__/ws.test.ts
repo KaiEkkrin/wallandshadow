@@ -1,6 +1,7 @@
 import { describe, test, expect, afterAll, beforeAll } from 'vitest';
 import { createServer, type Server } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import { v7 as uuidv7 } from 'uuid';
 import { MapType, ChangeCategory } from '@wallandshadow/shared';
 import type { Changes } from '@wallandshadow/shared';
 import { createApp } from '../app.js';
@@ -11,6 +12,7 @@ import {
   apiPost,
   apiPatch,
   postMapChanges,
+  countMapChanges,
   createAddToken1,
   createAddWall1,
 } from './helpers.js';
@@ -288,6 +290,51 @@ describe('mapChanges subscription', () => {
     const ack = await waitForFrame(ws, f => f.type === 'mapChangeAck' && f.ackId === 1);
     expect(ack.error).toBeTruthy();
     expect(ack.id).toBeUndefined();
+    ws.close();
+  });
+
+  // Models the reconnect-flush case: the same encoded mapChange frame is
+  // re-sent after a reconnect. Server must dedupe via the partial unique
+  // index on idempotency_key and return the original id/seq, leaving exactly
+  // one row in map_changes.
+  test('mapChange with duplicate idempotencyKey is deduped server-side', async () => {
+    const { token, uid } = await registerUser(app, 'WsIdempotent');
+    const aId = await createAdventure(token);
+    const mId = await createMap(token, aId);
+    const idempotencyKey = uuidv7();
+
+    const ws = await connectWs(token);
+
+    send(ws, {
+      type: 'mapChange',
+      ackId: 1,
+      adventureId: aId,
+      mapId: mId,
+      chs: [createAddToken1(uid)],
+      idempotencyKey,
+    });
+    const firstAck = await waitForFrame(ws, f => f.type === 'mapChangeAck' && f.ackId === 1);
+    expect(firstAck.error).toBeUndefined();
+    expect(firstAck.id).toBeTruthy();
+    expect(firstAck.seq).toBeTruthy();
+
+    // Same key, fresh ackId — simulates a queued frame replayed on reconnect.
+    send(ws, {
+      type: 'mapChange',
+      ackId: 2,
+      adventureId: aId,
+      mapId: mId,
+      chs: [createAddToken1(uid)],
+      idempotencyKey,
+    });
+    const secondAck = await waitForFrame(ws, f => f.type === 'mapChangeAck' && f.ackId === 2);
+    expect(secondAck.error).toBeUndefined();
+    expect(secondAck.id).toBe(firstAck.id);
+    expect(secondAck.seq).toBe(firstAck.seq);
+
+    // Confirm only a single row was actually persisted.
+    expect(await countMapChanges(mId)).toBe(1);
+
     ws.close();
   });
 
