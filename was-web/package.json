@@ -45,16 +45,7 @@
     "lint": "eslint src packages/shared/src"
   },
   "resolutions": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "eslint/**/minimatch": "3.1.5",
-    "@eslint/config-array/minimatch": "3.1.5",
-    "@eslint/eslintrc/minimatch": "3.1.5",
-    "minimatch": "9.0.7",
-    "path-to-regexp": "0.1.13",
-    "ajv": "6.14.0",
     "tar": ">=7.5.11",
-    "vite": "^7.3.2",
     "fast-xml-parser": ">=5.7.0"
   },
   "devDependencies": {
