@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
+import { inviteJoinRateLimiter } from '../middleware/rateLimiters.js';
 import { db } from '../db/connection.js';
 import { invites, adventures, users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -50,7 +51,7 @@ inviteRoutes.post('/adventures/:id/invites', async (c) => {
   return c.json({ inviteId });
 });
 
-inviteRoutes.post('/invites/:id/join', async (c) => {
+inviteRoutes.post('/invites/:id/join', inviteJoinRateLimiter, async (c) => {
   const uid = c.get('uid');
   const inviteId = c.req.param('id');
   const body = await c.req.json<{ policy?: IInviteExpiryPolicy }>().catch(() => ({}));
