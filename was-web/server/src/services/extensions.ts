@@ -495,9 +495,7 @@ async function tryConsolidateMapChanges(
 
   const { notifyInfo, baseChange, isNew } = txResult;
   if (notifyInfo) {
-    await notifyMapChange(mapId, notifyInfo.id, notifyInfo.seq).catch(e =>
-      console.error('NOTIFY failed:', e),
-    );
+    await notifySafe(notifyMapChange(mapId, notifyInfo.id, notifyInfo.seq));
   }
 
   return { baseChange, isNew };

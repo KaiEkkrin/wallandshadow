@@ -86,7 +86,7 @@ export class HonoWebSocket {
 
   // Frames queued while the socket is connecting / reconnecting. Bounded to
   // avoid runaway memory if the server stays down under heavy user activity.
-  private readonly sendQueue: string[] = [];
+  private readonly sendQueue: OutgoingFrame[] = [];
   private static readonly SEND_QUEUE_LIMIT = 256;
 
   constructor(baseUrl: string, getToken: () => string | null, onAuthFailure: () => void) {
@@ -195,7 +195,7 @@ export class HonoWebSocket {
         });
       }
       while (this.sendQueue.length > 0) {
-        this.rawSend(this.sendQueue.shift()!);
+        this.rawSend(JSON.stringify(this.sendQueue.shift()!));
       }
     };
 
@@ -229,12 +229,9 @@ export class HonoWebSocket {
   private pruneQueueForReconnect(): void {
     // Subscribe frames are re-sent from this.subs below; any subscribe /
     // unsubscribe frames queued before reconnect are redundant or stale.
-    // Relies on the leading `{"type":"..."` that JSON.stringify produces
-    // first (key insertion order is preserved).
     for (let i = this.sendQueue.length - 1; i >= 0; i--) {
-      const frame = this.sendQueue[i];
-      if (frame.startsWith('{"type":"subscribe"') ||
-          frame.startsWith('{"type":"unsubscribe"')) {
+      const t = this.sendQueue[i].type;
+      if (t === 'subscribe' || t === 'unsubscribe') {
         this.sendQueue.splice(i, 1);
       }
     }
@@ -324,14 +321,13 @@ export class HonoWebSocket {
   // ── Frame send plumbing ──────────────────────────────────────────────────
 
   private sendFrame(frame: OutgoingFrame): void {
-    const encoded = JSON.stringify(frame);
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.rawSend(encoded);
+      this.rawSend(JSON.stringify(frame));
     } else {
       if (this.sendQueue.length >= HonoWebSocket.SEND_QUEUE_LIMIT) {
         this.sendQueue.shift();
       }
-      this.sendQueue.push(encoded);
+      this.sendQueue.push(frame);
     }
   }
 
