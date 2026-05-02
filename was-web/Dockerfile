@@ -75,12 +75,6 @@ FROM node:22-slim AS production
 
 WORKDIR /app
 
-# ImageMagick provides `montage`, used by spriteExtensions.ts to assemble
-# spritesheets when a user adds a new character image.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends imagemagick \
-  && rm -rf /var/lib/apt/lists/*
-
 # Copy package manifests and install production dependencies only
 COPY package.json yarn.lock ./
 COPY packages/shared/package.json packages/shared/
@@ -98,6 +92,12 @@ COPY server/docker-entrypoint.sh server/
 
 # Copy built SPA
 COPY --from=build-spa /app/build/ build/
+
+# Transfer ownership to the non-root node user (UID 1000) now that all files are in place.
+# Must come after all COPY commands because each COPY resets ownership to root.
+RUN chown -R node:node /app
+
+USER node
 
 ENV NODE_ENV=production
 ENV STATIC_DIR=/app/build
