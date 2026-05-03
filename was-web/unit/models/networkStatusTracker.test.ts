@@ -67,9 +67,9 @@ describe('NetworkStatusTracker', () => {
       expect(await firstValueFrom(tracker.status$)).toBe('warning');
     });
 
-    test('RTT above 800 ms → danger', async () => {
+    test('RTT above 800 ms → caution', async () => {
       tracker.setConnectionQuality(true, 900, 0);
-      expect(await firstValueFrom(tracker.status$)).toBe('danger');
+      expect(await firstValueFrom(tracker.status$)).toBe('caution');
     });
 
     test('1 reconnection → warning', async () => {
@@ -77,9 +77,9 @@ describe('NetworkStatusTracker', () => {
       expect(await firstValueFrom(tracker.status$)).toBe('warning');
     });
 
-    test('3 reconnections → danger', async () => {
+    test('3 reconnections → caution', async () => {
       tracker.setConnectionQuality(true, 10, 3);
-      expect(await firstValueFrom(tracker.status$)).toBe('danger');
+      expect(await firstValueFrom(tracker.status$)).toBe('caution');
     });
 
     test('null RTT does not degrade status once out of pending', async () => {
@@ -88,9 +88,9 @@ describe('NetworkStatusTracker', () => {
       expect(await firstValueFrom(tracker.status$)).toBe('success');
     });
 
-    test('worst-of: good RTT but high reconnects → danger', async () => {
+    test('worst-of: good RTT but high reconnects → caution', async () => {
       tracker.setConnectionQuality(true, 50, 3);
-      expect(await firstValueFrom(tracker.status$)).toBe('danger');
+      expect(await firstValueFrom(tracker.status$)).toBe('caution');
     });
   });
 
@@ -137,13 +137,22 @@ describe('NetworkStatusTracker', () => {
       expect(await firstValueFrom(tracker.resyncCount)).toBe(1);
     });
 
-    test('3 resyncs → danger status', async () => {
+    test('3 resyncs → warning (resyncs never exceed warning)', async () => {
       tracker.setConnectionQuality(true, 50, 0);  // exits pending
       tracker.onChanges({ incremental: false, resync: false } as never);
       tracker.onChanges({ incremental: true, resync: true } as never);
       tracker.onChanges({ incremental: true, resync: true } as never);
       tracker.onChanges({ incremental: true, resync: true } as never);
-      expect(await firstValueFrom(tracker.status$)).toBe('danger');
+      expect(await firstValueFrom(tracker.status$)).toBe('warning');
+    });
+
+    test('many resyncs cap at warning, never reach caution', async () => {
+      tracker.setConnectionQuality(true, 50, 0);  // exits pending
+      tracker.onChanges({ incremental: false, resync: false } as never);
+      for (let i = 0; i < 10; i++) {
+        tracker.onChanges({ incremental: true, resync: true } as never);
+      }
+      expect(await firstValueFrom(tracker.status$)).toBe('warning');
     });
   });
 

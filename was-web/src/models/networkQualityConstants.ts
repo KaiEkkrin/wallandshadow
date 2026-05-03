@@ -9,7 +9,7 @@ export const QUALITY_WINDOW_MS = 60 * 1_000;
 /** WebSocket ping interval. */
 export const HEARTBEAT_INTERVAL_MS = 15_000;
 
-/** RTT above this → 'danger'. Also used as the pending-exit timeout after the
+/** RTT above this → 'caution'. Also used as the pending-exit timeout after the
  *  first ping: if no pong arrives within this window the connection is treated
  *  as high-latency and the "Getting ready…" state is exited. */
 export const RTT_DANGER_MS = 800;
@@ -17,16 +17,15 @@ export const RTT_DANGER_MS = 800;
 /** RTT above this (but ≤ RTT_DANGER_MS) → 'warning'. */
 export const RTT_WARNING_MS = 300;
 
-/** Reconnection count in QUALITY_WINDOW_MS ≥ this → 'danger'. */
+/** Reconnection count in QUALITY_WINDOW_MS ≥ this → 'caution'. */
 export const RECONNECT_DANGER_COUNT = 3;
 
 /** Reconnection count in QUALITY_WINDOW_MS ≥ this (but < RECONNECT_DANGER_COUNT) → 'warning'. */
 export const RECONNECT_WARNING_COUNT = 1;
 
-/** Resync count in QUALITY_WINDOW_MS ≥ this → 'danger'. */
-export const RESYNC_DANGER_COUNT = 3;
-
-/** Resync count in QUALITY_WINDOW_MS ≥ this (but < RESYNC_DANGER_COUNT) → 'warning'. */
+/** Resync count in QUALITY_WINDOW_MS ≥ this → 'warning'.
+ *  Resyncs never push beyond 'warning' — they indicate server-side state replay,
+ *  not a broken connection. */
 export const RESYNC_WARNING_COUNT = 1;
 
 /** Smoothing factor α for the RTT exponential moving average. */

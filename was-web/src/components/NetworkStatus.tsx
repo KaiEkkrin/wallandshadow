@@ -65,7 +65,7 @@ function NetworkStatus({ status, isConnected, rttAverage, resyncCount, reconnect
               {resyncCount}
             </NetworkStatRow>
           </ListGroup>
-          {status === 'danger' && !isConnected && (
+          {status === 'danger' && (
             <div className="p-2">
               <Button variant="warning" size="sm" disabled={reconnectDisabled} onClick={handleReconnect}>
                 Reconnect now

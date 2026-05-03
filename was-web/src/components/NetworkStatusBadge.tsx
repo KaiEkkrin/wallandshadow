@@ -8,6 +8,7 @@ import type { NetworkStatus } from '../models/networkStatusTracker';
 const STATUS_COLOUR: Record<NetworkStatus, string> = {
   success: 'var(--bs-success)',
   warning: 'var(--bs-warning)',
+  caution: 'var(--bs-orange)',
   danger: 'var(--bs-danger)',
   pending: 'var(--bs-secondary)',
 };

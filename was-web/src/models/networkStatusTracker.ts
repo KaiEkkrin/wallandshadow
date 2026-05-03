@@ -9,11 +9,10 @@ import {
   RTT_WARNING_MS,
   RECONNECT_DANGER_COUNT,
   RECONNECT_WARNING_COUNT,
-  RESYNC_DANGER_COUNT,
   RESYNC_WARNING_COUNT,
 } from './networkQualityConstants';
 
-export type NetworkStatus = 'success' | 'warning' | 'danger' | 'pending';
+export type NetworkStatus = 'success' | 'warning' | 'caution' | 'danger' | 'pending';
 
 // Helps watch network conditions and emit a report.
 export class NetworkStatusTracker {
@@ -96,14 +95,13 @@ export class NetworkStatusTracker {
   private _computeStatus(resyncCount: number): NetworkStatus {
     if (this._isPending) return 'pending';
     const connected = this._isConnected$.getValue();
+    if (!connected) return 'danger';
     const rttAvg = this._rttAverage$.getValue();
     const reconnects = this._reconnectCount$.getValue();
-    if (!connected) return 'danger';
     if (
       (rttAvg !== null && rttAvg > RTT_DANGER_MS) ||
-      reconnects >= RECONNECT_DANGER_COUNT ||
-      resyncCount >= RESYNC_DANGER_COUNT
-    ) return 'danger';
+      reconnects >= RECONNECT_DANGER_COUNT
+    ) return 'caution';
     if (
       (rttAvg !== null && rttAvg > RTT_WARNING_MS) ||
       reconnects >= RECONNECT_WARNING_COUNT ||
