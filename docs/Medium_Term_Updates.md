@@ -218,6 +218,45 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 | 2 | ESLint | 10.x | ⛔ Blocked by eslint-plugin-import (no ESLint 10 support) |
 | 3 | Three.js | Latest | ✅ Done to 0.183 (2026-03-01); check again in ~3 months |
 | 4 | TypeScript | 6.x | Wait for stable release (beta as of 2026-03-01) |
+| 5 | drizzle-kit + drizzle-orm | 1.0.0 stable | ⛔ Blocked — see security note below |
+
+---
+
+---
+
+## drizzle-kit + drizzle-orm 1.0.0
+
+**Current:** drizzle-kit `^0.31.0` (resolved 0.31.10), drizzle-orm `^0.45.2`
+**Target:** drizzle-kit `1.0.0` stable + drizzle-orm `1.0.0` stable (paired upgrade)
+**Timeline:** Wait for both packages to reach stable 1.0.0
+
+### Security context: GHSA-67mh-4wv8-2f99
+
+`yarn audit` flags esbuild 0.18.20 (GHSA-67mh-4wv8-2f99 — CORS vulnerability in esbuild's dev server, fixed in 0.25.0). The vulnerable version is a transitive dependency of drizzle-kit:
+
+```
+drizzle-kit@0.31.10
+  └── @esbuild-kit/esm-loader@2.6.5   (archived — merged into tsx)
+      └── @esbuild-kit/core-utils@3.3.2 (archived)
+          └── esbuild@~0.18.20
+```
+
+**Why this is safe to defer**: the vulnerability requires esbuild's `--serve` HTTP server to be running. `@esbuild-kit/core-utils` only uses esbuild as a code transformer — it never starts a dev server. There is no live attack surface in this project.
+
+**Why the proper fix must wait**: drizzle-kit 1.0.0-rc.1 (published 2026-04-30) drops `@esbuild-kit/*` entirely, but requires a paired upgrade to drizzle-orm 1.0.0-beta (also pre-release). As of May 2026, the RC is three days old and has a known data-safety regression (`db:push` drops tables without confirmation; `strict: true` is silently ignored). Both packages need to reach stable 1.0.0 before this upgrade is sensible.
+
+### When drizzle-kit and drizzle-orm 1.0.0 stable ship
+
+1. Update `was-web/server/package.json`:
+   ```json
+   "drizzle-kit": "^1.0.0",
+   "drizzle-orm": "^1.0.0"
+   ```
+2. Run `yarn install`
+3. Review the [drizzle v1 upgrade guide](https://orm.drizzle.team/docs/upgrade-v1) for any schema API changes
+4. Run `yarn db:push` and `yarn db:push:test` to verify schema commands work
+5. Run `yarn test:server` to confirm integration tests pass
+6. Verify `yarn audit` no longer reports the esbuild vulnerability
 
 ---
 
