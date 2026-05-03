@@ -140,3 +140,12 @@
   flex-direction: row;
   justify-content: space-between;
 }
+
+.btn-caution {
+  --bs-btn-bg: var(--bs-orange);
+  --bs-btn-border-color: var(--bs-orange);
+  --bs-btn-color: #000;
+  --bs-btn-hover-bg: #e8711c;
+  --bs-btn-hover-border-color: #da6a1a;
+  --bs-btn-hover-color: #000;
+}

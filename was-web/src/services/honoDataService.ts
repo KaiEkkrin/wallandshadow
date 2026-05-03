@@ -33,6 +33,8 @@ import {
 } from './honoApi';
 import { HonoWebSocket, SubscriptionHandlers } from './honoWebSocket';
 import { PollingWatch } from './pollingWatch';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { QUALITY_WINDOW_MS, RTT_EMA_ALPHA } from '../models/networkQualityConstants';
 
 const POLL_INTERVAL_MS = 500;
 
@@ -274,10 +276,26 @@ export class HonoDataService implements IDataService {
    */
   private readonly lastEmitJson = new Map<string, string>();
 
+  // ── Connection quality observables ──────────────────────────────────────
+  // Exposed so HonoContextProvider can feed networkStatusTracker.
+  private readonly _isConnected$ = new BehaviorSubject<boolean>(false);
+  private readonly _rtt$ = new BehaviorSubject<number | null>(null);
+  private _rttEma: number | null = null;
+  private _reconnectTimestamps: number[] = [];
+  private readonly _reconnectCount$ = new BehaviorSubject<number>(0);
+
+  readonly isConnected$: Observable<boolean> = this._isConnected$;
+  readonly rtt$: Observable<number | null> = this._rtt$;
+  readonly reconnectCount$: Observable<number> = this._reconnectCount$;
+
   constructor(api: HonoApiClient, uid: string, onAuthFailure: () => void) {
     this.api = api;
     this.uid = uid;
     this.onAuthFailure = onAuthFailure;
+  }
+
+  forceReconnect(): void {
+    this.socket?.forceReconnect();
   }
 
   /**
@@ -289,7 +307,39 @@ export class HonoDataService implements IDataService {
       this.socket = new HonoWebSocket(
         this.api.baseUrl,
         () => this.api.getToken(),
-        this.onAuthFailure,
+        {
+          onAuthFailure: this.onAuthFailure,
+          onConnected: (isReconnect) => {
+            if (isReconnect) {
+              const now = Date.now();
+              this._reconnectTimestamps.push(now);
+              this._reconnectTimestamps = this._reconnectTimestamps.filter(
+                t => now - t <= QUALITY_WINDOW_MS,
+              );
+              this._reconnectCount$.next(this._reconnectTimestamps.length);
+            }
+            this._isConnected$.next(true);
+          },
+          onDisconnected: () => {
+            this._isConnected$.next(false);
+            this._rttEma = null;
+            this._rtt$.next(null);
+          },
+          onRtt: (rttMs) => {
+            // Prune aged-out reconnects on each pong so the count stays current
+            // without needing a dedicated timer.
+            const now = Date.now();
+            const pruned = this._reconnectTimestamps.filter(t => now - t <= QUALITY_WINDOW_MS);
+            if (pruned.length !== this._reconnectTimestamps.length) {
+              this._reconnectTimestamps = pruned;
+              this._reconnectCount$.next(pruned.length);
+            }
+            this._rttEma = this._rttEma === null
+              ? rttMs
+              : RTT_EMA_ALPHA * rttMs + (1 - RTT_EMA_ALPHA) * this._rttEma;
+            this._rtt$.next(Math.round(this._rttEma));
+          },
+        },
       );
     }
     return this.socket;
