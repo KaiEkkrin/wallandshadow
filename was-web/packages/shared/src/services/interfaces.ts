@@ -7,6 +7,7 @@ import { IImages } from '../data/image';
 import { IInvite } from '../data/invite';
 import { IMap, MapType } from '../data/map';
 import { IInviteExpiryPolicy } from '../data/policy';
+import { PresenceUserState } from '../data/presence';
 import { IProfile } from '../data/profile';
 import { ISprite, ISpritesheet } from '../data/sprite';
 import { IConverter } from './converter';
@@ -146,6 +147,15 @@ export interface IDataService extends IDataView {
   watchPlayers(
     adventureId: string,
     onNext: (players: IPlayer[]) => void,
+    onError?: ((error: Error) => void) | undefined,
+    onCompletion?: (() => void) | undefined
+  ): () => void;
+
+  // Watches the live presence roster for an adventure (ephemeral, server
+  // in-memory only). Receives the full user state on every change.
+  watchPresence(
+    adventureId: string,
+    onNext: (presence: PresenceUserState[]) => void,
     onError?: ((error: Error) => void) | undefined,
     onCompletion?: (() => void) | undefined
   ): () => void;

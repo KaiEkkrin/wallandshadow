@@ -19,6 +19,7 @@ import {
   IAppVersion,
   ISpritesheet,
   MapType,
+  PresenceUserState,
   UpdateScope,
 } from '@wallandshadow/shared';
 import {
@@ -794,6 +795,15 @@ export class HonoDataService implements IDataService {
       onNext(payload.players.map(p => playerRowToIPlayer(p, adv)));
     };
     return this.subscribeWs<PlayersScopeData>('players', adventureId, emit, onError);
+  }
+
+  watchPresence(
+    adventureId: string,
+    onNext: (presence: PresenceUserState[]) => void,
+    onError?: ((error: Error) => void) | undefined,
+    _onCompletion?: (() => void) | undefined
+  ): () => void {
+    return this.subscribeWs<PresenceUserState[]>('presence', adventureId, onNext, onError);
   }
 
   watchSharedAdventures(

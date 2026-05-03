@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { IPlayer, ITokenProperties } from '@wallandshadow/shared';
+import { IPlayer, ITokenProperties, PresenceUserState } from '@wallandshadow/shared';
 import { hexColours } from '../models/featureColour';
 
 import SpriteImage from './SpriteImage';
@@ -12,6 +12,7 @@ import ListGroup from 'react-bootstrap/ListGroup';
 interface IPlayerInfoListPropsBase {
   ownerUid: string | undefined;
   tokens: ITokenProperties[];
+  presence?: ReadonlyMap<string, PresenceUserState> | undefined;
   showBlockedPlayers?: boolean | undefined;
   showBlockButtons?: boolean | undefined;
   showNoTokenWarning?: boolean | undefined;
@@ -20,14 +21,57 @@ interface IPlayerInfoListPropsBase {
   resetView?: ((centreOn?: string | undefined) => void) | undefined; // centres on the token with the given id
 }
 
+function formatRelativeMinutes(ms: number): string {
+  const mins = Math.max(0, Math.round(ms / 60000));
+  if (mins < 1) return 'just now';
+  if (mins === 1) return '1 minute ago';
+  return `${mins} minutes ago`;
+}
+
+interface IPresenceBadgeProps {
+  presence: PresenceUserState | undefined;
+  playerName: string;
+}
+
+function PresenceBadge({ presence, playerName }: IPresenceBadgeProps) {
+  if (presence === undefined) return null;
+  if (presence.connected) {
+    return (
+      <span
+        aria-label={`${playerName} is connected`}
+        title={`${playerName} is connected`}
+        className="ms-2"
+        style={{
+          display: 'inline-block', width: '0.7em', height: '0.7em', borderRadius: '50%',
+          backgroundColor: '#28a745', verticalAlign: 'middle', flexShrink: 0,
+        }}
+      />
+    );
+  }
+  const sinceMs = Date.now() - presence.lastSeen;
+  const label = `${playerName} was here ${formatRelativeMinutes(sinceMs)}`;
+  return (
+    <span
+      aria-label={label}
+      title={label}
+      className="ms-2"
+      style={{
+        display: 'inline-block', width: '0.7em', height: '0.7em', borderRadius: '50%',
+        backgroundColor: '#ffc107', verticalAlign: 'middle', flexShrink: 0,
+      }}
+    />
+  );
+}
+
 interface IPlayerInfoListItemProps extends IPlayerInfoListPropsBase {
   player: IPlayer;
 }
 
 function PlayerInfoListItem({
-  ownerUid, player, tokens, showBlockButtons, showNoTokenWarning,
+  ownerUid, player, tokens, presence, showBlockButtons, showNoTokenWarning,
   blockPlayer, resetView, unblockPlayer
 }: IPlayerInfoListItemProps) {
+  const playerPresence = presence?.get(player.playerId);
   const blockedBadge = useMemo(
     () => player.allowed === false ?
       <Badge className="ms-2 mt-1" bg="danger" title={"Player " + player.playerName + " is blocked"}>BLOCKED</Badge> :
@@ -93,9 +137,9 @@ function PlayerInfoListItem({
     // Always show the player name
     const items = [(
       <div key="nameItem"
-        style={{ wordBreak: "break-all", wordWrap: "break-word" }}
+        style={{ wordBreak: "break-all", wordWrap: "break-word", display: "flex", alignItems: "center" }}
         aria-label={`Player ${player.playerName}`}
-      >{player.playerName}{blockedBadge}</div>
+      >{player.playerName}<PresenceBadge presence={playerPresence} playerName={player.playerName} />{blockedBadge}</div>
     )];
 
     // If we have a block item, show that in a little menu to make it less threatening
@@ -118,7 +162,7 @@ function PlayerInfoListItem({
     }
 
     return items;
-  }, [badges, blockedBadge, blockItem, player]);
+  }, [badges, blockedBadge, blockItem, player, playerPresence]);
 
   return (
     <ListGroup.Item className="Map-info-list-item">

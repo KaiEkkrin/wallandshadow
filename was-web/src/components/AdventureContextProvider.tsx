@@ -5,7 +5,7 @@ import { AdventureContext } from './AdventureContext';
 import { IAdventureContext, IContextProviderProps } from './interfaces';
 import { StatusContext } from './StatusContext';
 
-import { IAdventure, IPlayer, IIdentified, ISpriteManager } from '@wallandshadow/shared';
+import { IAdventure, IPlayer, IIdentified, ISpriteManager, PresenceUserState } from '@wallandshadow/shared';
 import { registerAdventureAsRecent, removeAdventureFromRecent } from '../services/extensions';
 import { SpriteManager } from '../services/spriteManager';
 import { logError } from '../services/consoleLogger';
@@ -31,6 +31,7 @@ function AdventureContextProvider(props: IContextProviderProps) {
   useEffect(() => {
     const uid = user?.uid;
     if (uid === undefined || adventureId === undefined) {
+      setAdventure(undefined);
       return undefined;
     }
 
@@ -131,13 +132,35 @@ function AdventureContextProvider(props: IContextProviderProps) {
     }
   }, [adventure, dataService, setPlayers, setSpriteManager, resolveImageUrl, user]);
 
+  const [presence, setPresence] = useState<ReadonlyMap<string, PresenceUserState> | undefined>(undefined);
+  useEffect(() => {
+    if (dataService === undefined || adventure === undefined) {
+      setPresence(undefined);
+      return undefined;
+    }
+    const unsub = dataService.watchPresence(
+      adventure.id,
+      states => {
+        const m = new Map<string, PresenceUserState>();
+        for (const s of states) m.set(s.userId, s);
+        setPresence(m);
+      },
+      e => logError("Failed to watch presence of adventure " + adventure.id, e),
+    );
+    return () => {
+      unsub();
+      setPresence(undefined);
+    };
+  }, [adventure, dataService]);
+
   const adventureContext: IAdventureContext = useMemo(
     () => ({
       adventure: adventure,
       players: players,
-      spriteManager: spriteManager
+      spriteManager: spriteManager,
+      presence: presence,
     }),
-    [adventure, players, spriteManager]
+    [adventure, players, spriteManager, presence]
   );
 
   return (

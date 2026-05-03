@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { IPlayer, ITokenProperties, IMap } from '@wallandshadow/shared';
+import { IPlayer, ITokenProperties, IMap, PresenceUserState } from '@wallandshadow/shared';
 import MapInfoCard from './MapInfoCard';
 import NetworkStatus, { INetworkStatusProps } from './NetworkStatus';
 import PlayerHelp from './PlayerHelp';
@@ -34,6 +34,7 @@ interface IMapInfoProps extends INetworkStatusProps {
   map: IMap | undefined;
   players: IPlayer[];
   tokens: ITokenProperties[];
+  presence?: ReadonlyMap<string, PresenceUserState> | undefined;
   canDoAnything: boolean;
   resetView: (centreOn?: string | undefined) => void;
 }

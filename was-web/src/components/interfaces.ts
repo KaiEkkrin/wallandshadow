@@ -1,4 +1,4 @@
-import { IAdventure, IPlayer, IAdventureIdentified, IIdentified, IMap, IDataService, IUser, IAuth, IFunctionsService, IStorage, ISpriteManager, IProfile } from '@wallandshadow/shared';
+import { IAdventure, IPlayer, IAdventureIdentified, IIdentified, IMap, IDataService, IUser, IAuth, IFunctionsService, IStorage, ISpriteManager, IProfile, PresenceUserState } from '@wallandshadow/shared';
 import { MapState, MapStateMachine } from '../models/mapStateMachine';
 
 import { Subject } from 'rxjs';
@@ -53,6 +53,10 @@ export interface IAdventureContext {
   adventure?: IIdentified<IAdventure> | undefined;
   players: IPlayer[];
   spriteManager?: ISpriteManager | undefined;
+  // Live presence roster keyed by playerId. Absent until the WebSocket
+  // delivers its first snapshot; absence in the map means "no presence
+  // signal" — the UI should treat that as offline.
+  presence?: ReadonlyMap<string, PresenceUserState> | undefined;
 }
 
 export interface IMapContext {

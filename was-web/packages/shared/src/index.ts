@@ -14,6 +14,7 @@ export * from './data/invite';
 export * from './data/losPosition';
 export * from './data/map';
 export * from './data/policy';
+export * from './data/presence';
 export * from './data/profile';
 export * from './data/sprite';
 export * from './data/tokenGeometry';
