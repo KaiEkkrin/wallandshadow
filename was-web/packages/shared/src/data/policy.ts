@@ -12,9 +12,18 @@ export const defaultInviteExpiryPolicy: IInviteExpiryPolicy = {
   deletion: 4
 };
 
-// This email address validation from https://ui.dev/validate-email-address-javascript/
-export function emailIsValid(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+// Equivalent to the legacy regex /^[^\s@]+@[^\s@]+\.[^\s@]+$/ but expressed as
+// bounded-time string operations so static analysis can't flag it as a polynomial
+// ReDOS (CodeQL js/redos): the original regex's `[^\s@]` class accepts `.`, which
+// makes the dot separator and the surrounding segments overlap and backtrack.
+export function emailIsValid(email: string): boolean {
+  if (/\s/.test(email)) return false;
+  const parts = email.split('@');
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+  // Domain must contain a '.' that is neither the first nor the last character,
+  // matching the [^\s@]+\.[^\s@]+ requirement (each side of the dot ≥ 1 char).
+  return local.length > 0 && domain.length >= 3 && domain.slice(1, -1).includes('.');
 }
 
 export function passwordIsValid(password: string) {
