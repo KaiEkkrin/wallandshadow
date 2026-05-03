@@ -53,7 +53,9 @@ export class NetworkStatusTracker {
     this._emit(this._isConnected$, connected);
     this._emit(this._rttAverage$, rtt);
     this._emit(this._reconnectCount$, reconnects);
-    this._emitStatus(this._pruneAndCount());
+    const resyncCount = this._pruneAndCount();
+    this._emit(this._resyncCount, resyncCount);
+    this._emitStatus(resyncCount);
   }
 
   /** Called by HonoContextProvider when the first-ping timeout has elapsed,
