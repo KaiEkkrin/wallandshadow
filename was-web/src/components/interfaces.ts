@@ -21,6 +21,9 @@ export interface IUserContext {
 
   // Resolves an image download URL, with expiry caching
   resolveImageUrl?: ((path: string) => Promise<string>) | undefined;
+
+  // Immediately attempt a WebSocket reconnect rather than waiting for the backoff timer.
+  forceReconnect?: (() => void) | undefined;
 }
 
 export interface IProfileContext {

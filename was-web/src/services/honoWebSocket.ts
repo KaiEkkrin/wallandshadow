@@ -34,8 +34,12 @@ interface MapChangeAckFrame {
   id?: string;
   error?: string;
 }
+interface PongFrame {
+  type: 'pong';
+  id: number;
+}
 
-type ServerFrame = SnapshotFrame | UpdateFrame | SubscribeErrorFrame | MapChangeAckFrame;
+type ServerFrame = SnapshotFrame | UpdateFrame | SubscribeErrorFrame | MapChangeAckFrame | PongFrame;
 
 export interface SubscriptionHandlers {
   onSnapshot: (data: unknown) => void;
@@ -45,7 +49,7 @@ export interface SubscriptionHandlers {
 }
 
 interface OutgoingFrame {
-  type: 'subscribe' | 'unsubscribe' | 'mapChange';
+  type: 'subscribe' | 'unsubscribe' | 'mapChange' | 'ping';
   [key: string]: unknown;
 }
 
@@ -54,6 +58,17 @@ interface ActiveSubscription {
   id?: string;
   lastSeq?: string;  // last seq seen for mapChanges subscriptions; sent on reconnect
   handlers: SubscriptionHandlers;
+}
+
+export interface HonoWebSocketCallbacks {
+  onAuthFailure: () => void;
+  /** Fired each time the socket opens. `isReconnect` is true for every open
+   *  after the first successful connection. */
+  onConnected?: (isReconnect: boolean) => void;
+  /** Fired when the socket closes (for any reason except intentional close()). */
+  onDisconnected?: () => void;
+  /** Fired on each pong with the measured round-trip time in milliseconds. */
+  onRtt?: (rttMs: number) => void;
 }
 
 /**
@@ -75,7 +90,7 @@ export class HonoWebSocket {
 
   private readonly baseHttpUrl: string;
   private readonly getToken: () => string | null;
-  private readonly onAuthFailure: () => void;
+  private readonly callbacks: HonoWebSocketCallbacks;
   private readonly changesConverter = createChangesConverter();
 
   private nextSubId = 1;
@@ -89,13 +104,22 @@ export class HonoWebSocket {
   private readonly sendQueue: OutgoingFrame[] = [];
   private static readonly SEND_QUEUE_LIMIT = 256;
 
-  constructor(baseUrl: string, getToken: () => string | null, onAuthFailure: () => void) {
+  // Heartbeat: ping/pong RTT measurement. Sent every 15 s when connected.
+  private static readonly HEARTBEAT_INTERVAL_MS = 15_000;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private nextPingId = 0;
+  private readonly pendingPingTs = new Map<number, number>();
+
+  // True after the first successful open so we can distinguish reconnects.
+  private hasConnected = false;
+
+  constructor(baseUrl: string, getToken: () => string | null, callbacks: HonoWebSocketCallbacks) {
     // In dev, __HONO_WS_BASE__ is injected by Vite's `define` to point directly
     // at the Hono server (e.g. 'http://localhost:3000'), bypassing Vite's unreliable
     // WS proxy. In production it's '' (same origin).
     this.baseHttpUrl = __HONO_WS_BASE__ || baseUrl || window.location.origin;
     this.getToken = getToken;
-    this.onAuthFailure = onAuthFailure;
+    this.callbacks = callbacks;
     this.connect();
   }
 
@@ -143,6 +167,7 @@ export class HonoWebSocket {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.stopHeartbeat();
     // Reject everything pending so callers stop waiting.
     for (const [, pending] of this.pendingAcks) {
       pending.reject(new Error('WebSocket closed'));
@@ -159,6 +184,17 @@ export class HonoWebSocket {
     }
   }
 
+  /** Immediately attempt to reconnect rather than wait for the next scheduled
+   *  backoff timer. Safe to call at any time; no-op if already connected. */
+  forceReconnect(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.connect();
+  }
+
   // ── Connection lifecycle ─────────────────────────────────────────────────
 
   private connect(): void {
@@ -166,7 +202,7 @@ export class HonoWebSocket {
 
     const token = this.getToken();
     if (!token) {
-      this.onAuthFailure();
+      this.callbacks.onAuthFailure();
       return;
     }
 
@@ -197,21 +233,52 @@ export class HonoWebSocket {
       while (this.sendQueue.length > 0) {
         this.rawSend(JSON.stringify(this.sendQueue.shift()!));
       }
+      const isReconnect = this.hasConnected;
+      this.hasConnected = true;
+      this.callbacks.onConnected?.(isReconnect);
+      this.startHeartbeat();
     };
 
     this.ws.onmessage = (event) => this.onMessage(event.data as string);
     this.ws.onclose = (event: CloseEvent) => {
+      this.stopHeartbeat();
       this.failPendingAcks(new Error('WebSocket closed'));
       if (this.closed) return;
+      this.callbacks.onDisconnected?.();
       if (event.code === WS_CLOSE_AUTH_REJECTED) {
         // Server explicitly rejected our token. Stop retrying — the app needs
         // to re-authenticate rather than loop forever with an expired token.
-        this.onAuthFailure();
+        this.callbacks.onAuthFailure();
       } else {
         this.scheduleReconnect();
       }
     };
     this.ws.onerror = () => { /* surfaced via onclose */ };
+  }
+
+  // ── Heartbeat ────────────────────────────────────────────────────────────
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws?.readyState !== WebSocket.OPEN) return;
+      // Drop ping entries older than two intervals whose pongs never arrived.
+      const staleThreshold = Date.now() - 2 * HonoWebSocket.HEARTBEAT_INTERVAL_MS;
+      for (const [pingId, ts] of this.pendingPingTs) {
+        if (ts < staleThreshold) this.pendingPingTs.delete(pingId);
+      }
+      const id = this.nextPingId++;
+      this.pendingPingTs.set(id, Date.now());
+      this.rawSend(JSON.stringify({ type: 'ping', id }));
+    }, HonoWebSocket.HEARTBEAT_INTERVAL_MS);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer !== null) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    this.pendingPingTs.clear();
   }
 
   private scheduleReconnect(): void {
@@ -298,6 +365,13 @@ export class HonoWebSocket {
         this.pendingAcks.delete(frame.ackId);
         if (frame.error) pending.reject(new Error(frame.error));
         else pending.resolve(frame.id ?? '');
+        return;
+      }
+      case 'pong': {
+        const sentAt = this.pendingPingTs.get(frame.id);
+        if (sentAt === undefined) return;
+        this.pendingPingTs.delete(frame.id);
+        this.callbacks.onRtt?.(Date.now() - sentAt);
         return;
       }
     }

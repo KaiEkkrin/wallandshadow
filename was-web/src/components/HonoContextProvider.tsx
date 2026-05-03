@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { combineLatest, debounceTime } from 'rxjs';
 
 import { AuthContext } from './AuthContext';
 import { UserContext } from './UserContext';
@@ -11,6 +12,7 @@ import { HonoDataService } from '../services/honoDataService';
 import { HonoFunctionsService } from '../services/honoFunctions';
 import { HonoStorage } from '../services/honoStorage';
 import { createResolveImageUrl } from '../services/resolveImageUrl';
+import { networkStatusTracker } from '../models/networkStatusTracker';
 
 function HonoContextProvider(props: IContextProviderProps) {
   const apiClient = useMemo(() => {
@@ -36,17 +38,32 @@ function HonoContextProvider(props: IContextProviderProps) {
       }
     };
 
+    let qualityUnsub: (() => void) | null = null;
+
     const unsub = auth.onAuthStateChanged(user => {
+      qualityUnsub?.();
+      qualityUnsub = null;
       // Tear down the previous session's WebSocket before replacing context.
       currentDataService?.dispose();
       if (user) {
         currentDataService = new HonoDataService(apiClient, user.uid, onAuthFailure);
+        // Feed WebSocket quality data into networkStatusTracker so both the
+        // map view and adventure view can read it from the tracker singleton.
+        const qualitySub = combineLatest([
+          currentDataService.isConnected$,
+          currentDataService.rtt$,
+          currentDataService.reconnectCount$,
+        ]).pipe(debounceTime(0)).subscribe(([connected, rtt, reconnects]) => {
+          networkStatusTracker.setConnectionQuality(connected, rtt, reconnects);
+        });
+        qualityUnsub = () => qualitySub.unsubscribe();
         setUserContext({
           user,
           dataService: currentDataService,
           functionsService: new HonoFunctionsService(apiClient),
           storageService,
           resolveImageUrl,
+          forceReconnect: () => currentDataService?.forceReconnect(),
         });
       } else {
         currentDataService = undefined;
@@ -55,6 +72,7 @@ function HonoContextProvider(props: IContextProviderProps) {
     }, e => console.error('Authentication state error:', e));
 
     return () => {
+      qualityUnsub?.();
       unsub();
       currentDataService?.dispose();
     };

@@ -33,6 +33,7 @@ import {
 } from './honoApi';
 import { HonoWebSocket, SubscriptionHandlers } from './honoWebSocket';
 import { PollingWatch } from './pollingWatch';
+import { BehaviorSubject, Observable } from 'rxjs';
 
 const POLL_INTERVAL_MS = 500;
 
@@ -274,10 +275,27 @@ export class HonoDataService implements IDataService {
    */
   private readonly lastEmitJson = new Map<string, string>();
 
+  // ── Connection quality observables ──────────────────────────────────────
+  // Exposed so HonoContextProvider can feed networkStatusTracker.
+  private readonly _isConnected$ = new BehaviorSubject<boolean>(false);
+  private readonly _rtt$ = new BehaviorSubject<number | null>(null);
+  private _rttEma: number | null = null;  // exponential moving average (α = 0.2)
+  private _reconnectTimestamps: number[] = [];
+  private readonly _reconnectCount$ = new BehaviorSubject<number>(0);
+  private static readonly RECONNECT_RETENTION_MS = 5 * 60 * 1000;
+
+  readonly isConnected$: Observable<boolean> = this._isConnected$;
+  readonly rtt$: Observable<number | null> = this._rtt$;
+  readonly reconnectCount$: Observable<number> = this._reconnectCount$;
+
   constructor(api: HonoApiClient, uid: string, onAuthFailure: () => void) {
     this.api = api;
     this.uid = uid;
     this.onAuthFailure = onAuthFailure;
+  }
+
+  forceReconnect(): void {
+    this.socket?.forceReconnect();
   }
 
   /**
@@ -289,7 +307,31 @@ export class HonoDataService implements IDataService {
       this.socket = new HonoWebSocket(
         this.api.baseUrl,
         () => this.api.getToken(),
-        this.onAuthFailure,
+        {
+          onAuthFailure: this.onAuthFailure,
+          onConnected: (isReconnect) => {
+            if (isReconnect) {
+              const now = Date.now();
+              this._reconnectTimestamps.push(now);
+              this._reconnectTimestamps = this._reconnectTimestamps.filter(
+                t => now - t <= HonoDataService.RECONNECT_RETENTION_MS,
+              );
+              this._reconnectCount$.next(this._reconnectTimestamps.length);
+            }
+            this._isConnected$.next(true);
+          },
+          onDisconnected: () => {
+            this._isConnected$.next(false);
+            this._rttEma = null;
+            this._rtt$.next(null);
+          },
+          onRtt: (rttMs) => {
+            this._rttEma = this._rttEma === null
+              ? rttMs
+              : 0.2 * rttMs + 0.8 * this._rttEma;
+            this._rtt$.next(Math.round(this._rttEma));
+          },
+        },
       );
     }
     return this.socket;
