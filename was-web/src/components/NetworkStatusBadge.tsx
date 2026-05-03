@@ -9,6 +9,7 @@ const STATUS_COLOUR: Record<NetworkStatus, string> = {
   success: 'var(--bs-success)',
   warning: 'var(--bs-warning)',
   danger: 'var(--bs-danger)',
+  pending: 'var(--bs-secondary)',
 };
 
 export interface INetworkStatusBadgeProps {
@@ -20,7 +21,9 @@ export interface INetworkStatusBadgeProps {
 
 function NetworkStatusBadge({ status, isConnected, rttAverage, reconnectCount }: INetworkStatusBadgeProps) {
   let tooltipText: string;
-  if (!isConnected) {
+  if (status === 'pending') {
+    tooltipText = 'Getting ready…';
+  } else if (!isConnected) {
     tooltipText = 'Disconnected';
   } else {
     const rttPart = rttAverage !== null ? `Avg RTT: ${rttAverage}ms` : 'Avg RTT: —';

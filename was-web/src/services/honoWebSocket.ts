@@ -1,6 +1,7 @@
 import { v7 as uuidv7 } from 'uuid';
 
 import { Change, UpdateScope, createChangesConverter } from '@wallandshadow/shared';
+import { HEARTBEAT_INTERVAL_MS } from '../models/networkQualityConstants';
 
 // Wire-compatible with was-web/server/src/ws/{handler,notify,subscriptions}.ts.
 // Application-specific close code: token verification failed.
@@ -104,8 +105,7 @@ export class HonoWebSocket {
   private readonly sendQueue: OutgoingFrame[] = [];
   private static readonly SEND_QUEUE_LIMIT = 256;
 
-  // Heartbeat: ping/pong RTT measurement. Sent every 15 s when connected.
-  private static readonly HEARTBEAT_INTERVAL_MS = 15_000;
+  // Heartbeat: ping/pong RTT measurement.
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private nextPingId = 0;
   private readonly pendingPingTs = new Map<number, number>();
@@ -260,17 +260,24 @@ export class HonoWebSocket {
 
   private startHeartbeat(): void {
     this.stopHeartbeat();
+    // Send first ping immediately for a fast initial RTT measurement, then every 15 s.
+    this._sendPing();
     this.heartbeatTimer = setInterval(() => {
       if (this.ws?.readyState !== WebSocket.OPEN) return;
       // Drop ping entries older than two intervals whose pongs never arrived.
-      const staleThreshold = Date.now() - 2 * HonoWebSocket.HEARTBEAT_INTERVAL_MS;
+      const staleThreshold = Date.now() - 2 * HEARTBEAT_INTERVAL_MS;
       for (const [pingId, ts] of this.pendingPingTs) {
         if (ts < staleThreshold) this.pendingPingTs.delete(pingId);
       }
-      const id = this.nextPingId++;
-      this.pendingPingTs.set(id, Date.now());
-      this.rawSend(JSON.stringify({ type: 'ping', id }));
-    }, HonoWebSocket.HEARTBEAT_INTERVAL_MS);
+      this._sendPing();
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  private _sendPing(): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    const id = this.nextPingId++;
+    this.pendingPingTs.set(id, Date.now());
+    this.rawSend(JSON.stringify({ type: 'ping', id }));
   }
 
   private stopHeartbeat(): void {

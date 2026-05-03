@@ -8,6 +8,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faNetworkWired } from '@fortawesome/free-solid-svg-icons';
 
 import type { NetworkStatus as NetworkStatusType } from '../models/networkStatusTracker';
+import { RECONNECT_BUTTON_COOLDOWN_MS } from '../models/networkQualityConstants';
 
 export interface INetworkStatusProps {
   status: NetworkStatusType;
@@ -35,35 +36,43 @@ function NetworkStatus({ status, isConnected, rttAverage, resyncCount, reconnect
   const handleReconnect = useCallback(() => {
     setReconnectDisabled(true);
     onForceReconnect();
-    setTimeout(() => setReconnectDisabled(false), 3000);
+    setTimeout(() => setReconnectDisabled(false), RECONNECT_BUTTON_COOLDOWN_MS);
   }, [onForceReconnect]);
 
+  const cardBg = status === 'pending' ? 'secondary' : status;
+
   return (
-    <MapInfoCard title="Network Status" bg={status} buttonContent={(
+    <MapInfoCard title="Network Status" bg={cardBg} buttonContent={(
       <FontAwesomeIcon icon={faNetworkWired} color="white" />
     )}>
-      <ListGroup variant="flush">
-        <NetworkStatRow label="Connection">
-          <span className={`text-${isConnected ? 'success' : 'danger'}`}>
-            {isConnected ? 'Connected' : 'Disconnected'}
-          </span>
-        </NetworkStatRow>
-        <NetworkStatRow label="Avg RTT">
-          {rttAverage !== null ? `${rttAverage}ms` : '—'}
-        </NetworkStatRow>
-        <NetworkStatRow label="Recent reconnections">
-          {reconnectCount}
-        </NetworkStatRow>
-        <NetworkStatRow label="Recent resyncs">
-          {resyncCount}
-        </NetworkStatRow>
-      </ListGroup>
-      {!isConnected && (
-        <div className="p-2">
-          <Button variant="warning" size="sm" disabled={reconnectDisabled} onClick={handleReconnect}>
-            Reconnect now
-          </Button>
-        </div>
+      {status === 'pending' ? (
+        <div className="p-2 text-white">Getting ready…</div>
+      ) : (
+        <>
+          <ListGroup variant="flush">
+            <NetworkStatRow label="Connection">
+              <span className={`text-${isConnected ? 'success' : 'danger'}`}>
+                {isConnected ? 'Connected' : 'Disconnected'}
+              </span>
+            </NetworkStatRow>
+            <NetworkStatRow label="Avg RTT">
+              {rttAverage !== null ? `${rttAverage}ms` : '—'}
+            </NetworkStatRow>
+            <NetworkStatRow label="Recent reconnections">
+              {reconnectCount}
+            </NetworkStatRow>
+            <NetworkStatRow label="Recent resyncs">
+              {resyncCount}
+            </NetworkStatRow>
+          </ListGroup>
+          {status === 'danger' && !isConnected && (
+            <div className="p-2">
+              <Button variant="warning" size="sm" disabled={reconnectDisabled} onClick={handleReconnect}>
+                Reconnect now
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </MapInfoCard>
   );

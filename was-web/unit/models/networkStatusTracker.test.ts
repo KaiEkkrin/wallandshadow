@@ -12,8 +12,47 @@ describe('NetworkStatusTracker', () => {
     tracker = new NetworkStatusTracker();
   });
 
+  describe('pending state', () => {
+    test('initial state before any quality data → pending', async () => {
+      expect(await firstValueFrom(tracker.status$)).toBe('pending');
+    });
+
+    test('setConnectionQuality with null RTT stays pending', async () => {
+      tracker.setConnectionQuality(false, null, 0);
+      expect(await firstValueFrom(tracker.status$)).toBe('pending');
+    });
+
+    test('connected with null RTT also stays pending', async () => {
+      tracker.setConnectionQuality(true, null, 0);
+      expect(await firstValueFrom(tracker.status$)).toBe('pending');
+    });
+
+    test('setConnectionQuality with non-null RTT exits pending', async () => {
+      tracker.setConnectionQuality(true, 50, 0);
+      expect(await firstValueFrom(tracker.status$)).toBe('success');
+    });
+
+    test('exitPending() with no connection shows danger', async () => {
+      tracker.exitPending();
+      expect(await firstValueFrom(tracker.status$)).toBe('danger');
+    });
+
+    test('exitPending() when connected with null RTT shows success', async () => {
+      tracker.setConnectionQuality(true, null, 0);
+      tracker.exitPending();
+      expect(await firstValueFrom(tracker.status$)).toBe('success');
+    });
+
+    test('exitPending() is idempotent', async () => {
+      tracker.setConnectionQuality(true, 50, 0); // exits pending naturally
+      tracker.exitPending();                      // no-op
+      expect(await firstValueFrom(tracker.status$)).toBe('success');
+    });
+  });
+
   describe('status$ composite colour', () => {
-    test('disconnected → danger regardless of other metrics', async () => {
+    test('disconnected (after having measurements) → danger', async () => {
+      tracker.setConnectionQuality(true, 50, 0);  // exits pending
       tracker.setConnectionQuality(false, null, 0);
       expect(await firstValueFrom(tracker.status$)).toBe('danger');
     });
@@ -43,7 +82,8 @@ describe('NetworkStatusTracker', () => {
       expect(await firstValueFrom(tracker.status$)).toBe('danger');
     });
 
-    test('null RTT (no pongs yet) does not degrade status', async () => {
+    test('null RTT does not degrade status once out of pending', async () => {
+      tracker.exitPending();
       tracker.setConnectionQuality(true, null, 0);
       expect(await firstValueFrom(tracker.status$)).toBe('success');
     });
@@ -98,7 +138,7 @@ describe('NetworkStatusTracker', () => {
     });
 
     test('3 resyncs → danger status', async () => {
-      tracker.setConnectionQuality(true, 50, 0);
+      tracker.setConnectionQuality(true, 50, 0);  // exits pending
       tracker.onChanges({ incremental: false, resync: false } as never);
       tracker.onChanges({ incremental: true, resync: true } as never);
       tracker.onChanges({ incremental: true, resync: true } as never);
@@ -108,17 +148,29 @@ describe('NetworkStatusTracker', () => {
   });
 
   describe('clear()', () => {
-    test('resets all state to disconnected/empty defaults', async () => {
+    test('resets only the map-specific resync state, leaving connection quality intact', async () => {
       tracker.setConnectionQuality(true, 200, 2);
       tracker.onChanges({ incremental: false, resync: false } as never);
       tracker.onChanges({ incremental: true, resync: true } as never);
+      expect(await firstValueFrom(tracker.resyncCount)).toBe(1);
 
       tracker.clear();
 
-      expect(await firstValueFrom(tracker.isConnected$)).toBe(false);
-      expect(await firstValueFrom(tracker.rttAverage$)).toBeNull();
-      expect(await firstValueFrom(tracker.reconnectCount$)).toBe(0);
-      expect(await firstValueFrom(tracker.status$)).toBe('danger');
+      // Connection quality is unchanged — clear() must not clobber live WS state.
+      expect(await firstValueFrom(tracker.isConnected$)).toBe(true);
+      expect(await firstValueFrom(tracker.rttAverage$)).toBe(200);
+      expect(await firstValueFrom(tracker.reconnectCount$)).toBe(2);
+      // Resync count is reset.
+      expect(await firstValueFrom(tracker.resyncCount)).toBe(0);
+      // Status re-computed from unchanged quality: connected, rtt=200, reconnects=2 → warning.
+      expect(await firstValueFrom(tracker.status$)).toBe('warning');
+    });
+
+    test('does not reset pending — remains non-pending after clear', async () => {
+      tracker.setConnectionQuality(true, 200, 2);  // exits pending via non-null RTT
+      tracker.clear();
+      // Quality state preserved; still non-pending.
+      expect(await firstValueFrom(tracker.status$)).toBe('warning');
     });
   });
 });

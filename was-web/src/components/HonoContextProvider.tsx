@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { combineLatest, debounceTime } from 'rxjs';
+import { combineLatest, debounceTime, delay, filter, merge, take, timer } from 'rxjs';
 
 import { AuthContext } from './AuthContext';
 import { UserContext } from './UserContext';
@@ -13,6 +13,7 @@ import { HonoFunctionsService } from '../services/honoFunctions';
 import { HonoStorage } from '../services/honoStorage';
 import { createResolveImageUrl } from '../services/resolveImageUrl';
 import { networkStatusTracker } from '../models/networkStatusTracker';
+import { PENDING_EXIT_FALLBACK_MS, RTT_DANGER_MS } from '../models/networkQualityConstants';
 
 function HonoContextProvider(props: IContextProviderProps) {
   const apiClient = useMemo(() => {
@@ -56,7 +57,19 @@ function HonoContextProvider(props: IContextProviderProps) {
         ]).pipe(debounceTime(0)).subscribe(([connected, rtt, reconnects]) => {
           networkStatusTracker.setConnectionQuality(connected, rtt, reconnects);
         });
-        qualityUnsub = () => qualitySub.unsubscribe();
+
+        // Exit the "Getting ready…" pending state via whichever fires first:
+        //   — RTT_DANGER_MS after first connection (covers "pong still in flight")
+        //   — PENDING_EXIT_FALLBACK_MS overall (covers "WebSocket never connects")
+        const pendingExitSub = merge(
+          currentDataService.isConnected$.pipe(filter((v): v is true => v), take(1), delay(RTT_DANGER_MS)),
+          timer(PENDING_EXIT_FALLBACK_MS),
+        ).pipe(take(1)).subscribe(() => networkStatusTracker.exitPending());
+
+        qualityUnsub = () => {
+          qualitySub.unsubscribe();
+          pendingExitSub.unsubscribe();
+        };
         setUserContext({
           user,
           dataService: currentDataService,
