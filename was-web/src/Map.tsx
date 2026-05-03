@@ -32,6 +32,7 @@ import { ITokenProperties, IImage, IMapImageProperties, createTokenSizes, IMap, 
 import { zoomMax, zoomMin } from './models/mapStateMachine';
 import { createDefaultUiState, isAnEditorOpen, MapUi } from './models/mapUi';
 import { networkStatusTracker } from './models/networkStatusTracker';
+import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { logError } from './services/consoleLogger';
 
 import { Link } from 'react-router-dom';
@@ -42,7 +43,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 // The map component is rather large because of all the state that got pulled into it...
 function Map() {
-  const { dataService, functionsService, user } = useContext(UserContext);
+  const { dataService, functionsService, user, forceReconnect } = useContext(UserContext);
   const { adventure, players } = useContext(AdventureContext);
   const { map, mapState, stateMachine } = useContext(MapContext);
   const { profile } = useContext(ProfileContext);
@@ -95,12 +96,11 @@ function Map() {
 
   // Track network status
   const [resyncCount, setResyncCount] = useState(0);
+  const { status: networkStatus, isConnected, rttAverage, reconnectCount } = useNetworkStatus();
   useEffect(() => {
-    const resyncSub = networkStatusTracker.resyncCount.subscribe(setResyncCount);
-    return () => {
-      resyncSub.unsubscribe();
-    }
-  }, [setResyncCount]);
+    const sub = networkStatusTracker.resyncCount.subscribe(setResyncCount);
+    return () => sub.unsubscribe();
+  }, []);
 
   // While we have no map to show, show a spinner instead
   const loadingSpinner = useMemo(() => stateMachine !== undefined ? <React.Fragment></React.Fragment> :
@@ -400,7 +400,10 @@ function Map() {
             setShowAnnotationFlags={cycleShowAnnotationFlags} />
           <MapInfo map={map?.record} players={players} tokens={mapState.tokens}
             canDoAnything={mapState.seeEverything} resetView={resetView}
-            resyncCount={resyncCount} />
+            status={networkStatus} isConnected={isConnected}
+            rttAverage={rttAverage} resyncCount={resyncCount}
+            reconnectCount={reconnectCount}
+            onForceReconnect={forceReconnect ?? (() => {})} />
         </div>
         <div className="Map-content" id="drawingDiv" ref={drawingRef}
             onMouseDown={handleMouseDown}

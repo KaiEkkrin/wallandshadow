@@ -8,3 +8,8 @@ export type UpdateScope =
   | 'profile'
   | 'adventure'
   | 'map';
+
+// Heartbeat frames. Client sends ping; server echoes pong with the same id.
+// Used to measure round-trip time and detect dead connections.
+export interface PingFrame { type: 'ping'; id: number }
+export interface PongFrame { type: 'pong'; id: number }

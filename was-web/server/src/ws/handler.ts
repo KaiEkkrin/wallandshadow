@@ -136,8 +136,12 @@ interface MapChangeFrame {
   chs: Change[];
   idempotencyKey?: string;  // client-generated UUID for deduplication on reconnect
 }
+interface PingFrame {
+  type: 'ping';
+  id: number;
+}
 
-type ClientFrame = SubscribeFrame | UnsubscribeFrame | MapChangeFrame;
+type ClientFrame = SubscribeFrame | UnsubscribeFrame | MapChangeFrame | PingFrame;
 
 async function handleMessage(ws: WebSocket, rooms: Rooms, data: RawData): Promise<void> {
   const state = socketState.get(ws);
@@ -160,6 +164,9 @@ async function handleMessage(ws: WebSocket, rooms: Rooms, data: RawData): Promis
       return;
     case 'mapChange':
       await handleMapChange(ws, state, frame);
+      return;
+    case 'ping':
+      sendIfOpen(ws, { type: 'pong', id: frame.id });
       return;
   }
 }

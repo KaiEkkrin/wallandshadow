@@ -103,7 +103,7 @@ interface ServerFrame {
   data?: unknown;
   message?: string;
   ackId?: number;
-  id?: string;
+  id?: string | number;  // string for mapChangeAck, number for pong
   seq?: string;
   error?: string;
 }
@@ -195,6 +195,16 @@ describe('WebSocket /ws connection', () => {
     const { token } = await registerUser(app, 'WsUser1');
     const ws = await connectWs(token);
     expect(ws.readyState).toBe(WebSocket.OPEN);
+    ws.close();
+  });
+
+  test('ping is echoed back as pong with the same id', async () => {
+    const { token } = await registerUser(app, 'WsPing1');
+    const ws = await connectWs(token);
+    send(ws, { type: 'ping', id: 42 });
+    const frame = await nextFrame(ws);
+    expect(frame.type).toBe('pong');
+    expect(frame.id).toBe(42);
     ws.close();
   });
 

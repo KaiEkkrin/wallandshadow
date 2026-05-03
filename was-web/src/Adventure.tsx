@@ -13,10 +13,12 @@ import ImageDeletionModal from './components/ImageDeletionModal';
 import ImagePickerModal from './components/ImagePickerModal';
 import MapCollection from './components/MapCollection';
 import Navigation from './components/Navigation';
+import NetworkStatusBadge from './components/NetworkStatusBadge';
 import PlayerInfoList from './components/PlayerInfoList';
 import { ProfileContext } from './components/ProfileContext';
 import { RequireLoggedIn } from './components/RequireLoggedIn';
 import { UserContext } from './components/UserContext';
+import { useNetworkStatus } from './hooks/useNetworkStatus';
 
 import { IAdventure, summariseAdventure, IPlayer, IMapSummary, ICharacter, maxCharacters, IImage, IMap, getUserPolicy } from '@wallandshadow/shared';
 import { editAdventure, leaveAdventure, editMap, editCharacter, deleteCharacter } from './services/extensions';
@@ -68,6 +70,8 @@ function Adventure({ adventureId }: IAdventureProps) {
   }, [adventure, user, userPolicy]);
 
   useDocumentTitle(adventure?.record.name);
+
+  const { status: netStatus, isConnected: netConnected, rttAverage: netRtt, reconnectCount: netReconnects } = useNetworkStatus();
 
   // Derive the adventures list for the map collection
   const adventures = useMemo(
@@ -443,10 +447,13 @@ function Adventure({ adventureId }: IAdventureProps) {
               <Card className="h-100" bg="dark" text="white">
                 <Card.Header className="card-header-spaced">
                   <div>{playersTitle}</div>
-                  {showShowBlockedToggle ?
-                    <Button variant="secondary" onClick={toggleShowBlocked}>{showBlockedText}</Button> :
-                    <div></div>
-                  }
+                  <div className="d-flex align-items-center gap-2">
+                    {showShowBlockedToggle &&
+                      <Button variant="secondary" onClick={toggleShowBlocked}>{showBlockedText}</Button>
+                    }
+                    <NetworkStatusBadge status={netStatus} isConnected={netConnected}
+                      rttAverage={netRtt} reconnectCount={netReconnects} />
+                  </div>
                 </Card.Header>
                 <PlayerInfoList ownerUid={ownerUid} players={players} tokens={[]}
                   showBlockedPlayers={showBlocked}
