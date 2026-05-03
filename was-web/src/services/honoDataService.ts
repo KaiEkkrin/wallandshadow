@@ -326,6 +326,14 @@ export class HonoDataService implements IDataService {
             this._rtt$.next(null);
           },
           onRtt: (rttMs) => {
+            // Prune aged-out reconnects on each pong so the count stays current
+            // without needing a dedicated timer.
+            const now = Date.now();
+            const pruned = this._reconnectTimestamps.filter(t => now - t <= QUALITY_WINDOW_MS);
+            if (pruned.length !== this._reconnectTimestamps.length) {
+              this._reconnectTimestamps = pruned;
+              this._reconnectCount$.next(pruned.length);
+            }
             this._rttEma = this._rttEma === null
               ? rttMs
               : RTT_EMA_ALPHA * rttMs + (1 - RTT_EMA_ALPHA) * this._rttEma;

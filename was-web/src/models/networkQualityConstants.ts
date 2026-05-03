@@ -4,7 +4,7 @@
  */
 
 /** Rolling window used for both reconnect-count and resync-count tracking. */
-export const QUALITY_WINDOW_MS = 5 * 60 * 1_000;
+export const QUALITY_WINDOW_MS = 60 * 1_000;
 
 /** WebSocket ping interval. */
 export const HEARTBEAT_INTERVAL_MS = 15_000;
