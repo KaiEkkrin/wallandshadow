@@ -35,6 +35,7 @@ interface IMapInfoProps extends INetworkStatusProps {
   players: IPlayer[];
   tokens: ITokenProperties[];
   presence?: ReadonlyMap<string, PresenceUserState> | undefined;
+  viewerCurrentMapId?: string | undefined;
   canDoAnything: boolean;
   resetView: (centreOn?: string | undefined) => void;
 }

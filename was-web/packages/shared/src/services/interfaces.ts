@@ -7,7 +7,7 @@ import { IImages } from '../data/image';
 import { IInvite } from '../data/invite';
 import { IMap, MapType } from '../data/map';
 import { IInviteExpiryPolicy } from '../data/policy';
-import { PresenceUserState } from '../data/presence';
+import { PresenceSubscription, PresenceUserState } from '../data/presence';
 import { IProfile } from '../data/profile';
 import { ISprite, ISpritesheet } from '../data/sprite';
 import { IConverter } from './converter';
@@ -152,13 +152,16 @@ export interface IDataService extends IDataView {
   ): () => void;
 
   // Watches the live presence roster for an adventure (ephemeral, server
-  // in-memory only). Receives the full user state on every change.
+  // in-memory only). Receives the full user state on every change. The
+  // returned handle can be used to push the viewer's current page to the
+  // server so peers can see who is on the same map / on the overview.
   watchPresence(
     adventureId: string,
+    initialCurrentMapId: string | undefined,
     onNext: (presence: PresenceUserState[]) => void,
     onError?: ((error: Error) => void) | undefined,
     onCompletion?: (() => void) | undefined
-  ): () => void;
+  ): PresenceSubscription;
 
   // Watches all adventures shared with this user.
   watchSharedAdventures(

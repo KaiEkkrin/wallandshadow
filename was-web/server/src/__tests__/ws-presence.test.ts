@@ -90,8 +90,11 @@ async function subscribePresence(
   ws: WebSocket,
   adventureId: string,
   subId = 1,
+  currentMapId?: string,
 ): Promise<PresenceUserState[]> {
-  send(ws, { type: 'subscribe', subId, scope: 'presence', id: adventureId });
+  const frame: Record<string, unknown> = { type: 'subscribe', subId, scope: 'presence', id: adventureId };
+  if (currentMapId !== undefined) frame.currentMapId = currentMapId;
+  send(ws, frame);
   const snap = await waitForFrame(
     ws,
     f => f.type === 'snapshot' && f.subId === subId && f.scope === 'presence',
@@ -374,5 +377,170 @@ describe('presence subscription', () => {
 
   test('TTL constant getter returns the active value', () => {
     expect(getPresenceIdleTtlMs()).toBe(TEST_TTL_MS);
+  });
+});
+
+// ── currentMapId / per-page presence ─────────────────────────────────────────
+
+describe('presence currentMapId', () => {
+  test('subscribe with currentMapId is reflected in own and peer snapshots', async () => {
+    const owner = await registerUser(app, 'PresMapOwner');
+    const guest = await registerUser(app, 'PresMapGuest');
+    const aId = await createAdventure(app, owner.token);
+    await joinAdventure(app, owner.token, guest.token, aId);
+
+    const ownerWs = await connectWs(port, owner.token);
+    const ownerSnap = await subscribePresence(ownerWs, aId, 1, 'map-owner');
+    expect(ownerSnap.find(u => u.userId === owner.uid)?.currentMapId).toBe('map-owner');
+
+    // Guest connects on a different map; owner must receive a roomUpdate that
+    // carries guest's currentMapId.
+    const guestWs = await connectWs(port, guest.token);
+    const updatePromise = waitForFrame(
+      ownerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'presence' && (f.data as PresenceUserState[]).some(u => u.userId === guest.uid),
+    );
+    const guestSnap = await subscribePresence(guestWs, aId, 1, 'map-guest');
+    expect(guestSnap.find(u => u.userId === owner.uid)?.currentMapId).toBe('map-owner');
+    expect(guestSnap.find(u => u.userId === guest.uid)?.currentMapId).toBe('map-guest');
+
+    const upd = await updatePromise;
+    const updUsers = upd.data as PresenceUserState[];
+    expect(updUsers.find(u => u.userId === guest.uid)?.currentMapId).toBe('map-guest');
+
+    guestWs.close();
+    ownerWs.close();
+    await new Promise(r => setTimeout(r, TEST_TTL_MS + 100));
+  });
+
+  test('presenceUpdate broadcasts the new currentMapId to peers', async () => {
+    const owner = await registerUser(app, 'PresUpdateOwner');
+    const guest = await registerUser(app, 'PresUpdateGuest');
+    const aId = await createAdventure(app, owner.token);
+    await joinAdventure(app, owner.token, guest.token, aId);
+
+    const ownerWs = await connectWs(port, owner.token);
+    await subscribePresence(ownerWs, aId);
+
+    const guestWs = await connectWs(port, guest.token);
+    const connectPromise = waitForFrame(
+      ownerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'presence' &&
+        (f.data as PresenceUserState[]).find(u => u.userId === guest.uid)?.connected === true,
+    );
+    await subscribePresence(guestWs, aId, /* subId */ 5, 'map-A');
+    await connectPromise;
+
+    // Guest navigates to a different map without unsubscribing.
+    const navPromise = waitForFrame(
+      ownerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'presence' &&
+        (f.data as PresenceUserState[]).find(u => u.userId === guest.uid)?.currentMapId === 'map-B',
+    );
+    send(guestWs, { type: 'presenceUpdate', subId: 5, currentMapId: 'map-B' });
+    const nav = await navPromise;
+    expect((nav.data as PresenceUserState[]).find(u => u.userId === guest.uid)?.currentMapId).toBe('map-B');
+
+    // Guest navigates back to the adventure overview (currentMapId omitted).
+    const overviewPromise = waitForFrame(
+      ownerWs,
+      f => {
+        if (f.type !== 'roomUpdate' || f.scope !== 'presence') return false;
+        const g = (f.data as PresenceUserState[]).find(u => u.userId === guest.uid);
+        return g !== undefined && g.currentMapId === undefined && g.connected === true;
+      },
+    );
+    send(guestWs, { type: 'presenceUpdate', subId: 5 });
+    await overviewPromise;
+
+    guestWs.close();
+    ownerWs.close();
+    await new Promise(r => setTimeout(r, TEST_TTL_MS + 100));
+  });
+
+  test('presenceUpdate for an unknown subId is silently dropped', async () => {
+    const owner = await registerUser(app, 'PresUnknownOwner');
+    const guest = await registerUser(app, 'PresUnknownGuest');
+    const aId = await createAdventure(app, owner.token);
+    await joinAdventure(app, owner.token, guest.token, aId);
+
+    const ownerWs = await connectWs(port, owner.token);
+    await subscribePresence(ownerWs, aId);
+
+    const guestWs = await connectWs(port, guest.token);
+    const connectPromise = waitForFrame(
+      ownerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'presence' &&
+        (f.data as PresenceUserState[]).find(u => u.userId === guest.uid)?.connected === true,
+    );
+    await subscribePresence(guestWs, aId, 1, 'real-map');
+    await connectPromise;
+
+    // Send a presenceUpdate referencing a subId the guest never registered.
+    // The server must drop it silently — no broadcast, no error frame.
+    send(guestWs, { type: 'presenceUpdate', subId: 999, currentMapId: 'ghost-map' });
+
+    const noFrame = await noFrameWithin(
+      ownerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'presence' &&
+        (f.data as PresenceUserState[]).some(u => u.currentMapId === 'ghost-map'),
+      200,
+    );
+    expect(noFrame).toBe(true);
+
+    // Sanity: guest's real currentMapId is untouched.
+    send(guestWs, { type: 'presenceUpdate', subId: 1, currentMapId: 'real-map-2' });
+    const realChange = await waitForFrame(
+      ownerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'presence' &&
+        (f.data as PresenceUserState[]).find(u => u.userId === guest.uid)?.currentMapId === 'real-map-2',
+    );
+    expect((realChange.data as PresenceUserState[]).find(u => u.userId === guest.uid)?.currentMapId).toBe('real-map-2');
+
+    guestWs.close();
+    ownerWs.close();
+    await new Promise(r => setTimeout(r, TEST_TTL_MS + 100));
+  });
+
+  test('second tab opening on a different map broadcasts the new page', async () => {
+    // Verifies the relaxed broadcast-suppression rule on subscribe: a
+    // currentMapId change must broadcast even when the user was already
+    // connected (otherwise opening a new tab on a different map would be
+    // invisible to peers).
+    const owner = await registerUser(app, 'PresSecondTabOwner');
+    const guest = await registerUser(app, 'PresSecondTabGuest');
+    const aId = await createAdventure(app, owner.token);
+    await joinAdventure(app, owner.token, guest.token, aId);
+
+    const ownerWs = await connectWs(port, owner.token);
+    await subscribePresence(ownerWs, aId);
+
+    const guestTab1 = await connectWs(port, guest.token);
+    const tab1ConnectPromise = waitForFrame(
+      ownerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'presence' &&
+        (f.data as PresenceUserState[]).find(u => u.userId === guest.uid)?.currentMapId === 'map-1',
+    );
+    await subscribePresence(guestTab1, aId, 1, 'map-1');
+    await tab1ConnectPromise;
+
+    // Guest opens a second tab on a different map. wasConnected is true but
+    // currentMapId differs, so the broadcast must fire.
+    const guestTab2 = await connectWs(port, guest.token);
+    const flipPromise = waitForFrame(
+      ownerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'presence' &&
+        (f.data as PresenceUserState[]).find(u => u.userId === guest.uid)?.currentMapId === 'map-2',
+    );
+    await subscribePresence(guestTab2, aId, 1, 'map-2');
+    const flip = await flipPromise;
+    const flipUsers = flip.data as PresenceUserState[];
+    expect(flipUsers.find(u => u.userId === guest.uid)?.currentMapId).toBe('map-2');
+    expect(flipUsers.find(u => u.userId === guest.uid)?.connected).toBe(true);
+
+    guestTab1.close();
+    guestTab2.close();
+    ownerWs.close();
+    await new Promise(r => setTimeout(r, TEST_TTL_MS + 100));
   });
 });

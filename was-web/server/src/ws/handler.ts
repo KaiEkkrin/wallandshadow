@@ -24,7 +24,7 @@ import {
   deleteSocketState,
   type SocketState,
 } from './socketState.js';
-import { onPresenceSubscribe, onPresenceUnsubscribe } from './presence.js';
+import { onPresenceSubscribe, onPresenceUnsubscribe, onPresenceUpdate } from './presence.js';
 import type { Change, UpdateScope } from '@wallandshadow/shared';
 
 const WS_PATH = '/ws';
@@ -107,6 +107,7 @@ interface SubscribeFrame {
   scope: UpdateScope;
   id?: string;
   lastSeq?: string;  // mapChanges scope only: last seq seen by client for catch-up
+  currentMapId?: string;  // presence scope only: which map the viewer is on
 }
 interface UnsubscribeFrame {
   type: 'unsubscribe';
@@ -124,8 +125,13 @@ interface PingFrame {
   type: 'ping';
   id: number;
 }
+interface PresenceUpdateFrame {
+  type: 'presenceUpdate';
+  subId: number;             // identifies the existing presence subscription
+  currentMapId?: string;     // undefined ⇒ adventure overview
+}
 
-type ClientFrame = SubscribeFrame | UnsubscribeFrame | MapChangeFrame | PingFrame;
+type ClientFrame = SubscribeFrame | UnsubscribeFrame | MapChangeFrame | PingFrame | PresenceUpdateFrame;
 
 async function handleMessage(ws: WebSocket, rooms: Rooms, data: RawData): Promise<void> {
   const state = getSocketState(ws);
@@ -151,6 +157,9 @@ async function handleMessage(ws: WebSocket, rooms: Rooms, data: RawData): Promis
       return;
     case 'ping':
       sendIfOpen(ws, { type: 'pong', id: frame.id });
+      return;
+    case 'presenceUpdate':
+      handlePresenceUpdate(ws, state, rooms, frame);
       return;
   }
 }
@@ -178,7 +187,9 @@ async function handleSubscribe(
     // marker; we replace it with the registry-computed snapshot here.
     let snapshotData: unknown = data;
     if (frame.scope === 'presence') {
-      snapshotData = onPresenceSubscribe(rooms.adventureRooms, ws, state.uid, entityKey);
+      snapshotData = onPresenceSubscribe(
+        rooms.adventureRooms, ws, state.uid, entityKey, frame.currentMapId,
+      );
     }
 
     sendIfOpen(ws, {
@@ -215,6 +226,17 @@ function handleUnsubscribe(
   if (sub.scope === 'presence') {
     onPresenceUnsubscribe(rooms.adventureRooms, ws, state.uid, sub.entityKey);
   }
+}
+
+function handlePresenceUpdate(
+  ws: WebSocket,
+  state: SocketState,
+  rooms: Rooms,
+  frame: PresenceUpdateFrame,
+): void {
+  const sub = state.subs.get(frame.subId);
+  if (!sub || sub.scope !== 'presence') return;
+  onPresenceUpdate(rooms.adventureRooms, ws, state.uid, sub.entityKey, frame.currentMapId);
 }
 
 async function handleMapChange(

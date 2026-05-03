@@ -50,7 +50,7 @@ export interface SubscriptionHandlers {
 }
 
 interface OutgoingFrame {
-  type: 'subscribe' | 'unsubscribe' | 'mapChange' | 'ping';
+  type: 'subscribe' | 'unsubscribe' | 'mapChange' | 'ping' | 'presenceUpdate';
   [key: string]: unknown;
 }
 
@@ -58,7 +58,15 @@ interface ActiveSubscription {
   scope: UpdateScope;
   id?: string;
   lastSeq?: string;  // last seq seen for mapChanges subscriptions; sent on reconnect
+  currentMapId?: string;  // current viewer page for presence subscriptions; re-sent on reconnect
   handlers: SubscriptionHandlers;
+}
+
+export interface SubscriptionHandle {
+  unsubscribe(): void;
+  /** Push a new currentMapId for a presence subscription. No-op on other
+   *  scopes or if the value is unchanged since the last call. */
+  setCurrentMapId(currentMapId: string | undefined): void;
 }
 
 export interface HonoWebSocketCallbacks {
@@ -135,16 +143,31 @@ export class HonoWebSocket {
     scope: UpdateScope,
     id: string | undefined,
     handlers: SubscriptionHandlers,
-  ): { unsubscribe: () => void } {
+    options?: { currentMapId?: string | undefined },
+  ): SubscriptionHandle {
     const subId = this.nextSubId++;
-    this.subs.set(subId, { scope, id, lastSeq: undefined, handlers });
-    this.sendFrame({ type: 'subscribe', subId, scope, id });
+    const initialCurrentMapId = options?.currentMapId;
+    this.subs.set(subId, { scope, id, lastSeq: undefined, currentMapId: initialCurrentMapId, handlers });
+    this.sendFrame({
+      type: 'subscribe', subId, scope, id,
+      ...(initialCurrentMapId !== undefined ? { currentMapId: initialCurrentMapId } : {}),
+    });
 
     return {
       unsubscribe: () => {
         if (!this.subs.has(subId)) return;
         this.subs.delete(subId);
         this.sendFrame({ type: 'unsubscribe', subId });
+      },
+      setCurrentMapId: (currentMapId: string | undefined) => {
+        const sub = this.subs.get(subId);
+        if (!sub || sub.scope !== 'presence') return;
+        if (sub.currentMapId === currentMapId) return;
+        sub.currentMapId = currentMapId;
+        this.sendFrame({
+          type: 'presenceUpdate', subId,
+          ...(currentMapId !== undefined ? { currentMapId } : {}),
+        });
       },
     };
   }
@@ -228,6 +251,7 @@ export class HonoWebSocket {
           scope: sub.scope,
           id: sub.id,
           ...(sub.scope === 'mapChanges' && sub.lastSeq !== undefined ? { lastSeq: sub.lastSeq } : {}),
+          ...(sub.scope === 'presence' && sub.currentMapId !== undefined ? { currentMapId: sub.currentMapId } : {}),
         });
       }
       while (this.sendQueue.length > 0) {
@@ -302,10 +326,11 @@ export class HonoWebSocket {
 
   private pruneQueueForReconnect(): void {
     // Subscribe frames are re-sent from this.subs below; any subscribe /
-    // unsubscribe frames queued before reconnect are redundant or stale.
+    // unsubscribe / presenceUpdate frames queued before reconnect are
+    // redundant — the subscribe re-send carries the latest currentMapId.
     for (let i = this.sendQueue.length - 1; i >= 0; i--) {
       const t = this.sendQueue[i].type;
-      if (t === 'subscribe' || t === 'unsubscribe') {
+      if (t === 'subscribe' || t === 'unsubscribe' || t === 'presenceUpdate') {
         this.sendQueue.splice(i, 1);
       }
     }

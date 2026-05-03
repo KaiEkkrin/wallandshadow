@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, useContext, useReducer } from 'react';
+import { useEffect, useMemo, useRef, useState, useContext, useReducer } from 'react';
 
 import { UserContext } from './UserContext';
 import { AdventureContext } from './AdventureContext';
 import { IAdventureContext, IContextProviderProps } from './interfaces';
 import { StatusContext } from './StatusContext';
 
-import { IAdventure, IPlayer, IIdentified, ISpriteManager, PresenceUserState } from '@wallandshadow/shared';
+import { IAdventure, IPlayer, IIdentified, ISpriteManager, PresenceSubscription, PresenceUserState } from '@wallandshadow/shared';
 import { registerAdventureAsRecent, removeAdventureFromRecent } from '../services/extensions';
 import { SpriteManager } from '../services/spriteManager';
 import { logError } from '../services/consoleLogger';
@@ -24,6 +24,11 @@ function AdventureContextProvider(props: IContextProviderProps) {
 
   const adventureId = useMemo(() => {
     const matches = /^\/adventure\/([^/]+)/.exec(location?.pathname);
+    return matches ? matches[1] : undefined;
+  }, [location]);
+
+  const viewerCurrentMapId = useMemo(() => {
+    const matches = /^\/adventure\/[^/]+\/map\/([^/]+)$/.exec(location?.pathname ?? '');
     return matches ? matches[1] : undefined;
   }, [location]);
 
@@ -133,13 +138,22 @@ function AdventureContextProvider(props: IContextProviderProps) {
   }, [adventure, dataService, setPlayers, setSpriteManager, resolveImageUrl, user]);
 
   const [presence, setPresence] = useState<ReadonlyMap<string, PresenceUserState> | undefined>(undefined);
+  // Held in a ref so the second effect can push currentMapId changes without
+  // re-running the subscribe effect — re-subscribing on every map navigation
+  // would briefly flap the user to "disconnected" for peers.
+  const presenceSubRef = useRef<PresenceSubscription | undefined>(undefined);
+  // Tracks the latest currentMapId so the subscribe frame carries the right
+  // initial value on mount without putting it in the subscribe effect's deps.
+  const viewerCurrentMapIdRef = useRef(viewerCurrentMapId);
+  viewerCurrentMapIdRef.current = viewerCurrentMapId;
   useEffect(() => {
     if (dataService === undefined || adventure === undefined) {
       setPresence(undefined);
       return undefined;
     }
-    const unsub = dataService.watchPresence(
+    const sub = dataService.watchPresence(
       adventure.id,
+      viewerCurrentMapIdRef.current,
       states => {
         const m = new Map<string, PresenceUserState>();
         for (const s of states) m.set(s.userId, s);
@@ -147,11 +161,17 @@ function AdventureContextProvider(props: IContextProviderProps) {
       },
       e => logError("Failed to watch presence of adventure " + adventure.id, e),
     );
+    presenceSubRef.current = sub;
     return () => {
-      unsub();
+      sub.unsubscribe();
+      presenceSubRef.current = undefined;
       setPresence(undefined);
     };
   }, [adventure, dataService]);
+
+  useEffect(() => {
+    presenceSubRef.current?.setCurrentMapId(viewerCurrentMapId);
+  }, [viewerCurrentMapId]);
 
   const adventureContext: IAdventureContext = useMemo(
     () => ({
@@ -159,8 +179,9 @@ function AdventureContextProvider(props: IContextProviderProps) {
       players: players,
       spriteManager: spriteManager,
       presence: presence,
+      viewerCurrentMapId: viewerCurrentMapId,
     }),
-    [adventure, players, spriteManager, presence]
+    [adventure, players, spriteManager, presence, viewerCurrentMapId]
   );
 
   return (

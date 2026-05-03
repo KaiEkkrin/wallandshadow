@@ -57,6 +57,7 @@ export interface IAdventureContext {
   // delivers its first snapshot; absence in the map means "no presence
   // signal" — the UI should treat that as offline.
   presence?: ReadonlyMap<string, PresenceUserState> | undefined;
+  viewerCurrentMapId?: string | undefined;
 }
 
 export interface IMapContext {

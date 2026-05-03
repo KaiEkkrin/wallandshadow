@@ -112,14 +112,15 @@ function broadcastPresence(
  * count walk includes this new socket.
  *
  * Returns the snapshot to ship back as the `subscribe` response. Also
- * broadcasts a `roomUpdate` to peers iff this represents a state change
- * (user transitioning from absent/disconnected to connected).
+ * broadcasts a `roomUpdate` to peers iff this represents a state change —
+ * either the user is newly connected, or their `currentMapId` changed.
  */
 export function onPresenceSubscribe(
   adventureRooms: RoomManager,
   ws: WebSocket,
   uid: string,
   adventureId: string,
+  currentMapId: string | undefined,
 ): PresenceUserState[] {
   const state = getOrCreate(adventureId);
 
@@ -130,16 +131,46 @@ export function onPresenceSubscribe(
     state.removalTimers.delete(uid);
   }
 
-  const wasConnected = state.users.get(uid)?.connected === true;
-  state.users.set(uid, { userId: uid, lastSeen: Date.now(), connected: true });
+  const previous = state.users.get(uid);
+  const wasConnected = previous?.connected === true;
+  const currentMapChanged = previous?.currentMapId !== currentMapId;
+  state.users.set(uid, {
+    userId: uid,
+    lastSeen: Date.now(),
+    connected: true,
+    currentMapId,
+  });
 
   const snapshot = snapshotUsers(state);
-  // Only broadcast when the user's connected/disconnected status flips —
-  // a second tab opening for an already-connected user is a no-op.
-  if (!wasConnected) {
+  // Broadcast on either transition: newly connected, or page change while
+  // already connected (e.g. a second tab opens on a different map).
+  if (!wasConnected || currentMapChanged) {
     broadcastPresence(adventureRooms, adventureId, snapshot, ws);
   }
   return snapshot;
+}
+
+/**
+ * Called when a connected user changes which page they are viewing within an
+ * adventure they are already subscribed to. Drops silently if the user has
+ * no entry in the registry (defensive against races where the update arrives
+ * after disconnect).
+ */
+export function onPresenceUpdate(
+  adventureRooms: RoomManager,
+  ws: WebSocket,
+  uid: string,
+  adventureId: string,
+  currentMapId: string | undefined,
+): void {
+  const state = adventures.get(adventureId);
+  if (!state) return;
+  const existing = state.users.get(uid);
+  if (!existing) return;
+  if (existing.currentMapId === currentMapId) return;
+
+  state.users.set(uid, { ...existing, currentMapId });
+  broadcastPresence(adventureRooms, adventureId, snapshotUsers(state), ws);
 }
 
 /**

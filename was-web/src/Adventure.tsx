@@ -43,7 +43,7 @@ interface IAdventureProps {
 function Adventure({ adventureId }: IAdventureProps) {
   const { dataService, functionsService, user } = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
-  const { adventure, players, presence } = useContext(AdventureContext);
+  const { adventure, players, presence, viewerCurrentMapId } = useContext(AdventureContext);
   const navigate = useNavigate();
 
   const userPolicy = useMemo(
@@ -457,6 +457,7 @@ function Adventure({ adventureId }: IAdventureProps) {
                 </Card.Header>
                 <PlayerInfoList ownerUid={ownerUid} players={players} tokens={[]}
                   presence={presence}
+                  viewerCurrentMapId={viewerCurrentMapId}
                   showBlockedPlayers={showBlocked}
                   showBlockButtons={showBlockButtons}
                   blockPlayer={handleShowBlockPlayer}
