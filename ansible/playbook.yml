@@ -262,16 +262,60 @@
       when: volume_id is defined and volume_id != ''
 
     # ── Secret generation ───────────────────────────────────────────────────
-    # Secrets are generated on first run and cached locally in ansible/secrets/
-    # (gitignored). Subsequent runs reuse the cached values.
+    # Idempotent across provision runs: the VPS's existing secrets file is the
+    # source of truth. We slurp it, parse out POSTGRES_PASSWORD and JWT_SECRET,
+    # and reuse those values. Only on a true first provision (file absent) do
+    # we generate new ones via the local password lookup.
+    #
+    # Why this matters: rotating JWT_SECRET invalidates every existing session
+    # token (forced re-login); rotating pg_password leaves the currently-
+    # running container with a stale DATABASE_URL until the next deploy
+    # refreshes its env-file. The local `secrets/` cache used to provide
+    # idempotency, but on ephemeral CI runners it's cold every run.
 
-    - name: Generate PostgreSQL password
-      ansible.builtin.set_fact:
-        pg_password: "{{ lookup('ansible.builtin.password', 'secrets/pg_password length=32 chars=ascii_letters,digits') }}"
+    - name: Check whether secrets file already exists on VPS
+      ansible.builtin.stat:
+        path: "{{ secrets_file }}"
+      register: existing_secrets_stat
 
-    - name: Generate JWT secret
+    - name: Read existing secrets file from VPS
+      ansible.builtin.slurp:
+        src: "{{ secrets_file }}"
+      register: existing_secrets_slurp
+      when: existing_secrets_stat.stat.exists
+
+    - name: Parse existing POSTGRES_PASSWORD / JWT_SECRET
       ansible.builtin.set_fact:
-        jwt_secret: "{{ lookup('ansible.builtin.password', 'secrets/jwt_secret length=48 chars=ascii_letters,digits') }}"
+        # regex_findall returns a list of captured groups (one entry per
+        # match). Appending [''] guarantees the list is never empty so
+        # `| first` is safe and yields '' when the key is absent.
+        existing_pg_password: >-
+          {{ ((existing_secrets_slurp.content | b64decode)
+              | regex_findall('^POSTGRES_PASSWORD=(.+)$', multiline=True)
+              + [''])
+             | first }}
+        existing_jwt_secret: >-
+          {{ ((existing_secrets_slurp.content | b64decode)
+              | regex_findall('^JWT_SECRET=(.+)$', multiline=True)
+              + [''])
+             | first }}
+      when: existing_secrets_stat.stat.exists
+
+    - name: Choose PostgreSQL password (reuse if present, else generate)
+      ansible.builtin.set_fact:
+        pg_password: >-
+          {{ existing_pg_password
+             if (existing_pg_password | default('') | length > 0)
+             else lookup('ansible.builtin.password',
+                  'secrets/pg_password length=32 chars=ascii_letters,digits') }}
+
+    - name: Choose JWT secret (reuse if present, else generate)
+      ansible.builtin.set_fact:
+        jwt_secret: >-
+          {{ existing_jwt_secret
+             if (existing_jwt_secret | default('') | length > 0)
+             else lookup('ansible.builtin.password',
+                  'secrets/jwt_secret length=48 chars=ascii_letters,digits') }}
 
     # ── Secrets file on VPS ─────────────────────────────────────────────────
 
@@ -462,7 +506,7 @@
         app_port: "{{ app_port_test }}"
         db_name: "{{ pg_db_test }}"
         s3_bucket: "{{ s3_bucket_test }}"
-        oidc_client_id: "{{ oidc_test_client_id | default('') }}"
+        oidc_client_id: "{{ oidc_test_client_id | mandatory }}"
 
     - name: Render env-file for production application
       ansible.builtin.template:
@@ -476,7 +520,7 @@
         app_port: "{{ app_port_prod }}"
         db_name: "{{ pg_db_prod }}"
         s3_bucket: "{{ s3_bucket_prod }}"
-        oidc_client_id: "{{ oidc_prod_client_id | default('') }}"
+        oidc_client_id: "{{ oidc_prod_client_id | mandatory }}"
 
     - name: Render systemd unit for each application environment
       ansible.builtin.template:

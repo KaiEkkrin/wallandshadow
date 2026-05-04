@@ -146,14 +146,14 @@ jobs:
           VPS_IP: ${{ needs.opentofu.outputs.vps_ip }}
         run: |
           ansible-playbook playbook.yml -i inventory.yml \
-            -e "volume_id=${{ needs.opentofu.outputs.volume_id }}" \
-            -e "s3_access_key=${{ secrets.HCLOUD_S3_ACCESS_KEY }}" \
-            -e "s3_secret_key=${{ secrets.HCLOUD_S3_SECRET_KEY }}" \
-            -e "oidc_issuer=${{ secrets.OIDC_ISSUER }}" \
-            -e "oidc_test_client_id=${{ secrets.OIDC_TEST_CLIENT_ID }}" \
-            -e "oidc_prod_client_id=${{ secrets.OIDC_PROD_CLIENT_ID }}" \
-            -e "stats_basic_auth_user=${{ secrets.STATS_BASIC_AUTH_USER }}" \
-            -e "stats_basic_auth_password=${{ secrets.STATS_BASIC_AUTH_PASSWORD }}"
+            -e 'volume_id=${{ needs.opentofu.outputs.volume_id }}' \
+            -e 's3_access_key=${{ secrets.HCLOUD_S3_ACCESS_KEY }}' \
+            -e 's3_secret_key=${{ secrets.HCLOUD_S3_SECRET_KEY }}' \
+            -e 'oidc_issuer=${{ secrets.OIDC_ISSUER }}' \
+            -e 'oidc_test_client_id=${{ secrets.OIDC_TEST_CLIENT_ID }}' \
+            -e 'oidc_prod_client_id=${{ secrets.OIDC_PROD_CLIENT_ID }}' \
+            -e 'stats_basic_auth_user=${{ secrets.STATS_BASIC_AUTH_USER }}' \
+            -e 'stats_basic_auth_password=${{ secrets.STATS_BASIC_AUTH_PASSWORD }}'
 
       - name: Display VPS_KNOWN_HOST secret value
         run: |

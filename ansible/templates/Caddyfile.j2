@@ -9,6 +9,41 @@
     email admin@wallandshadow.com
 }
 
+# Drop scanner traffic on :80 with unknown Host headers. Named-site blocks
+# below win on Host match, so this only catches IP/unknown-host requests.
+# ACME HTTP-01 challenges target the named hostname, so they hit the named
+# site (not this block) and continue to work. :443 needs no catch-all —
+# scanners hitting the IP fail at TLS handshake (no cert for unknown SNI).
+:80 {
+    respond 444
+}
+
+{% set csp_policy %}
+default-src 'self';
+script-src 'self';
+style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+font-src 'self' https://fonts.gstatic.com data:;
+{# img-src: robohash.org serves robot avatars and 302-redirects to
+   secure.gravatar.com when the user has a Gravatar — both hosts are
+   required because CSP applies to redirect targets. #}
+img-src 'self' data: blob: {{ s3_endpoint }} https://robohash.org https://secure.gravatar.com;
+connect-src 'self' {{ oidc_issuer }};
+frame-ancestors 'none';
+base-uri 'self';
+form-action 'self';
+object-src 'none'
+{% endset %}
+{% set csp_policy_flat = csp_policy | replace('\n', ' ') | trim %}
+
+(security-headers) {
+    Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    X-Frame-Options "DENY"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Content-Security-Policy "{{ csp_policy_flat }}"
+    Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), accelerometer=(), gyroscope=()"
+}
+
 {{ domain_prod }} {
     encode zstd gzip
 
@@ -34,11 +69,15 @@
     }
 
     header {
-        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-        X-Frame-Options "DENY"
-        X-Content-Type-Options "nosniff"
-        Referrer-Policy "strict-origin-when-cross-origin"
+        import security-headers
     }
+}
+
+# Redirect www. to the apex. Caddy auto-provisions a Let's Encrypt cert for
+# this hostname; the named-site Host match wins over the :80 catch-all so
+# ACME HTTP-01 challenges for www. resolve correctly.
+www.{{ domain_prod }} {
+    redir https://{{ domain_prod }}{uri} permanent
 }
 
 {{ domain_test }} {
@@ -47,10 +86,7 @@
     reverse_proxy localhost:{{ app_port_test }}
 
     header {
-        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-        X-Frame-Options "DENY"
-        X-Content-Type-Options "nosniff"
-        Referrer-Policy "strict-origin-when-cross-origin"
+        import security-headers
         X-Robots-Tag "noindex, nofollow"
     }
 }
