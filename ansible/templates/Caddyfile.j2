@@ -73,6 +73,13 @@ object-src 'none'
     }
 }
 
+# Redirect www. to the apex. Caddy auto-provisions a Let's Encrypt cert for
+# this hostname; the named-site Host match wins over the :80 catch-all so
+# ACME HTTP-01 challenges for www. resolve correctly.
+www.{{ domain_prod }} {
+    redir https://{{ domain_prod }}{uri} permanent
+}
+
 {{ domain_test }} {
     encode zstd gzip
 
