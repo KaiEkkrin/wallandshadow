@@ -286,14 +286,19 @@
 
     - name: Parse existing POSTGRES_PASSWORD / JWT_SECRET
       ansible.builtin.set_fact:
+        # regex_findall returns a list of captured groups (one entry per
+        # match). Appending [''] guarantees the list is never empty so
+        # `| first` is safe and yields '' when the key is absent.
         existing_pg_password: >-
-          {{ (existing_secrets_slurp.content | b64decode
-              | regex_search('^POSTGRES_PASSWORD=(.+)$', '\1', multiline=True))
-             | default('', true) }}
+          {{ ((existing_secrets_slurp.content | b64decode)
+              | regex_findall('^POSTGRES_PASSWORD=(.+)$', multiline=True)
+              + [''])
+             | first }}
         existing_jwt_secret: >-
-          {{ (existing_secrets_slurp.content | b64decode
-              | regex_search('^JWT_SECRET=(.+)$', '\1', multiline=True))
-             | default('', true) }}
+          {{ ((existing_secrets_slurp.content | b64decode)
+              | regex_findall('^JWT_SECRET=(.+)$', multiline=True)
+              + [''])
+             | first }}
       when: existing_secrets_stat.stat.exists
 
     - name: Choose PostgreSQL password (reuse if present, else generate)
