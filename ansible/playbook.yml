@@ -393,7 +393,8 @@
 
     # Seed the bcrypt salt from the password itself so the hash is
     # deterministic across runs and we don't trigger a Caddy reload on every
-    # re-provision.
+    # re-provision. password_hash('bcrypt') needs passlib on the controller —
+    # see the `pip install` step in .github/workflows/provision.yml.
     - name: Compute bcrypt hash for stats basic-auth
       ansible.builtin.set_fact:
         stats_basic_auth_hash: >-

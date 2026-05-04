@@ -116,7 +116,7 @@ jobs:
 
       - name: Install Ansible
         run: |
-          pip install ansible
+          pip install ansible passlib
           ansible-galaxy collection install --upgrade ansible.posix community.postgresql community.general
 
       - name: Setup SSH key
