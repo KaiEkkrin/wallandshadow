@@ -11,13 +11,15 @@
 # copy-paste of generated values.
 #
 # Prerequisites (GitHub Secrets):
-#   HCLOUD_TOKEN          — Hetzner Cloud API token
-#   SSH_PRIVATE_KEY       — SSH key for VPS access
-#   HCLOUD_S3_ACCESS_KEY  — Hetzner Object Storage access key (state backend + app)
-#   HCLOUD_S3_SECRET_KEY  — Hetzner Object Storage secret key (state backend + app)
-#   OIDC_ISSUER           — Zitadel OIDC issuer URL
-#   OIDC_TEST_CLIENT_ID   — Zitadel OIDC client ID (test environment)
-#   OIDC_PROD_CLIENT_ID   — Zitadel OIDC client ID (production environment)
+#   HCLOUD_TOKEN              — Hetzner Cloud API token
+#   SSH_PRIVATE_KEY           — SSH key for VPS access
+#   HCLOUD_S3_ACCESS_KEY      — Hetzner Object Storage access key (state backend + app)
+#   HCLOUD_S3_SECRET_KEY      — Hetzner Object Storage secret key (state backend + app)
+#   OIDC_ISSUER               — Zitadel OIDC issuer URL
+#   OIDC_TEST_CLIENT_ID       — Zitadel OIDC client ID (test environment)
+#   OIDC_PROD_CLIENT_ID       — Zitadel OIDC client ID (production environment)
+#   STATS_BASIC_AUTH_USER     — Username for HTTP basic auth on /stats (goaccess)
+#   STATS_BASIC_AUTH_PASSWORD — Password for HTTP basic auth on /stats (goaccess)
 #
 # First-time setup: see README.md "Infrastructure Bootstrap" section.
 # =============================================================================
@@ -149,7 +151,9 @@ jobs:
             -e "s3_secret_key=${{ secrets.HCLOUD_S3_SECRET_KEY }}" \
             -e "oidc_issuer=${{ secrets.OIDC_ISSUER }}" \
             -e "oidc_test_client_id=${{ secrets.OIDC_TEST_CLIENT_ID }}" \
-            -e "oidc_prod_client_id=${{ secrets.OIDC_PROD_CLIENT_ID }}"
+            -e "oidc_prod_client_id=${{ secrets.OIDC_PROD_CLIENT_ID }}" \
+            -e "stats_basic_auth_user=${{ secrets.STATS_BASIC_AUTH_USER }}" \
+            -e "stats_basic_auth_password=${{ secrets.STATS_BASIC_AUTH_PASSWORD }}"
 
       - name: Display VPS_KNOWN_HOST secret value
         run: |

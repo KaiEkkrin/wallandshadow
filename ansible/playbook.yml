@@ -370,6 +370,63 @@
         mode: "0640"
       notify: Restart PostgreSQL
 
+    # ── Telemetry (goaccess + Caddy basic auth) ─────────────────────────────
+    # GoAccess parses Caddy's JSON access log on a timer and overwrites a
+    # static HTML report, served by Caddy at /stats behind HTTP basic auth.
+
+    - name: Install goaccess
+      ansible.builtin.apt:
+        name: goaccess
+        state: present
+
+    - name: Create goaccess + Caddy log directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.owner }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: /var/log/caddy,    owner: caddy, mode: "0750" }
+        - { path: /var/www/stats,    owner: caddy, mode: "0755" }
+        - { path: /var/lib/goaccess, owner: caddy, mode: "0750" }
+
+    # Seed the bcrypt salt from the password itself so the hash is
+    # deterministic across runs and we don't trigger a Caddy reload on every
+    # re-provision.
+    - name: Compute bcrypt hash for stats basic-auth
+      ansible.builtin.set_fact:
+        stats_basic_auth_hash: >-
+          {{ stats_basic_auth_password
+             | password_hash('bcrypt', (stats_basic_auth_password | hash('sha256'))[0:22]) }}
+
+    - name: Render goaccess config
+      ansible.builtin.template:
+        src: templates/goaccess.conf.j2
+        dest: /etc/wallandshadow/goaccess.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Render goaccess-report systemd unit + timer
+      ansible.builtin.template:
+        src: "templates/goaccess-report.{{ item }}.j2"
+        dest: "/etc/systemd/system/goaccess-report.{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - service
+        - timer
+      notify: Reload systemd
+
+    - name: Enable goaccess-report timer
+      ansible.builtin.systemd:
+        name: goaccess-report.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
     # ── Caddy configuration ─────────────────────────────────────────────────
 
     - name: Deploy Caddyfile
@@ -455,6 +512,32 @@
       loop:
         - wallandshadow-test.service
         - wallandshadow-prod.service
+
+    # ── Journald retention ──────────────────────────────────────────────────
+    # Defaults let journald grow until ~10% of /var fills — months of logs on
+    # a small VPS. Cap at 30 days / 2 GB instead.
+
+    - name: Create journald drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure journald retention
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/wallandshadow.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Journal]
+          MaxRetentionSec=30day
+          MaxFileSec=1week
+          SystemMaxUse=2G
+          Compress=yes
+      notify: Restart systemd-journald
 
     # ── Unattended upgrades ─────────────────────────────────────────────────
 
@@ -558,4 +641,9 @@
     - name: Restart Docker
       ansible.builtin.systemd:
         name: docker
+        state: restarted
+
+    - name: Restart systemd-journald
+      ansible.builtin.systemd:
+        name: systemd-journald
         state: restarted

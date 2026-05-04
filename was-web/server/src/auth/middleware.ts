@@ -1,5 +1,6 @@
 import { createMiddleware } from 'hono/factory';
 import { resolveTokenToUid } from './resolveToken.js';
+import { logger } from '../services/logger.js';
 
 export type AuthVariables = {
   uid: string;
@@ -16,7 +17,7 @@ export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(asy
     c.set('uid', uid);
     return next();
   } catch (e) {
-    console.warn('Auth middleware: token rejected:', e instanceof Error ? e.message : e);
+    logger.logWarning('Auth middleware: token rejected:', e);
     return c.json({ error: 'Unauthorized' }, 401);
   }
 });

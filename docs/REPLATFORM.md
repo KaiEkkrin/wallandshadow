@@ -25,7 +25,7 @@ here. See `docs/LEGACY_FIREBASE_DEPLOY.md` for its deployment guide.
 | CI                      | GitHub Actions → GitHub Container Registry                                              | Free container registry; images are multi-arch                                                                     |
 | Deployment              | systemd unit per environment running `docker run`; CI SSHes in to flip image tag and restart | Simple, portable; tens of seconds of downtime on restart is acceptable at current scale                      |
 | Hosting                 | Hetzner Cloud VPS + Hetzner Object Storage                                              | Best EU value; S3-compatible storage; German company, GDPR-native                                                 |
-| Analytics               | None currently; see @docs/ANALYTICS.md for candidates                                   | Traffic is low, most users known personally; server request logs sufficient at current scale                       |
+| Analytics               | GoAccess static HTML report from Caddy access logs, served at `/stats` behind basic auth | No third-party processor, no cookies, no client instrumentation; small enough to run on the same VPS               |
 | Language (server)       | TypeScript; Rust is a separate future phase                                             |                                                                                                                    |
 
 ---

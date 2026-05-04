@@ -4,8 +4,18 @@ Google Analytics was removed. This document sketches,
 in broad strokes, what a non-Google-dependent analytics stack on our Hetzner deployment
 might look like, so we can decide later whether to replace GA or simply live without it.
 
-**Status**: unfunded. No analytics in the Hono stack today. Server request logs are the
-only source of truth for traffic.
+**Status**: minimal implementation in place. Caddy writes JSON access logs to
+`/var/log/caddy/access.log`; an hourly systemd timer runs `goaccess` to render a
+static HTML report at `/var/www/stats/index.html`, served by Caddy at
+`https://wallandshadow.com/stats` behind HTTP basic auth. No client-side
+instrumentation, no cookies, no third-party processor — purely server-side log
+analysis. See `ansible/templates/goaccess.conf.j2` and the "Telemetry" section
+of `ansible/playbook.yml`.
+
+The rest of this document remains as forward-looking notes: if/when goaccess
+stops being enough (e.g. we want retention-aware dashboards, funnel analysis,
+or per-route performance metrics) the candidate-tools section below is the
+next port of call.
 
 ---
 

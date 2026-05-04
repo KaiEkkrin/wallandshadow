@@ -1,0 +1,22 @@
+# =============================================================================
+# goaccess configuration — Wall & Shadow
+# =============================================================================
+# Managed by Ansible. Do not edit directly on the VPS.
+# Source: ansible/templates/goaccess.conf.j2
+# =============================================================================
+
+# date-format is "%s" (Unix timestamp) because Caddy emits "ts" as a float;
+# %x.%^ in log-format eats the fractional part.
+log-format %{"ts":%x.%^,"request":{"remote_ip":"%h","proto":"%H","method":"%m","host":"%v","uri":"%U","headers":{"User-Agent":["%u"],"Referer":["%R"]}},"duration":%T,"size":%b,"status":%s}
+time-format %H:%M:%S
+date-format %s
+
+html-report-title Wall & Shadow — Traffic
+no-progress true
+real-time-html false
+
+# Incremental parsing — keeps state between runs so we don't re-scan the
+# rotated .gz siblings on every hourly trigger.
+persist true
+restore true
+db-path /var/lib/goaccess
