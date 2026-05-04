@@ -1,4 +1,4 @@
-import { useContext, useMemo, useCallback, useState, useEffect } from 'react';
+import { useContext, useMemo, useCallback, useState } from 'react';
 import * as React from 'react';
 
 import './Navigation.css';
@@ -11,7 +11,6 @@ import { StatusContext } from './StatusContext';
 import { SignInMethodsContext } from './SignInMethodsContext';
 import { UserContext } from './UserContext';
 import { updateProfile } from '../services/extensions';
-import { IUser } from '@wallandshadow/shared';
 
 import Button from 'react-bootstrap/Button';
 import ButtonGroup from 'react-bootstrap/ButtonGroup';
@@ -127,88 +126,25 @@ function NavPageLinks() {
   );
 }
 
-// ASync function to fetch an avatar image from a remote provider, using the MD5 hash of the
-// user's email address as an avatar ID. Return the image data as a data URL string (which can be
-// cached in localStorage)
-const fetchAvatar = async (abortController: AbortController, profile: IUser | null | undefined) => {
-  const emailMd5 = profile?.emailMd5;
-  if (emailMd5 === undefined || emailMd5 === null) {
-    return "";
-  }
-  const signal = abortController.signal;
-  const response = await fetch(
-    `https://robohash.org/${emailMd5}?gravatar=hashed&set=set2&size=30x30`,
-    { signal }
-  );
-  const blob = await response.blob();
-  const dataUrl: string = await new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = function() {
-      const dataUrl = reader.result;
-      resolve(String(dataUrl));
-    };
-    reader.readAsDataURL(blob);
-  })
-  return dataUrl;
-};
-
 function Avatar(props: { children?: React.ReactNode }) {
   const { user } = useContext(UserContext);
-  const [avatarDataUrl, setAvatarDataUrl] = useState<string>("");
-
-  // Fetch avatar using native useEffect with abort controller for cleanup
-  useEffect(() => {
-    const abortController = new AbortController();
-
-    fetchAvatar(abortController, user)
-      .then(dataUrl => {
-        if (!abortController.signal.aborted) {
-          setAvatarDataUrl(dataUrl);
-        }
-      })
-      .catch(err => {
-        if (err.name !== 'AbortError') {
-          console.error('Avatar fetch failed:', err);
-        }
-      });
-
-    return () => abortController.abort();
-  }, [user]);
-
-  const profileImgUrl = useMemo(() => {
-    const dataUrl = avatarDataUrl;
-    const cachedDataUrl = localStorage.getItem("profile.image");
-    const emailMd5 = user?.emailMd5;
-    const cachedEmailMd5 = localStorage.getItem("profile.emailMd5");
-
-    const dataUrlValid = dataUrl !== undefined && dataUrl !== null && dataUrl !== "";
-    const cachedDataUrlValid = cachedDataUrl !== undefined && cachedDataUrl !== null;
-    const emailMd5Valid = emailMd5 !== undefined && emailMd5 !== null;
-
-    if (dataUrlValid && emailMd5Valid && cachedDataUrl !== dataUrl) {
-      localStorage.setItem("profile.image", String(dataUrl));
-      localStorage.setItem("profile.emailMd5", String(emailMd5));
-      return dataUrl;
-    } else if (cachedDataUrlValid && emailMd5Valid && emailMd5 === cachedEmailMd5) {
-      return cachedDataUrl;
-    } else {
-      return "";
-    }
-  }, [avatarDataUrl, user]);
-
-  const title = useMemo(
-    () => user?.emailVerified === true ? `${user.displayName} (Verified)` :
-    `${user?.displayName} (Not verified)`,
-    [user]
-  );
+  const emailMd5 = user?.emailMd5;
+  const profileImgUrl = emailMd5
+    ? `https://robohash.org/${emailMd5}?gravatar=hashed&set=set2&size=30x30`
+    : undefined;
+  const title = user?.emailVerified === true
+    ? `${user.displayName} (Verified)`
+    : `${user?.displayName} (Not verified)`;
 
   return (
     <div style={{display: "inline-flex", position: "relative", alignItems: "center"}} title={title}>
       <div style={{position: "absolute", backgroundColor: "rgba(0,0,0,1)",
                    borderRadius: "15px", width: "30px", height: "30px"}}></div>
-      <div style={{position: "absolute", backgroundImage: `url("${profileImgUrl}")`,
-                   backgroundSize: "contain", borderRadius: "15px",
-                   width: "30px", height: "30px"}}></div>
+      {profileImgUrl && (
+        <div style={{position: "absolute", backgroundImage: `url("${profileImgUrl}")`,
+                     backgroundSize: "contain", borderRadius: "15px",
+                     width: "30px", height: "30px"}}></div>
+      )}
       <div style={{paddingLeft: "30px"}}>
         &nbsp;
         {props.children}
@@ -242,10 +178,6 @@ function NavLogin({ expanded }: { expanded: boolean }) {
   const handleSignOut = useCallback(() => {
     auth?.signOut()
       .catch(e => logError("Error signing out: ", e));
-
-    // Clear locally cached profile properties
-    localStorage.removeItem("profile.image");
-    localStorage.removeItem("profile.emailMd5");
   }, [auth]);
 
   const [showChangePassword, setShowChangePassword] = useState(false);
