@@ -16,5 +16,5 @@ User=caddy
 Group=caddy
 # Glob both the live access log and rotated .gz siblings via nullglob, then
 # exit 0 (no-op) if neither exists yet — covers first run before any traffic.
-ExecStart=/bin/bash -O nullglob -c 'logs=(/var/log/caddy/access.log* ); [ ${#logs[@]} -eq 0 ] && exit 0; exec /usr/bin/goaccess "${logs[@]}" -o /var/www/stats/index.html --config-file=/etc/wallandshadow/goaccess.conf'
+{% raw %}ExecStart=/bin/bash -O nullglob -c 'logs=(/var/log/caddy/access.log* ); [ ${#logs[@]} -eq 0 ] && exit 0; exec /usr/bin/goaccess "${logs[@]}" -o /var/www/stats/index.html --config-file=/etc/wallandshadow/goaccess.conf'{% endraw %}
 Nice=10
