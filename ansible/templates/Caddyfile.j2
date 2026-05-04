@@ -24,7 +24,7 @@ script-src 'self';
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
 font-src 'self' https://fonts.gstatic.com data:;
 img-src 'self' data: blob: {{ s3_endpoint }} https://robohash.org;
-connect-src 'self' {{ oidc_issuer }};
+connect-src 'self' {{ oidc_issuer }} https://robohash.org;
 frame-ancestors 'none';
 base-uri 'self';
 form-action 'self';

@@ -75,6 +75,72 @@ To rotate the password later, change the GitHub Secret value and re-run the prov
 2. OpenTofu creates the VPS, volume, static IP, and firewall
 3. Ansible configures PostgreSQL (data on the volume), Caddy, Docker, backups
 4. On first run: copy the displayed `VPS_IP` to GitHub Secrets
-5. Point your DNS A records at the VPS IP (only needed once — the IP is static)
+5. Point your DNS records at the VPS IP (see below — only needed once, the IP is static)
 
 Subsequent runs are safe to re-run (both OpenTofu and Ansible are idempotent).
+
+## DNS records
+
+The VPS has a static IPv4 (and, if enabled, IPv6) from Hetzner. Configure these records at your registrar / DNS host. Replace `<VPS_IPv4>` and `<VPS_IPv6>` with the values from the OpenTofu output.
+
+### Required — apex and test
+
+| Name           | Type | Value         | TTL  | Notes                                  |
+| -------------- | ---- | ------------- | ---- | -------------------------------------- |
+| `@`            | A    | `<VPS_IPv4>`  | 3600 | Production (`wallandshadow.com`)       |
+| `@`            | AAAA | `<VPS_IPv6>`  | 3600 | Omit if the VPS has no IPv6            |
+| `test`         | A    | `<VPS_IPv4>`  | 3600 | Test deploy (`test.wallandshadow.com`) |
+| `test`         | AAAA | `<VPS_IPv6>`  | 3600 | Omit if no IPv6                        |
+
+Caddy obtains Let's Encrypt certs automatically once these resolve.
+
+### Strongly recommended
+
+**`www` → apex.** Without this, `www.wallandshadow.com` returns NXDOMAIN. Either point it at the apex with a CNAME, or duplicate the A/AAAA records. Caddy is configured to 301-redirect `www.` to the apex.
+
+| Name  | Type  | Value                  | TTL  |
+| ----- | ----- | ---------------------- | ---- |
+| `www` | CNAME | `wallandshadow.com.`   | 3600 |
+
+(If your DNS host disallows CNAME at apex-adjacent names alongside other records, use A/AAAA copies instead.)
+
+**CAA — pin the certificate authority.** Restricts which CAs can issue certs for the domain. We use Let's Encrypt via Caddy:
+
+| Name | Type | Value                          | TTL  |
+| ---- | ---- | ------------------------------ | ---- |
+| `@`  | CAA  | `0 issue "letsencrypt.org"`    | 3600 |
+| `@`  | CAA  | `0 issuewild ";"`              | 3600 |
+
+The second record forbids wildcard issuance (we don't use any). Mis-issuance by a rogue CA is rare but cheap to defend against.
+
+**Anti-spoof TXT records (even though we don't send email).** If the domain has no MX, spammers can still forge `From: anything@wallandshadow.com` unless we publish a null SPF and a strict DMARC policy:
+
+| Name              | Type | Value                                              | TTL  |
+| ----------------- | ---- | -------------------------------------------------- | ---- |
+| `@`               | TXT  | `v=spf1 -all`                                      | 3600 |
+| `_dmarc`          | TXT  | `v=DMARC1; p=reject; adkim=s; aspf=s`              | 3600 |
+| `*._domainkey`    | TXT  | `v=DKIM1; p=`                                      | 3600 |
+
+The wildcard null DKIM record asserts that no DKIM selector is valid, completing the picture. Add an `rua=mailto:…` to the DMARC record only if someone will actually monitor the reports.
+
+### Only if you actually want email
+
+| Name | Type | Value             | TTL  | Notes                                                    |
+| ---- | ---- | ----------------- | ---- | -------------------------------------------------------- |
+| `@`  | MX   | `<mail provider>` | 3600 | Adding MX means revisiting the SPF/DKIM/DMARC records too |
+
+We do not send email from the application today (password reset is admin-only — see @docs/REPLATFORM.md), so MX is omitted.
+
+### Verifying
+
+```bash
+dig +short A     wallandshadow.com
+dig +short AAAA  wallandshadow.com
+dig +short A     test.wallandshadow.com
+dig +short CNAME www.wallandshadow.com
+dig +short CAA   wallandshadow.com
+dig +short TXT   wallandshadow.com
+dig +short TXT   _dmarc.wallandshadow.com
+```
+
+Expect propagation within the TTL of the previous record set (or within minutes on a fresh domain).
