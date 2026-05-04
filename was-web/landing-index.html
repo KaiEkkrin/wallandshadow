@@ -16,26 +16,7 @@
   <link rel="manifest" href="/manifest.json" />
   <title>Wall &amp; Shadow: Virtual gaming tabletop</title>
 
-  <!-- Environment Detection Script -->
-  <!-- This script runs before page render to set environment-specific colors -->
-  <script>
-    (function() {
-      // Detect environment based on hostname
-      var hostname = window.location.hostname;
-      var bgColor = '#282c34'; // Production default (dark grey)
-
-      if (hostname.includes('test')) {
-        // Test environment - navy blue
-        bgColor = '#001f3e';
-      } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        // Local development - dark green
-        bgColor = '#062706';
-      }
-
-      // Set CSS custom property for use in styles
-      document.documentElement.style.setProperty('--env-background', bgColor);
-    })();
-  </script>
+  <script src="/landing.js"></script>
 
   <!-- Inline critical CSS for immediate rendering -->
   <style>

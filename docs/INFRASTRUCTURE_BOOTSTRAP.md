@@ -43,6 +43,7 @@ Edit `infra/main.tf` and `ansible/vars/main.yml` — replace `hel1.your-objectst
 
 - Set up Zitadel (see [Zitadel OIDC Setup](#zitadel-oidc-setup) above)
 - Save as GitHub Secrets: `OIDC_ISSUER`, `OIDC_CLIENT_ID`
+- `OIDC_ISSUER` is consumed by both deploy workflows (runtime client config) and the provision workflow (rendered into the Caddy `Content-Security-Policy` header so the SPA can call the issuer's discovery / token endpoints). If you ever change the Zitadel instance, re-run the provision workflow as well as redeploying.
 
 **7. Stats dashboard credentials**
 
@@ -61,7 +62,7 @@ To rotate the password later, change the GitHub Secret value and re-run the prov
 | `HCLOUD_S3_ACCESS_KEY`      | Hetzner Cloud Console      | Provision workflow (state backend + Ansible) |
 | `HCLOUD_S3_SECRET_KEY`      | Hetzner Cloud Console      | Provision workflow (state backend + Ansible) |
 | `VPS_IP`                    | First provision run output | Deploy workflows                             |
-| `OIDC_ISSUER`               | Zitadel instance           | Deploy workflows                             |
+| `OIDC_ISSUER`               | Zitadel instance           | Provision + deploy workflows                 |
 | `OIDC_CLIENT_ID`            | Zitadel application        | Deploy workflows                             |
 | `STATS_BASIC_AUTH_USER`     | You choose                 | Provision workflow (Caddy basic auth on /stats) |
 | `STATS_BASIC_AUTH_PASSWORD` | You choose                 | Provision workflow (Caddy basic auth on /stats) |
