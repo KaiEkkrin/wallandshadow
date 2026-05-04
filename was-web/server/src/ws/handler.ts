@@ -18,6 +18,13 @@ import {
   snapshotAdventureDetail,
   snapshotMap,
 } from './subscriptions.js';
+import {
+  setSocketState,
+  getSocketState,
+  deleteSocketState,
+  type SocketState,
+} from './socketState.js';
+import { onPresenceSubscribe, onPresenceUnsubscribe, onPresenceUpdate } from './presence.js';
 import type { Change, UpdateScope } from '@wallandshadow/shared';
 
 const WS_PATH = '/ws';
@@ -39,33 +46,10 @@ const SCOPE_ROOMS: Record<UpdateScope, 'mapRooms' | 'adventureRooms' | 'userRoom
   // mapId and the client filters on it.
   map: 'adventureRooms',
   mapChanges: 'mapRooms',
+  // Presence shares the adventure room — there's no separate room manager.
+  // Filtering on subscribe/unsubscribe events is by ws's active subs.
+  presence: 'adventureRooms',
 };
-
-interface ActiveSub {
-  subId: number;
-  scope: UpdateScope;
-  // Room key — what `RoomManager` indexes by. For `map` this is adventureId
-  // because map subs share the adventure room; for everything else it equals
-  // `entityKey`.
-  key: string;
-  // The id the wire `key` field will carry on `roomUpdate` frames for this
-  // subscription (mapId for `map`, adventureId for adventure/players/
-  // spritesheets/mapChanges, uid for adventures/profile). Used by the NOTIFY
-  // handlers to filter per-socket so the adventure-detail fan-out doesn't
-  // ship every map's frame to every socket in the room.
-  entityKey: string;
-}
-
-// Per-socket state: which uid, which subscriptions are currently active.
-// `WeakMap` avoids attaching custom fields to the ws instance.
-const socketState = new WeakMap<WebSocket, { uid: string; subs: Map<number, ActiveSub> }>();
-
-/** Read the active subscriptions for a socket. Used by NOTIFY handlers that
- * fan out multiple frames to the same room and need to filter by which
- * scope/entity each socket actually subscribed to. */
-export function getSocketSubs(ws: WebSocket): ReadonlyMap<number, ActiveSub> | undefined {
-  return socketState.get(ws)?.subs;
-}
 
 export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
   return async (request: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -97,7 +81,7 @@ export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
       }
 
       wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
-        socketState.set(ws, { uid, subs: new Map() });
+        setSocketState(ws, uid);
 
         ws.on('message', (data: RawData) => {
           handleMessage(ws, rooms, data).catch(e => {
@@ -123,6 +107,7 @@ interface SubscribeFrame {
   scope: UpdateScope;
   id?: string;
   lastSeq?: string;  // mapChanges scope only: last seq seen by client for catch-up
+  currentMapId?: string;  // presence scope only: which map the viewer is on
 }
 interface UnsubscribeFrame {
   type: 'unsubscribe';
@@ -140,11 +125,16 @@ interface PingFrame {
   type: 'ping';
   id: number;
 }
+interface PresenceUpdateFrame {
+  type: 'presenceUpdate';
+  subId: number;             // identifies the existing presence subscription
+  currentMapId?: string;     // undefined ⇒ adventure overview
+}
 
-type ClientFrame = SubscribeFrame | UnsubscribeFrame | MapChangeFrame | PingFrame;
+type ClientFrame = SubscribeFrame | UnsubscribeFrame | MapChangeFrame | PingFrame | PresenceUpdateFrame;
 
 async function handleMessage(ws: WebSocket, rooms: Rooms, data: RawData): Promise<void> {
-  const state = socketState.get(ws);
+  const state = getSocketState(ws);
   if (!state) return;
 
   let frame: ClientFrame;
@@ -168,12 +158,15 @@ async function handleMessage(ws: WebSocket, rooms: Rooms, data: RawData): Promis
     case 'ping':
       sendIfOpen(ws, { type: 'pong', id: frame.id });
       return;
+    case 'presenceUpdate':
+      handlePresenceUpdate(ws, state, rooms, frame);
+      return;
   }
 }
 
 async function handleSubscribe(
   ws: WebSocket,
-  state: { uid: string; subs: Map<number, ActiveSub> },
+  state: SocketState,
   rooms: Rooms,
   frame: SubscribeFrame,
 ): Promise<void> {
@@ -188,12 +181,23 @@ async function handleSubscribe(
     manager.join(key, ws);
     state.subs.set(frame.subId, { subId: frame.subId, scope: frame.scope, key, entityKey });
 
+    // For presence the snapshot is computed *after* the room.join + subs map
+    // update so the connection-count walk inside the registry can see this
+    // socket. The data returned by resolveSubscribe for `presence` is a
+    // marker; we replace it with the registry-computed snapshot here.
+    let snapshotData: unknown = data;
+    if (frame.scope === 'presence') {
+      snapshotData = onPresenceSubscribe(
+        rooms.adventureRooms, ws, state.uid, entityKey, frame.currentMapId,
+      );
+    }
+
     sendIfOpen(ws, {
       type: 'snapshot',
       subId: frame.subId,
       scope: frame.scope,
       key,
-      data,
+      data: snapshotData,
     });
   } catch (e) {
     if (!(e instanceof HTTPException)) {
@@ -211,7 +215,7 @@ async function handleSubscribe(
 
 function handleUnsubscribe(
   ws: WebSocket,
-  state: { uid: string; subs: Map<number, ActiveSub> },
+  state: SocketState,
   rooms: Rooms,
   frame: UnsubscribeFrame,
 ): void {
@@ -219,11 +223,25 @@ function handleUnsubscribe(
   if (!sub) return;
   state.subs.delete(frame.subId);
   rooms[SCOPE_ROOMS[sub.scope]].leave(sub.key, ws);
+  if (sub.scope === 'presence') {
+    onPresenceUnsubscribe(rooms.adventureRooms, ws, state.uid, sub.entityKey);
+  }
+}
+
+function handlePresenceUpdate(
+  ws: WebSocket,
+  state: SocketState,
+  rooms: Rooms,
+  frame: PresenceUpdateFrame,
+): void {
+  const sub = state.subs.get(frame.subId);
+  if (!sub || sub.scope !== 'presence') return;
+  onPresenceUpdate(rooms.adventureRooms, ws, state.uid, sub.entityKey, frame.currentMapId);
 }
 
 async function handleMapChange(
   ws: WebSocket,
-  state: { uid: string; subs: Map<number, ActiveSub> },
+  state: SocketState,
   frame: MapChangeFrame,
 ): Promise<void> {
   try {
@@ -315,6 +333,15 @@ async function resolveSubscribe(
       await assertAdventureMember(db, uid, mapRow.adventureId);
       return { key: mapId, entityKey: mapId, data: await snapshotMapChanges(db, mapId, frame.lastSeq) };
     }
+
+    case 'presence': {
+      // Presence is in-memory and ephemeral; we only need to authorize the
+      // join here. The actual snapshot is computed by handleSubscribe after
+      // the room.join + subs map update so the registry sees this socket.
+      const adventureId = requireId(frame);
+      await assertAdventureMember(db, uid, adventureId);
+      return { key: adventureId, entityKey: adventureId, data: null };
+    }
   }
 }
 
@@ -326,13 +353,25 @@ function requireId(frame: SubscribeFrame): string {
 // ── Cleanup ─────────────────────────────────────────────────────────────────
 
 function cleanupSocket(ws: WebSocket, rooms: Rooms): void {
-  const state = socketState.get(ws);
+  const state = getSocketState(ws);
   if (!state) return;
+  // Snapshot presence subs *before* we tear down the room membership so the
+  // registry's exclude-this-socket count walk runs against the state that
+  // existed at close time.
+  const presenceSubs: { uid: string; adventureId: string }[] = [];
   for (const sub of state.subs.values()) {
+    if (sub.scope === 'presence') {
+      presenceSubs.push({ uid: state.uid, adventureId: sub.entityKey });
+    }
     rooms[SCOPE_ROOMS[sub.scope]].leave(sub.key, ws);
   }
   state.subs.clear();
-  socketState.delete(ws);
+  deleteSocketState(ws);
+  // Now signal presence drop with the leaving socket already excluded from
+  // every relevant adventure room.
+  for (const { uid, adventureId } of presenceSubs) {
+    onPresenceUnsubscribe(rooms.adventureRooms, ws, uid, adventureId);
+  }
 }
 
 function sendIfOpen(ws: WebSocket, frame: unknown): void {

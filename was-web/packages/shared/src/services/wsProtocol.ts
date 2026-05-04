@@ -7,7 +7,8 @@ export type UpdateScope =
   | 'mapChanges'
   | 'profile'
   | 'adventure'
-  | 'map';
+  | 'map'
+  | 'presence';
 
 // Heartbeat frames. Client sends ping; server echoes pong with the same id.
 // Used to measure round-trip time and detect dead connections.

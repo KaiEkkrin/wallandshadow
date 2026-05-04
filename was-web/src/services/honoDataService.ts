@@ -19,6 +19,8 @@ import {
   IAppVersion,
   ISpritesheet,
   MapType,
+  PresenceSubscription,
+  PresenceUserState,
   UpdateScope,
 } from '@wallandshadow/shared';
 import {
@@ -796,6 +798,16 @@ export class HonoDataService implements IDataService {
     return this.subscribeWs<PlayersScopeData>('players', adventureId, emit, onError);
   }
 
+  watchPresence(
+    adventureId: string,
+    initialCurrentMapId: string | undefined,
+    onNext: (presence: PresenceUserState[]) => void,
+    onError?: ((error: Error) => void) | undefined,
+    _onCompletion?: (() => void) | undefined
+  ): PresenceSubscription {
+    return this.subscribePresenceWs(adventureId, initialCurrentMapId, onNext, onError);
+  }
+
   watchSharedAdventures(
     _uid: string,
     onNext: (adventures: IPlayer[]) => void,
@@ -840,22 +852,10 @@ export class HonoDataService implements IDataService {
     onError?: (error: Error) => void,
   ): () => void {
     try {
-      const cacheKey = `${scope}:${id ?? ''}`;
-      const dedupedEmit = (data: unknown) => {
-        const json = JSON.stringify(data);
-        if (this.lastEmitJson.get(cacheKey) === json) return;
-        this.lastEmitJson.set(cacheKey, json);
-        emit(data as T);
-      };
-      const handlers: SubscriptionHandlers = {
-        onSnapshot: dedupedEmit,
-        onUpdate: dedupedEmit,
-        onError,
-      };
+      const { handlers, cacheKey } = this.dedupedHandlers<T>(scope, id, emit, onError);
       const sub = this.getSocket().subscribe(scope, id, handlers);
       return () => {
         sub.unsubscribe();
-        // Clear so the next subscription for this key always sees its snapshot as fresh.
         this.lastEmitJson.delete(cacheKey);
       };
     } catch (e) {
@@ -863,5 +863,51 @@ export class HonoDataService implements IDataService {
       onError?.(e instanceof Error ? e : new Error(String(e)));
       return () => {};
     }
+  }
+
+  private subscribePresenceWs(
+    adventureId: string,
+    initialCurrentMapId: string | undefined,
+    onNext: (data: PresenceUserState[]) => void,
+    onError?: (error: Error) => void,
+  ): PresenceSubscription {
+    try {
+      const { handlers, cacheKey } = this.dedupedHandlers<PresenceUserState[]>(
+        'presence', adventureId, onNext, onError,
+      );
+      const sub = this.getSocket().subscribe('presence', adventureId, handlers, {
+        currentMapId: initialCurrentMapId,
+      });
+      return {
+        setCurrentMapId: (currentMapId: string | undefined) => sub.setCurrentMapId(currentMapId),
+        unsubscribe: () => {
+          sub.unsubscribe();
+          this.lastEmitJson.delete(cacheKey);
+        },
+      };
+    } catch (e) {
+      console.error('presence subscribe failed:', e);
+      onError?.(e instanceof Error ? e : new Error(String(e)));
+      return { setCurrentMapId: () => {}, unsubscribe: () => {} };
+    }
+  }
+
+  private dedupedHandlers<T>(
+    scope: UpdateScope,
+    id: string | undefined,
+    emit: (data: T) => void,
+    onError?: (error: Error) => void,
+  ): { handlers: SubscriptionHandlers; cacheKey: string } {
+    const cacheKey = `${scope}:${id ?? ''}`;
+    const dedupedEmit = (data: unknown) => {
+      const json = JSON.stringify(data);
+      if (this.lastEmitJson.get(cacheKey) === json) return;
+      this.lastEmitJson.set(cacheKey, json);
+      emit(data as T);
+    };
+    return {
+      handlers: { onSnapshot: dedupedEmit, onUpdate: dedupedEmit, onError },
+      cacheKey,
+    };
   }
 }

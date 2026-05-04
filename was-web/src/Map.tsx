@@ -44,7 +44,7 @@ import { v7 as uuidv7 } from 'uuid';
 // The map component is rather large because of all the state that got pulled into it...
 function Map() {
   const { dataService, functionsService, user, forceReconnect } = useContext(UserContext);
-  const { adventure, players } = useContext(AdventureContext);
+  const { adventure, players, presence, viewerCurrentMapId } = useContext(AdventureContext);
   const { map, mapState, stateMachine } = useContext(MapContext);
   const { profile } = useContext(ProfileContext);
   const statusContext = useContext(StatusContext);
@@ -399,6 +399,8 @@ function Map() {
             openMapEditor={() => ui?.showMapEditor()}
             setShowAnnotationFlags={cycleShowAnnotationFlags} />
           <MapInfo map={map?.record} players={players} tokens={mapState.tokens}
+            presence={presence}
+            viewerCurrentMapId={viewerCurrentMapId}
             canDoAnything={mapState.seeEverything} resetView={resetView}
             status={networkStatus} isConnected={isConnected}
             rttAverage={rttAverage} resyncCount={resyncCount}

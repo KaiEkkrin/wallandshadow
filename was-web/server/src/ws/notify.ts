@@ -5,7 +5,7 @@ import { mapChanges } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { logger } from '../services/logger.js';
 import type { RoomManager, Rooms } from './rooms.js';
-import { getSocketSubs } from './handler.js';
+import { getSocketSubs } from './socketState.js';
 import {
   snapshotPlayers,
   snapshotSpritesheets,

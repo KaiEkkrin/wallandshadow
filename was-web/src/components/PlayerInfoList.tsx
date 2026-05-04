@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { IPlayer, ITokenProperties } from '@wallandshadow/shared';
+import { IPlayer, ITokenProperties, PresenceUserState } from '@wallandshadow/shared';
 import { hexColours } from '../models/featureColour';
 
 import SpriteImage from './SpriteImage';
@@ -12,6 +12,8 @@ import ListGroup from 'react-bootstrap/ListGroup';
 interface IPlayerInfoListPropsBase {
   ownerUid: string | undefined;
   tokens: ITokenProperties[];
+  presence?: ReadonlyMap<string, PresenceUserState> | undefined;
+  viewerCurrentMapId?: string | undefined;
   showBlockedPlayers?: boolean | undefined;
   showBlockButtons?: boolean | undefined;
   showNoTokenWarning?: boolean | undefined;
@@ -20,14 +22,73 @@ interface IPlayerInfoListPropsBase {
   resetView?: ((centreOn?: string | undefined) => void) | undefined; // centres on the token with the given id
 }
 
+function formatRelativeMinutes(ms: number): string {
+  const mins = Math.max(0, Math.round(ms / 60000));
+  if (mins < 1) return 'just now';
+  if (mins === 1) return '1 minute ago';
+  return `${mins} minutes ago`;
+}
+
+interface IPresenceBadgeProps {
+  presence: PresenceUserState | undefined;
+  playerName: string;
+  viewerCurrentMapId: string | undefined;
+}
+
+const CONNECTED_COLOUR = 'var(--bs-success)';
+const DISCONNECTED_COLOUR = 'var(--bs-warning)';
+const DOT_SIZE = '0.7em';
+
+function connectedLabel(playerName: string, samePage: boolean, currentMapId: string | undefined): string {
+  if (samePage) return `${playerName} is on this page`;
+  if (currentMapId === undefined) return `${playerName} is on the adventure overview`;
+  return `${playerName} is on a different map`;
+}
+
+function PresenceBadge({ presence, playerName, viewerCurrentMapId }: IPresenceBadgeProps) {
+  if (presence === undefined) return null;
+  if (presence.connected) {
+    const samePage = presence.currentMapId === viewerCurrentMapId;
+    const label = connectedLabel(playerName, samePage, presence.currentMapId);
+    return (
+      <span
+        aria-label={label}
+        title={label}
+        className="ms-2"
+        style={{
+          display: 'inline-block', width: DOT_SIZE, height: DOT_SIZE, borderRadius: '50%',
+          backgroundColor: samePage ? CONNECTED_COLOUR : 'transparent',
+          border: samePage ? 'none' : `2px solid ${CONNECTED_COLOUR}`,
+          boxSizing: 'border-box',
+          verticalAlign: 'middle', flexShrink: 0,
+        }}
+      />
+    );
+  }
+  const sinceMs = Date.now() - presence.lastSeen;
+  const label = `${playerName} was here ${formatRelativeMinutes(sinceMs)}`;
+  return (
+    <span
+      aria-label={label}
+      title={label}
+      className="ms-2"
+      style={{
+        display: 'inline-block', width: DOT_SIZE, height: DOT_SIZE, borderRadius: '50%',
+        backgroundColor: DISCONNECTED_COLOUR, verticalAlign: 'middle', flexShrink: 0,
+      }}
+    />
+  );
+}
+
 interface IPlayerInfoListItemProps extends IPlayerInfoListPropsBase {
   player: IPlayer;
 }
 
 function PlayerInfoListItem({
-  ownerUid, player, tokens, showBlockButtons, showNoTokenWarning,
+  ownerUid, player, tokens, presence, viewerCurrentMapId, showBlockButtons, showNoTokenWarning,
   blockPlayer, resetView, unblockPlayer
 }: IPlayerInfoListItemProps) {
+  const playerPresence = presence?.get(player.playerId);
   const blockedBadge = useMemo(
     () => player.allowed === false ?
       <Badge className="ms-2 mt-1" bg="danger" title={"Player " + player.playerName + " is blocked"}>BLOCKED</Badge> :
@@ -93,9 +154,9 @@ function PlayerInfoListItem({
     // Always show the player name
     const items = [(
       <div key="nameItem"
-        style={{ wordBreak: "break-all", wordWrap: "break-word" }}
+        style={{ wordBreak: "break-all", wordWrap: "break-word", display: "flex", alignItems: "center" }}
         aria-label={`Player ${player.playerName}`}
-      >{player.playerName}{blockedBadge}</div>
+      >{player.playerName}<PresenceBadge presence={playerPresence} playerName={player.playerName} viewerCurrentMapId={viewerCurrentMapId} />{blockedBadge}</div>
     )];
 
     // If we have a block item, show that in a little menu to make it less threatening
@@ -118,7 +179,7 @@ function PlayerInfoListItem({
     }
 
     return items;
-  }, [badges, blockedBadge, blockItem, player]);
+  }, [badges, blockedBadge, blockItem, player, playerPresence, viewerCurrentMapId]);
 
   return (
     <ListGroup.Item className="Map-info-list-item">
