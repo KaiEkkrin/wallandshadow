@@ -23,7 +23,10 @@ default-src 'self';
 script-src 'self';
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
 font-src 'self' https://fonts.gstatic.com data:;
-img-src 'self' data: blob: {{ s3_endpoint }} https://robohash.org;
+{# img-src: robohash.org serves robot avatars and 302-redirects to
+   secure.gravatar.com when the user has a Gravatar — both hosts are
+   required because CSP applies to redirect targets. #}
+img-src 'self' data: blob: {{ s3_endpoint }} https://robohash.org https://secure.gravatar.com;
 connect-src 'self' {{ oidc_issuer }};
 frame-ancestors 'none';
 base-uri 'self';
