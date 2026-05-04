@@ -462,7 +462,7 @@
         app_port: "{{ app_port_test }}"
         db_name: "{{ pg_db_test }}"
         s3_bucket: "{{ s3_bucket_test }}"
-        oidc_client_id: "{{ oidc_test_client_id | default('') }}"
+        oidc_client_id: "{{ oidc_test_client_id | mandatory }}"
 
     - name: Render env-file for production application
       ansible.builtin.template:
@@ -476,7 +476,7 @@
         app_port: "{{ app_port_prod }}"
         db_name: "{{ pg_db_prod }}"
         s3_bucket: "{{ s3_bucket_prod }}"
-        oidc_client_id: "{{ oidc_prod_client_id | default('') }}"
+        oidc_client_id: "{{ oidc_prod_client_id | mandatory }}"
 
     - name: Render systemd unit for each application environment
       ansible.builtin.template:
