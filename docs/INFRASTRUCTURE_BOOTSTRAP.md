@@ -44,17 +44,27 @@ Edit `infra/main.tf` and `ansible/vars/main.yml` — replace `hel1.your-objectst
 - Set up Zitadel (see [Zitadel OIDC Setup](#zitadel-oidc-setup) above)
 - Save as GitHub Secrets: `OIDC_ISSUER`, `OIDC_CLIENT_ID`
 
+**7. Stats dashboard credentials**
+
+GoAccess renders an HTML traffic report from Caddy's access log. Caddy serves it at `https://wallandshadow.com/stats` behind HTTP basic auth. Pick a username and a strong password (any string — Ansible bcrypts it before writing to the Caddyfile):
+
+- Save as GitHub Secrets: `STATS_BASIC_AUTH_USER`, `STATS_BASIC_AUTH_PASSWORD`
+
+To rotate the password later, change the GitHub Secret value and re-run the provision workflow — Caddy reload is graceful.
+
 ## GitHub Secrets summary
 
-| Secret                 | Source                     | Used by                                      |
-| ---------------------- | -------------------------- | -------------------------------------------- |
-| `HCLOUD_TOKEN`         | Hetzner Cloud Console      | Provision workflow (OpenTofu)                |
-| `SSH_PRIVATE_KEY`      | You generate once          | Provision + deploy workflows                 |
-| `HCLOUD_S3_ACCESS_KEY` | Hetzner Cloud Console      | Provision workflow (state backend + Ansible) |
-| `HCLOUD_S3_SECRET_KEY` | Hetzner Cloud Console      | Provision workflow (state backend + Ansible) |
-| `VPS_IP`               | First provision run output | Deploy workflows                             |
-| `OIDC_ISSUER`          | Zitadel instance           | Deploy workflows                             |
-| `OIDC_CLIENT_ID`       | Zitadel application        | Deploy workflows                             |
+| Secret                      | Source                     | Used by                                      |
+| --------------------------- | -------------------------- | -------------------------------------------- |
+| `HCLOUD_TOKEN`              | Hetzner Cloud Console      | Provision workflow (OpenTofu)                |
+| `SSH_PRIVATE_KEY`           | You generate once          | Provision + deploy workflows                 |
+| `HCLOUD_S3_ACCESS_KEY`      | Hetzner Cloud Console      | Provision workflow (state backend + Ansible) |
+| `HCLOUD_S3_SECRET_KEY`      | Hetzner Cloud Console      | Provision workflow (state backend + Ansible) |
+| `VPS_IP`                    | First provision run output | Deploy workflows                             |
+| `OIDC_ISSUER`               | Zitadel instance           | Deploy workflows                             |
+| `OIDC_CLIENT_ID`            | Zitadel application        | Deploy workflows                             |
+| `STATS_BASIC_AUTH_USER`     | You choose                 | Provision workflow (Caddy basic auth on /stats) |
+| `STATS_BASIC_AUTH_PASSWORD` | You choose                 | Provision workflow (Caddy basic auth on /stats) |
 
 `DATABASE_URL`, `JWT_SECRET`, and `S3_ACCESS_KEY`/`S3_SECRET_KEY` are **not** GitHub Secrets — they live on the VPS (written by Ansible) and are fetched by deploy workflows via SSH.
 

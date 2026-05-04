@@ -1,0 +1,20 @@
+# =============================================================================
+# goaccess report — Wall & Shadow
+# =============================================================================
+# Managed by Ansible. Do not edit directly on the VPS.
+# Source: ansible/templates/goaccess-report.service.j2
+# =============================================================================
+
+[Unit]
+Description=Generate goaccess HTML report from Caddy access logs
+Documentation=https://goaccess.io/
+After=caddy.service
+
+[Service]
+Type=oneshot
+User=caddy
+Group=caddy
+# Glob both the live access log and rotated .gz siblings via nullglob, then
+# exit 0 (no-op) if neither exists yet — covers first run before any traffic.
+{% raw %}ExecStart=/bin/bash -O nullglob -c 'logs=(/var/log/caddy/access.log* ); [ ${#logs[@]} -eq 0 ] && exit 0; exec /usr/bin/goaccess "${logs[@]}" -o /var/www/stats/index.html --config-file=/etc/wallandshadow/goaccess.conf'{% endraw %}
+Nice=10

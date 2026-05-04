@@ -3,10 +3,6 @@
 # =============================================================================
 # Managed by Ansible. Do not edit directly on the VPS.
 # Source: ansible/templates/Caddyfile.j2
-#
-# Routes by hostname to the correct application container.
-# Each container serves its own static files (SPA + API + WebSocket).
-# Caddy handles TLS termination via Let's Encrypt (automatic).
 # =============================================================================
 
 {
@@ -16,7 +12,26 @@
 {{ domain_prod }} {
     encode zstd gzip
 
-    reverse_proxy localhost:{{ app_port_prod }}
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 50mb
+            roll_keep 8
+            roll_keep_for 720h
+        }
+        format json
+    }
+
+    handle_path /stats* {
+        basic_auth {
+            {{ stats_basic_auth_user }} {{ stats_basic_auth_hash }}
+        }
+        root * /var/www/stats
+        file_server
+    }
+
+    handle {
+        reverse_proxy localhost:{{ app_port_prod }}
+    }
 
     header {
         Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
