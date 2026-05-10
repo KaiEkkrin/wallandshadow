@@ -11,6 +11,11 @@ export interface ILoSSourceInput {
   myCharacterIds: ReadonlySet<string>;
   allTokens: readonly IToken[];
   selectedTokenIds: ReadonlySet<string>;
+  // True only while the user is actively dragging the selected token(s).
+  // Group-vision LoS expansion (selected → all same-colour) only happens during
+  // a drag; while a token is selected but stationary, LoS stays narrow so the
+  // player can still see only what their own token sees.
+  dragInProgress: boolean;
 }
 
 // Decides which tokens project line-of-sight.
@@ -28,7 +33,7 @@ export function chooseLoSSourceTokens(input: ILoSSourceInput): readonly IToken[]
   const selected = input.allTokens.filter(t => input.selectedTokenIds.has(t.id));
 
   if (selected.length > 0) {
-    if (groupVisionActive) {
+    if (groupVisionActive && input.dragInProgress) {
       // `-1` ("black") never participates in group vision, so a selected black
       // token does not widen the pool. If the entire selection is black, fall
       // back to the selection itself so the LoS pool isn't accidentally empty.

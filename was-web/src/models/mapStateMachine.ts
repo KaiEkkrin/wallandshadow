@@ -529,6 +529,7 @@ export class MapStateMachine {
       myCharacterIds: this._myCharacterIds,
       allTokens,
       selectedTokenIds,
+      dragInProgress: this._tokenMoveDragStart !== undefined,
     });
 
     if (sources === undefined) {
@@ -866,6 +867,9 @@ export class MapStateMachine {
     this._tokenMoveDragStart = undefined;
     this._tokenMoveJog = undefined;
     this._tokenMoveDragSelectionPosition = undefined;
+
+    // Drag ended → collapse group-vision LoS expansion back to the selection.
+    this.buildLoS();
   }
 
   private tokenMoveDragStart(position: GridCoord) {
@@ -880,6 +884,10 @@ export class MapStateMachine {
     this._outlineSelectionDrag.clear();
     this._outlineSelectionDragRed.clear();
     this._outlineSelection.forEach(f => this._outlineSelectionDrag.add(f));
+
+    // Drag started → widen LoS to the selection's colour group when group
+    // vision is active, so movement validity matches what the team can see.
+    this.buildLoS();
   }
 
   private tokenMoveDragTo(position: GridCoord | undefined) {

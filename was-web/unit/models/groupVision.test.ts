@@ -26,6 +26,7 @@ function input(overrides: Partial<ILoSSourceInput>): ILoSSourceInput {
     myCharacterIds: new Set(),
     allTokens: [],
     selectedTokenIds: new Set(),
+    dragInProgress: false,
     ...overrides,
   };
 }
@@ -86,7 +87,7 @@ describe('chooseLoSSourceTokens', () => {
     expect(result).not.toBeUndefined();
   });
 
-  test('owner, GroupVision, selected token → expands to all tokens of that colour', () => {
+  test('owner, GroupVision, selected token while dragging → expands to all tokens of that colour', () => {
     const result = chooseLoSSourceTokens(input({
       displayMode: MapColourVisualisationMode.GroupVision,
       groupVisionColours: new Set([RED]),
@@ -96,8 +97,27 @@ describe('chooseLoSSourceTokens', () => {
         token('g2', { colour: GREEN }),
       ],
       selectedTokenIds: new Set(['g1']),
+      dragInProgress: true,
     }));
     expect(ids(result)).toEqual(['g1', 'g2']);
+  });
+
+  test('owner, GroupVision, selected token NOT dragging → only the selected token (no expansion)', () => {
+    // While a token is merely selected (not being dragged) the player should
+    // still see only what their own token sees — group vision expansion kicks
+    // in only during an in-progress drag.
+    const result = chooseLoSSourceTokens(input({
+      displayMode: MapColourVisualisationMode.GroupVision,
+      groupVisionColours: new Set([RED]),
+      allTokens: [
+        token('r1', { colour: RED }),
+        token('g1', { colour: GREEN }),
+        token('g2', { colour: GREEN }),
+      ],
+      selectedTokenIds: new Set(['g1']),
+      dragInProgress: false,
+    }));
+    expect(ids(result)).toEqual(['g1']);
   });
 
   test('owner, Areas, with token selected → only the selected tokens (no expansion)', () => {
@@ -193,9 +213,9 @@ describe('chooseLoSSourceTokens', () => {
     expect(ids(result)).toEqual(['char-token', 'other-green']);
   });
 
-  test('player, group vision on, selected token → expands to all tokens of that colour', () => {
-    // Selecting your own token while group vision is on must widen the LoS pool
-    // to every token sharing the colour, so movement validity matches the team's
+  test('player, group vision on, selected token while dragging → expands to all tokens of that colour', () => {
+    // Dragging your own token while group vision is on widens the LoS pool to
+    // every token sharing the colour, so movement validity matches the team's
     // shared vision (issue #332 follow-up).
     const result = chooseLoSSourceTokens(input({
       uid: 'p1',
@@ -207,8 +227,24 @@ describe('chooseLoSSourceTokens', () => {
         token('green-monster', { colour: GREEN, players: [] }),
       ],
       selectedTokenIds: new Set(['mine']),
+      dragInProgress: true,
     }));
     expect(ids(result)).toEqual(['mine', 'teammate']);
+  });
+
+  test('player, group vision on, selected token NOT dragging → only the selected token (no expansion)', () => {
+    const result = chooseLoSSourceTokens(input({
+      uid: 'p1',
+      owner: 'u1',
+      enableGroupVision: true,
+      allTokens: [
+        token('mine', { colour: RED, players: ['p1'] }),
+        token('teammate', { colour: RED, players: ['p2'] }),
+      ],
+      selectedTokenIds: new Set(['mine']),
+      dragInProgress: false,
+    }));
+    expect(ids(result)).toEqual(['mine']);
   });
 
   test('player, group vision off, selected token → only the selected token (no expansion)', () => {
@@ -225,7 +261,7 @@ describe('chooseLoSSourceTokens', () => {
     expect(ids(result)).toEqual(['mine']);
   });
 
-  test('group vision active, multi-token selection of mixed colours → union of those colours', () => {
+  test('group vision active, dragging multi-token selection of mixed colours → union of those colours', () => {
     const result = chooseLoSSourceTokens(input({
       uid: 'p1',
       owner: 'u1',
@@ -238,11 +274,12 @@ describe('chooseLoSSourceTokens', () => {
         token('purple', { colour: 2, players: [] }),
       ],
       selectedTokenIds: new Set(['mine-r', 'mine-g']),
+      dragInProgress: true,
     }));
     expect(ids(result)).toEqual(['mine-g', 'mine-r', 'other-g', 'other-r']);
   });
 
-  test('group vision active, selected black token → only the selected token (-1 never expands)', () => {
+  test('group vision active, dragging selected black token → only the selected token (-1 never expands)', () => {
     const result = chooseLoSSourceTokens(input({
       uid: 'p1',
       owner: 'u1',
@@ -252,11 +289,12 @@ describe('chooseLoSSourceTokens', () => {
         token('other-black', { colour: BLACK, players: ['p2'] }),
       ],
       selectedTokenIds: new Set(['mine-black']),
+      dragInProgress: true,
     }));
     expect(ids(result)).toEqual(['mine-black']);
   });
 
-  test('group vision active, mixed selection of black + coloured → expands by the coloured ones only', () => {
+  test('group vision active, dragging mixed black + coloured selection → expands by the coloured ones only', () => {
     const result = chooseLoSSourceTokens(input({
       uid: 'p1',
       owner: 'u1',
@@ -268,6 +306,7 @@ describe('chooseLoSSourceTokens', () => {
         token('other-black', { colour: BLACK, players: [] }),
       ],
       selectedTokenIds: new Set(['mine-r', 'mine-black']),
+      dragInProgress: true,
     }));
     expect(ids(result)).toEqual(['mine-r', 'other-r']);
   });
