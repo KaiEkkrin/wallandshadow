@@ -183,6 +183,24 @@ function Map() {
       return next;
     });
   }, []);
+  const addGroupVisionColourRange = useCallback((from: number, to: number) => {
+    setGroupVisionColours(prev => {
+      const next = new Set(prev);
+      const lo = Math.min(from, to);
+      const hi = Math.max(from, to);
+      for (let i = lo; i <= hi; i++) next.add(i);
+      return next;
+    });
+  }, []);
+  const removeGroupVisionColourRange = useCallback((from: number, to: number) => {
+    setGroupVisionColours(prev => {
+      const next = new Set(prev);
+      const lo = Math.min(from, to);
+      const hi = Math.max(from, to);
+      for (let i = lo; i <= hi; i++) next.delete(i);
+      return next;
+    });
+  }, []);
 
   // Map controls stuff
   const resetView = useCallback((c?: string | undefined) => stateMachine?.resetView(c), [stateMachine]);
@@ -426,6 +444,8 @@ function Map() {
             setMapColourVisualisationMode={setMapColourMode}
             groupVisionColours={groupVisionColours}
             toggleGroupVisionColour={toggleGroupVisionColour}
+            addGroupVisionColourRange={addGroupVisionColourRange}
+            removeGroupVisionColourRange={removeGroupVisionColourRange}
             canDoAnything={mapState.seeEverything}
             isOwner={mapState.isOwner}
             openMapEditor={() => ui?.showMapEditor()}

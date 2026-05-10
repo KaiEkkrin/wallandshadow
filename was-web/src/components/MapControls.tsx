@@ -92,6 +92,8 @@ interface IMapControlsProps {
   setMapColourVisualisationMode(mode: MapColourVisualisationMode): void;
   groupVisionColours: ReadonlySet<number>;
   toggleGroupVisionColour(value: number): void;
+  addGroupVisionColourRange(from: number, to: number): void;
+  removeGroupVisionColourRange(from: number, to: number): void;
   canDoAnything: boolean;
   isOwner: boolean;
   openMapEditor(): void;
@@ -102,7 +104,7 @@ function MapControls({
   layer, setLayer, editMode, setEditMode, selectedColour, setSelectedColour, selectedStripe, setSelectedStripe,
   zoomInDisabled, zoomOutDisabled, zoomIn, zoomOut, resetView,
   mapColourVisualisationMode, setMapColourVisualisationMode,
-  groupVisionColours, toggleGroupVisionColour,
+  groupVisionColours, toggleGroupVisionColour, addGroupVisionColourRange, removeGroupVisionColourRange,
   canDoAnything, isOwner, openMapEditor, setShowAnnotationFlags
 }: IMapControlsProps) {
   const layerButtons = useMemo(() => {
@@ -301,17 +303,20 @@ function MapControls({
           <OverlayTrigger placement="right" overlay={
             <Tooltip id="group-vision-tooltip">Show group vision</Tooltip>
           }>
-            <Dropdown.Toggle variant="dark"
+            <Button variant="dark"
               active={mapColourVisualisationMode === MapColourVisualisationMode.GroupVision}
               onClick={selectGroupVisionMode}>
               <FontAwesomeIcon icon={faEye} color={groupVisionEyeColour} />
-            </Dropdown.Toggle>
+            </Button>
           </OverlayTrigger>
+          <Dropdown.Toggle split variant="dark" id="group-vision-dropdown" />
           <Dropdown.Menu>
             <ColourSelection id="groupVisionColourSelect"
               isVertical={false}
               selectedColours={groupVisionColours}
-              toggleColour={toggleGroupVisionColour} />
+              toggleColour={toggleGroupVisionColour}
+              addColourRange={addGroupVisionColourRange}
+              removeColourRange={removeGroupVisionColourRange} />
           </Dropdown.Menu>
         </Dropdown>
         <ModeButton value={MapColourVisualisationMode.Connectivity}
