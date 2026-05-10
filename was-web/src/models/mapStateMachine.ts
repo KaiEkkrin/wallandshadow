@@ -33,6 +33,13 @@ export const zoomMax = 4;
 const panningPosition = new THREE.Vector3(panMargin, panMargin, 0);
 const zAxis = new THREE.Vector3(0, 0, 1);
 
+function setsEqual<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
 // Describes the map state as managed by the state machine below and echoed
 // to the Map component.
 export type MapState = {
@@ -1605,19 +1612,26 @@ export class MapStateMachine {
 
   setDisplayMode(mode: MapColourVisualisationMode, groupVisionColours: ReadonlySet<number>) {
     const previousMode = this._displayMode;
+    const previousColours = this._groupVisionColours;
     this._displayMode = mode;
     this._groupVisionColours = groupVisionColours;
     this._drawing.setShowMapColourVisualisation(
       mode === MapColourVisualisationMode.Connectivity, this._mapColouring,
     );
-    // Skip the LoS rebuild when neither end of the transition involves group
-    // vision — colour-swatch toggles in Areas/Connectivity have no LoS effect.
-    if (mode === MapColourVisualisationMode.GroupVision || previousMode === MapColourVisualisationMode.GroupVision) {
+    const modeCrossesGroupVision =
+      mode !== previousMode &&
+      (mode === MapColourVisualisationMode.GroupVision ||
+       previousMode === MapColourVisualisationMode.GroupVision);
+    const coloursChangedInGroupVision =
+      mode === MapColourVisualisationMode.GroupVision &&
+      !setsEqual(previousColours, groupVisionColours);
+    if (modeCrossesGroupVision || coloursChangedInGroupVision) {
       this.buildLoS();
     }
   }
 
   setMyCharacterIds(ids: ReadonlySet<string>) {
+    if (setsEqual(this._myCharacterIds, ids)) return;
     this._myCharacterIds = ids;
     this.buildLoS();
   }

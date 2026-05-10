@@ -241,6 +241,21 @@ function MapControls({
     }
   }, [mapColourVisualisationMode, setMapColourVisualisationMode]);
 
+  // Picking colours from the dropdown implies "I want this group's vision",
+  // so activate GroupVision mode alongside the colour change.
+  const handleToggleGroupVision = useCallback((value: number) => {
+    selectGroupVisionMode();
+    toggleGroupVisionColour(value);
+  }, [selectGroupVisionMode, toggleGroupVisionColour]);
+  const handleAddGroupVisionRange = useCallback((from: number, to: number) => {
+    selectGroupVisionMode();
+    addGroupVisionColourRange(from, to);
+  }, [selectGroupVisionMode, addGroupVisionColourRange]);
+  const handleRemoveGroupVisionRange = useCallback((from: number, to: number) => {
+    selectGroupVisionMode();
+    removeGroupVisionColourRange(from, to);
+  }, [selectGroupVisionMode, removeGroupVisionColourRange]);
+
   return (
     <div className="Map-controls">
       <ButtonGroup className="Map-control" vertical>{layerButtons}</ButtonGroup>
@@ -314,9 +329,9 @@ function MapControls({
             <ColourSelection id="groupVisionColourSelect"
               isVertical={false}
               selectedColours={groupVisionColours}
-              toggleColour={toggleGroupVisionColour}
-              addColourRange={addGroupVisionColourRange}
-              removeColourRange={removeGroupVisionColourRange} />
+              toggleColour={handleToggleGroupVision}
+              addColourRange={handleAddGroupVisionRange}
+              removeColourRange={handleRemoveGroupVisionRange} />
           </Dropdown.Menu>
         </Dropdown>
         <ModeButton value={MapColourVisualisationMode.Connectivity}

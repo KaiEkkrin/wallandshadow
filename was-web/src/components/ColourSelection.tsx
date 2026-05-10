@@ -50,7 +50,7 @@ function ColourButton({ id, value, colour, type, isSelected, onSelect }: IColour
   return (
     <ToggleButton id={id} type={type} variant="dark" value={value}
       checked={isSelected}
-      onChange={noop}
+      onChange={() => undefined}
       onClick={handleClick}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -58,8 +58,6 @@ function ColourButton({ id, value, colour, type, isSelected, onSelect }: IColour
     </ToggleButton>
   );
 }
-
-function noop() { /* controlled input — state changes handled in onClick */ }
 
 interface IColourSelectionPropsBase {
   className?: string | undefined;
