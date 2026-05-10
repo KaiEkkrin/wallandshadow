@@ -43,6 +43,13 @@
       "when": 1777656849556,
       "tag": "0005_map_changes_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1778430531408,
+      "tag": "0006_amusing_ink",
+      "breakpoints": true
     }
   ]
 }

@@ -35,8 +35,11 @@ export class HonoFunctionsService implements IFunctionsService {
     return id;
   }
 
-  async createMap(adventureId: string, name: string, description: string, ty: MapType, ffa: boolean): Promise<string> {
-    const { id } = await this.api.createMap(adventureId, name, description, ty, ffa);
+  async createMap(
+    adventureId: string, name: string, description: string, ty: MapType,
+    ffa: boolean, enableGroupVision: boolean,
+  ): Promise<string> {
+    const { id } = await this.api.createMap(adventureId, name, description, ty, ffa, enableGroupVision);
     return id;
   }
 

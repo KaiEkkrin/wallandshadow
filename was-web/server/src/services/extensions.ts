@@ -240,6 +240,7 @@ export async function createMap(
   description: string,
   ty: MapType,
   ffa: boolean,
+  enableGroupVision: boolean,
 ): Promise<string> {
   const id = uuidv7();
 
@@ -269,7 +270,7 @@ export async function createMap(
       throwApiError('permission-denied', 'You already have the maximum number of maps in this adventure.');
     }
 
-    await tx.insert(maps).values({ id, adventureId, name, description, ty, ffa, imagePath: '' });
+    await tx.insert(maps).values({ id, adventureId, name, description, ty, ffa, enableGroupVision, imagePath: '' });
   });
 
   await notifySafe(notifyAdventureDetail(adventureId));
@@ -307,6 +308,7 @@ export async function cloneMap(
     description: existingMap.description,
     ty: existingMap.ty as MapType,
     ffa: existingMap.ffa,
+    enableGroupVision: existingMap.enableGroupVision,
     imagePath: existingMap.imagePath,
     owner: adventure.ownerId,
   };
@@ -344,6 +346,7 @@ export async function cloneMap(
       description,
       ty: existingMap.ty,
       ffa: existingMap.ffa,
+      enableGroupVision: existingMap.enableGroupVision,
       imagePath: existingMap.imagePath,
     });
 
@@ -611,7 +614,7 @@ export async function updateMap(
   uid: string,
   adventureId: string,
   mapId: string,
-  fields: { name?: string; description?: string; imagePath?: string; ffa?: boolean },
+  fields: { name?: string; description?: string; imagePath?: string; ffa?: boolean; enableGroupVision?: boolean },
 ): Promise<void> {
   await assertAdventureOwner(db, uid, adventureId);
   if (Object.keys(fields).length === 0) return;

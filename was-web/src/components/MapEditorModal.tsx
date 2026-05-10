@@ -35,6 +35,7 @@ function MapEditorModal({ show, adventures, map, handleClose, handleSave }: IMap
   const [description, setDescription] = useState("");
   const [ty, setTy] = useState(MapType.Square);
   const [ffa, setFfa] = useState(false);
+  const [enableGroupVision, setEnableGroupVision] = useState(false);
 
   const newMapControlsDisabled = useMemo(() => map !== undefined, [map]);
   const firstAdventure = useMemo(
@@ -53,12 +54,18 @@ function MapEditorModal({ show, adventures, map, handleClose, handleSave }: IMap
     setDescription(map?.record.description ?? "");
     setTy(map?.record.ty ?? MapType.Square);
     setFfa(map?.record.ffa ?? false);
+    setEnableGroupVision(map?.record.enableGroupVision ?? false);
     setIsSaving(false);
-  }, [map, firstAdventure, setName, setAdventureId, setDescription, setTy, setFfa, setIsSaving]);
+  }, [map, firstAdventure]);
 
   const handleFfaChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => setFfa(e.currentTarget.checked),
     [setFfa]
+  );
+
+  const handleEnableGroupVisionChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => setEnableGroupVision(e.currentTarget.checked),
+    [setEnableGroupVision]
   );
 
   const doHandleSave = useCallback(() => {
@@ -73,7 +80,8 @@ function MapEditorModal({ show, adventures, map, handleClose, handleSave }: IMap
         ...map.record,
         name: name,
         description: description,
-        ffa: ffa
+        ffa: ffa,
+        enableGroupVision: enableGroupVision
       }).then(() => console.debug("edited map " + map?.id))
         .catch(_e => setIsSaving(false));
       return;
@@ -94,10 +102,11 @@ function MapEditorModal({ show, adventures, map, handleClose, handleSave }: IMap
       owner: uid,
       ty: ty,
       ffa: ffa,
+      enableGroupVision: enableGroupVision,
       imagePath: ""
     }).then(() => console.debug("created new map"))
       .catch(_e => setIsSaving(false));
-  }, [adventures, map, handleSave, adventureId, description, ffa, name, setIsSaving, ty, user]);
+  }, [adventures, map, handleSave, adventureId, description, ffa, enableGroupVision, name, setIsSaving, ty, user]);
 
   return (
     <Modal show={show} onHide={handleClose}>
@@ -138,6 +147,14 @@ function MapEditorModal({ show, adventures, map, handleClose, handleSave }: IMap
           <Form.Group>
             <Form.Check type="checkbox" id="mapFfa" label="Free-for-all mode" checked={ffa}
               onChange={handleFfaChange} />
+          </Form.Group>
+          <Form.Group>
+            <Form.Check type="checkbox" id="mapEnableGroupVision" label="Enable group vision"
+              checked={enableGroupVision} onChange={handleEnableGroupVisionChange} />
+            <Form.Text muted>
+              When on, players see the line-of-sight of every token whose colour matches one
+              of the colours of their assigned tokens or characters, even when no token is selected.
+            </Form.Text>
           </Form.Group>
         </Form>
       </Modal.Body>

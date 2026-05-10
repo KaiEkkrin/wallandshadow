@@ -1,0 +1,1 @@
+ALTER TABLE "maps" ADD COLUMN "enable_group_vision" boolean DEFAULT false NOT NULL;

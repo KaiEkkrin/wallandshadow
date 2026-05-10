@@ -502,6 +502,7 @@ export const mapConverter = new ShallowConverter<IMap>({
   owner: "",
   ty: MapType.Square,
   ffa: false,
+  enableGroupVision: false,
   imagePath: ""
 });
 

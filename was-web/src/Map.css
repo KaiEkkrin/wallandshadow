@@ -48,6 +48,7 @@
   display: flex;
   flex-direction: column;
   flex-wrap: wrap;
+  align-items: flex-start;
   min-width: 3rem;
   z-index: 4;
   pointer-events: none;
@@ -58,6 +59,22 @@
   margin-left: 1rem;
   margin-top: 1rem;
   pointer-events: auto;
+}
+
+/* ModeButton wraps its ToggleButton in a <span> so OverlayTrigger can attach a
+ * tooltip and capture clicks reliably. Bootstrap's vertical button-group
+ * corner-rounding rules only target direct .btn / .btn-group children, so
+ * those buttons end up fully rounded. Mirror the rules through the span. */
+.Map-controls .btn-group-vertical > span > .btn {
+  border-radius: 0;
+}
+.Map-controls .btn-group-vertical > span:first-child > .btn {
+  border-top-left-radius: var(--bs-border-radius);
+  border-top-right-radius: var(--bs-border-radius);
+}
+.Map-controls .btn-group-vertical > span:last-child > .btn {
+  border-bottom-left-radius: var(--bs-border-radius);
+  border-bottom-right-radius: var(--bs-border-radius);
 }
 
 .Map-content {

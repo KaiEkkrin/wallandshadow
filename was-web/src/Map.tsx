@@ -169,6 +169,38 @@ function Map() {
   );
 
   const [mapColourMode, setMapColourMode] = useState(MapColourVisualisationMode.Areas);
+  const [groupVisionColours, setGroupVisionColours] = useState<ReadonlySet<number>>(
+    () => new Set([0])
+  );
+  const toggleGroupVisionColour = useCallback((value: number) => {
+    setGroupVisionColours(prev => {
+      const next = new Set(prev);
+      if (next.has(value)) {
+        next.delete(value);
+      } else {
+        next.add(value);
+      }
+      return next;
+    });
+  }, []);
+  const addGroupVisionColourRange = useCallback((from: number, to: number) => {
+    setGroupVisionColours(prev => {
+      const next = new Set(prev);
+      const lo = Math.min(from, to);
+      const hi = Math.max(from, to);
+      for (let i = lo; i <= hi; i++) next.add(i);
+      return next;
+    });
+  }, []);
+  const removeGroupVisionColourRange = useCallback((from: number, to: number) => {
+    setGroupVisionColours(prev => {
+      const next = new Set(prev);
+      const lo = Math.min(from, to);
+      const hi = Math.max(from, to);
+      for (let i = lo; i <= hi; i++) next.delete(i);
+      return next;
+    });
+  }, []);
 
   // Map controls stuff
   const resetView = useCallback((c?: string | undefined) => stateMachine?.resetView(c), [stateMachine]);
@@ -177,10 +209,26 @@ function Map() {
   const zoomInDisabled = useMemo(() => mapState.zoom >= zoomMax, [mapState.zoom]);
   const zoomOutDisabled = useMemo(() => mapState.zoom <= zoomMin, [mapState.zoom]);
 
-  // Sync the drawing with the map colour mode
   useEffect(() => {
-    stateMachine?.setShowMapColourVisualisation(mapColourMode === MapColourVisualisationMode.Connectivity);
-  }, [stateMachine, mapColourMode]);
+    stateMachine?.setDisplayMode(mapColourMode, groupVisionColours);
+  }, [stateMachine, mapColourMode, groupVisionColours]);
+
+  const myCharacterIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (user?.uid !== undefined && players !== undefined) {
+      for (const p of players) {
+        if (p.playerId === user.uid) {
+          for (const c of p.characters) {
+            ids.add(c.id);
+          }
+        }
+      }
+    }
+    return ids;
+  }, [players, user]);
+  useEffect(() => {
+    stateMachine?.setMyCharacterIds(myCharacterIds);
+  }, [stateMachine, myCharacterIds]);
 
   // Our token sizes are map dependent
   const tokenSizes = useMemo(
@@ -394,6 +442,10 @@ function Map() {
             zoomInDisabled={zoomInDisabled} zoomOutDisabled={zoomOutDisabled}
             mapColourVisualisationMode={mapColourMode}
             setMapColourVisualisationMode={setMapColourMode}
+            groupVisionColours={groupVisionColours}
+            toggleGroupVisionColour={toggleGroupVisionColour}
+            addGroupVisionColourRange={addGroupVisionColourRange}
+            removeGroupVisionColourRange={removeGroupVisionColourRange}
             canDoAnything={mapState.seeEverything}
             isOwner={mapState.isOwner}
             openMapEditor={() => ui?.showMapEditor()}

@@ -11,6 +11,8 @@ import { WallHighlighter, WallRectangleHighlighter, RoomHighlighter } from './wa
 
 import { IAnnotation, IPositionedAnnotation, Change, createTokenRemove, createTokenAdd, createNoteRemove, createNoteAdd, createTokenMove, createImageAdd, createImageRemove, netObjectCount, trackChanges, GridCoord, coordString, coordsEqual, coordSub, coordAdd, GridVertex, vertexAdd, FeatureDictionary, flipToken, IToken, ITokenDictionary, ITokenProperties, TokenSize, defaultToken, IAdventureIdentified, Anchor, anchorsEqual, anchorString, IMapImage, IMapImageProperties, LoSPosition, IMap, IUserPolicy, getTokenLoSPosition, ITokenGeometry, Tokens, IDataService, ISpriteManager, IGridGeometry } from '@wallandshadow/shared';
 import { TokensWithObservableText } from '../data/tokenTexts';
+import { chooseLoSSourceTokens } from './groupVision';
+import { MapColourVisualisationMode } from './displayMode';
 import { createDrawing } from './three/drawing';
 import { DrawingOrtho } from './three/drawingOrtho';
 
@@ -30,6 +32,13 @@ export const zoomMax = 4;
 
 const panningPosition = new THREE.Vector3(panMargin, panMargin, 0);
 const zAxis = new THREE.Vector3(0, 0, 1);
+
+function setsEqual<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
 
 // Describes the map state as managed by the state machine below and echoed
 // to the Map component.
@@ -139,6 +148,10 @@ export class MapStateMachine {
   private _inImageMoveDrag = false;
 
   private _isDisposed = false;
+
+  private _displayMode: MapColourVisualisationMode = MapColourVisualisationMode.Areas;
+  private _groupVisionColours: ReadonlySet<number> = new Set([0]);
+  private _myCharacterIds: ReadonlySet<string> = new Set();
 
   constructor(
     dataService: IDataService,
@@ -251,6 +264,12 @@ export class MapStateMachine {
   private get isOwner() { return this._uid === this._map.record.owner; }
   private get seeEverything() { return this._uid === this._map.record.owner || this._map.record.ffa === true; }
 
+  // Group vision in owner/FFA mode forces player-style fully-black shadows
+  // even when tokens are selected (issue #332).
+  private get groupVisionActiveForOwner(): boolean {
+    return this.seeEverything && this._displayMode === MapColourVisualisationMode.GroupVision;
+  }
+
   private addTokenWithProperties(target: GridCoord, properties: ITokenProperties): Change[] {
     // Work out a place around this target where the token will fit
     const newPosition = this.canResizeToken({ ...properties, position: target }, properties.size);
@@ -262,7 +281,9 @@ export class MapStateMachine {
   }
 
   private buildLoS() {
-    this._drawing.setLoSPositions(this.getLoSPositions(), this.seeEverything);
+    // Group vision overrides owner/FFA shadow lightening (issue #332).
+    const shadowsAsOwner = this.seeEverything && !this.groupVisionActiveForOwner;
+    this._drawing.setLoSPositions(this.getLoSPositions(), shadowsAsOwner);
 
     // Building the LoS implies that we will need to update annotations
     // (in the post-animate callback)
@@ -485,40 +506,45 @@ export class MapStateMachine {
   }
 
   private getLoSPositions(): LoSPosition[] | undefined {
-    // These are the positions we should be projecting line-of-sight from.
-    // Get all token faces (including multi-tile token faces)
-    const myTokenFaces = Array.from(fluent(this._drawing.tokens.faces).concat(this._drawing.outlineTokens.faces))
-      .filter(t => this.canSelectToken(t));
+    const selectedTokenIds = new Set<string>();
+    for (const t of fluent(this._drawing.selection.faces).concat(this._drawing.outlineSelection.faces)) {
+      selectedTokenIds.add(t.id);
+    }
 
-    // Deduplicate by token ID to get unique tokens
+    // GM-panning fast path: nothing to project, skip the all-tokens dedupe.
+    if (this.seeEverything && !this.groupVisionActiveForOwner && selectedTokenIds.size === 0) {
+      return undefined;
+    }
+
+    // Group vision spans tokens the current user can't select, so we don't
+    // filter by canSelectToken here.
     const tokenMap = new Map<string, IToken>();
-    for (const face of myTokenFaces) {
+    for (const face of fluent(this._drawing.tokens.faces).concat(this._drawing.outlineTokens.faces)) {
       if (!tokenMap.has(face.id)) {
         tokenMap.set(face.id, face);
       }
     }
-    const myTokens = Array.from(tokenMap.values());
+    const allTokens = Array.from(tokenMap.values());
 
-    // Filter to selected tokens
-    const selectedTokens = myTokens.filter(t =>
-      (t.outline ? this._drawing.outlineSelection : this._drawing.selection).faces.get(t.position) !== undefined);
+    const sources = chooseLoSSourceTokens({
+      uid: this._uid,
+      owner: this._map.record.owner,
+      ffa: this._map.record.ffa === true,
+      enableGroupVision: this._map.record.enableGroupVision === true,
+      displayMode: this._displayMode,
+      groupVisionColours: this._groupVisionColours,
+      myCharacterIds: this._myCharacterIds,
+      allTokens,
+      selectedTokenIds,
+      dragInProgress: this._tokenMoveDragStart !== undefined,
+    });
 
-    if (selectedTokens.length === 0) {
-      if (this.seeEverything) {
-        // Render no LoS at all
-        return undefined;
-      } else {
-        // Show the LoS of all my tokens - calculate center and radius for each
-        return myTokens.map(t =>
-          getTokenLoSPosition(t, this._tokenGeometry, this._gridGeometry.faceSize)
-        );
-      }
-    } else {
-      // Show the LoS of only the selected tokens - calculate center and radius for each
-      return selectedTokens.map(t =>
-        getTokenLoSPosition(t, this._tokenGeometry, this._gridGeometry.faceSize)
-      );
+    if (sources === undefined) {
+      return undefined;
     }
+    return sources.map(t =>
+      getTokenLoSPosition(t, this._tokenGeometry, this._gridGeometry.faceSize)
+    );
   }
 
   private getTokenAtPosition(position?: GridCoord & { isTokenFace: boolean }) {
@@ -848,6 +874,9 @@ export class MapStateMachine {
     this._tokenMoveDragStart = undefined;
     this._tokenMoveJog = undefined;
     this._tokenMoveDragSelectionPosition = undefined;
+
+    // Drag ended → collapse group-vision LoS expansion back to the selection.
+    this.buildLoS();
   }
 
   private tokenMoveDragStart(position: GridCoord) {
@@ -862,6 +891,10 @@ export class MapStateMachine {
     this._outlineSelectionDrag.clear();
     this._outlineSelectionDragRed.clear();
     this._outlineSelection.forEach(f => this._outlineSelectionDrag.add(f));
+
+    // Drag started → widen LoS to the selection's colour group when group
+    // vision is active, so movement validity matches what the team can see.
+    this.buildLoS();
   }
 
   private tokenMoveDragTo(position: GridCoord | undefined) {
@@ -1577,8 +1610,30 @@ export class MapStateMachine {
     return this.onPanningChange();
   }
 
-  setShowMapColourVisualisation(show: boolean) {
-    this._drawing.setShowMapColourVisualisation(show, this._mapColouring);
+  setDisplayMode(mode: MapColourVisualisationMode, groupVisionColours: ReadonlySet<number>) {
+    const previousMode = this._displayMode;
+    const previousColours = this._groupVisionColours;
+    this._displayMode = mode;
+    this._groupVisionColours = groupVisionColours;
+    this._drawing.setShowMapColourVisualisation(
+      mode === MapColourVisualisationMode.Connectivity, this._mapColouring,
+    );
+    const modeCrossesGroupVision =
+      mode !== previousMode &&
+      (mode === MapColourVisualisationMode.GroupVision ||
+       previousMode === MapColourVisualisationMode.GroupVision);
+    const coloursChangedInGroupVision =
+      mode === MapColourVisualisationMode.GroupVision &&
+      !setsEqual(previousColours, groupVisionColours);
+    if (modeCrossesGroupVision || coloursChangedInGroupVision) {
+      this.buildLoS();
+    }
+  }
+
+  setMyCharacterIds(ids: ReadonlySet<string>) {
+    if (setsEqual(this._myCharacterIds, ids)) return;
+    this._myCharacterIds = ids;
+    this.buildLoS();
   }
 
   // Debug methods for visualizing coordinate textures

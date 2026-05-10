@@ -75,7 +75,9 @@ function MapCollection({ adventures, maps, showNewMap, deleteMap, pickImage }: I
     }
 
     try {
-      const id = await functionsService.createMap(adventureId, map.name, map.description, map.ty, map.ffa);
+      const id = await functionsService.createMap(
+        adventureId, map.name, map.description, map.ty, map.ffa, map.enableGroupVision,
+      );
       navigate('/adventure/' + adventureId + '/map/' + id, { replace: true });
     } catch (e: unknown) {
       handleModalClose();

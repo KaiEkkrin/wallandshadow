@@ -39,6 +39,7 @@ export interface MapSummaryRow {
 
 export interface MapRow extends MapSummaryRow {
   ffa: boolean;
+  enableGroupVision: boolean;
 }
 
 export interface PlayerRow {
@@ -202,11 +203,23 @@ export class HonoApiClient {
     return this.request('GET', `/api/adventures/${adventureId}/maps/${mapId}`);
   }
 
-  createMap(adventureId: string, name: string, description: string, ty: MapType, ffa: boolean): Promise<{ id: string }> {
-    return this.request('POST', `/api/adventures/${adventureId}/maps`, { name, description, ty, ffa });
+  createMap(
+    adventureId: string, name: string, description: string, ty: MapType,
+    ffa: boolean, enableGroupVision: boolean,
+  ): Promise<{ id: string }> {
+    return this.request(
+      'POST', `/api/adventures/${adventureId}/maps`,
+      { name, description, ty, ffa, enableGroupVision },
+    );
   }
 
-  updateMap(adventureId: string, mapId: string, fields: { name?: string; description?: string; imagePath?: string; ffa?: boolean }): Promise<void> {
+  updateMap(
+    adventureId: string, mapId: string,
+    fields: {
+      name?: string; description?: string; imagePath?: string;
+      ffa?: boolean; enableGroupVision?: boolean;
+    },
+  ): Promise<void> {
     return this.request('PATCH', `/api/adventures/${adventureId}/maps/${mapId}`, fields);
   }
 

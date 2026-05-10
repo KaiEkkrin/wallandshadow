@@ -291,6 +291,7 @@ async function editMapTransaction(
     name: changed.name,
     description: changed.description,
     ffa: changed.ffa,
+    enableGroupVision: changed.enableGroupVision,
     imagePath: changed.imagePath
   });
 }

@@ -198,7 +198,10 @@ export interface IFunctionsService {
   createAdventure(name: string, description: string): Promise<string>;
 
   // Creates a new map, returning its ID.
-  createMap(adventureId: string, name: string, description: string, ty: MapType, ffa: boolean): Promise<string>;
+  createMap(
+    adventureId: string, name: string, description: string, ty: MapType,
+    ffa: boolean, enableGroupVision: boolean,
+  ): Promise<string>;
 
   // Clones a map in the same adventure, returning the new map ID.
   cloneMap(adventureId: string, mapId: string, name: string, description: string): Promise<string>;

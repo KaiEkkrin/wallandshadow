@@ -228,6 +228,7 @@ function mapRowToIMap(row: MapRow, adventureName: string, owner: string): IMap {
     owner,
     ty: row.ty as MapType,
     ffa: row.ffa,
+    enableGroupVision: row.enableGroupVision,
     imagePath: row.imagePath,
   };
 }
@@ -486,11 +487,15 @@ export class HonoDataService implements IDataService {
       case 'map': {
         const adventureId = ref.meta.adventureId!;
         const c = changes as Partial<IMap>;
-        const fields: { name?: string; description?: string; imagePath?: string; ffa?: boolean } = {};
+        const fields: {
+          name?: string; description?: string; imagePath?: string;
+          ffa?: boolean; enableGroupVision?: boolean;
+        } = {};
         if (c.name !== undefined) fields.name = c.name;
         if (c.description !== undefined) fields.description = c.description;
         if (c.imagePath !== undefined) fields.imagePath = c.imagePath;
         if (c.ffa !== undefined) fields.ffa = c.ffa;
+        if (c.enableGroupVision !== undefined) fields.enableGroupVision = c.enableGroupVision;
         if (Object.keys(fields).length > 0) {
           await this.api.updateMap(adventureId, ref.id, fields);
         }

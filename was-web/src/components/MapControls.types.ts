@@ -1,3 +1,5 @@
+export { MapColourVisualisationMode } from '../models/displayMode';
+
 export enum EditMode {
   Select = "select",
   Token = "token",
@@ -8,9 +10,4 @@ export enum EditMode {
   Wall = "wall",
   Room = "room",
   Image = "image"
-}
-
-export enum MapColourVisualisationMode {
-  Areas = "areas",
-  Connectivity = "connectivity"
 }

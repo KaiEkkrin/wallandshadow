@@ -5,6 +5,7 @@ import ColourSelection from './ColourSelection';
 import { ShowAnnotationFlags } from './MapAnnotations.types';
 import { EditMode, MapColourVisualisationMode } from './MapControls.types';
 import { Layer } from '../models/interfaces';
+import { hexColours } from '../models/featureColour';
 
 import Button from 'react-bootstrap/Button';
 import ButtonGroup from 'react-bootstrap/ButtonGroup';
@@ -13,7 +14,7 @@ import OverlayTrigger from 'react-bootstrap/OverlayTrigger';
 import ToggleButton from 'react-bootstrap/ToggleButton';
 import Tooltip from 'react-bootstrap/Tooltip';
 
-import { faDotCircle, faDrawPolygon, faMousePointer, faPlus, faSquare, faCog, faSuitcase, faMapMarker, faSearchPlus, faSearchMinus, faUser, faImage, faImages, faCubes, faBezierCurve } from '@fortawesome/free-solid-svg-icons';
+import { faDotCircle, faDrawPolygon, faMousePointer, faPlus, faSquare, faCog, faSuitcase, faMapMarker, faSearchPlus, faSearchMinus, faUser, faImage, faImages, faCubes, faBezierCurve, faEye } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 
 // We make the children the tooltip contents, to allow for convenient formatting
@@ -89,6 +90,10 @@ interface IMapControlsProps {
 
   mapColourVisualisationMode: MapColourVisualisationMode;
   setMapColourVisualisationMode(mode: MapColourVisualisationMode): void;
+  groupVisionColours: ReadonlySet<number>;
+  toggleGroupVisionColour(value: number): void;
+  addGroupVisionColourRange(from: number, to: number): void;
+  removeGroupVisionColourRange(from: number, to: number): void;
   canDoAnything: boolean;
   isOwner: boolean;
   openMapEditor(): void;
@@ -98,7 +103,9 @@ interface IMapControlsProps {
 function MapControls({
   layer, setLayer, editMode, setEditMode, selectedColour, setSelectedColour, selectedStripe, setSelectedStripe,
   zoomInDisabled, zoomOutDisabled, zoomIn, zoomOut, resetView,
-  mapColourVisualisationMode, setMapColourVisualisationMode, canDoAnything, isOwner, openMapEditor, setShowAnnotationFlags
+  mapColourVisualisationMode, setMapColourVisualisationMode,
+  groupVisionColours, toggleGroupVisionColour, addGroupVisionColourRange, removeGroupVisionColourRange,
+  canDoAnything, isOwner, openMapEditor, setShowAnnotationFlags
 }: IMapControlsProps) {
   const layerButtons = useMemo(() => {
     if (canDoAnything) {
@@ -219,6 +226,36 @@ function MapControls({
   const isNotOwner = useMemo(() => !isOwner, [isOwner]);
   const handleResetView = useCallback(() => resetView(), [resetView]);
 
+  const groupVisionEyeColour = useMemo(() => {
+    if (groupVisionColours.size === 0) return 'black';
+    if (groupVisionColours.size === 1) {
+      const [only] = groupVisionColours;
+      return hexColours[only];
+    }
+    return 'white';
+  }, [groupVisionColours]);
+
+  const selectGroupVisionMode = useCallback(() => {
+    if (mapColourVisualisationMode !== MapColourVisualisationMode.GroupVision) {
+      setMapColourVisualisationMode(MapColourVisualisationMode.GroupVision);
+    }
+  }, [mapColourVisualisationMode, setMapColourVisualisationMode]);
+
+  // Picking colours from the dropdown implies "I want this group's vision",
+  // so activate GroupVision mode alongside the colour change.
+  const handleToggleGroupVision = useCallback((value: number) => {
+    selectGroupVisionMode();
+    toggleGroupVisionColour(value);
+  }, [selectGroupVisionMode, toggleGroupVisionColour]);
+  const handleAddGroupVisionRange = useCallback((from: number, to: number) => {
+    selectGroupVisionMode();
+    addGroupVisionColourRange(from, to);
+  }, [selectGroupVisionMode, addGroupVisionColourRange]);
+  const handleRemoveGroupVisionRange = useCallback((from: number, to: number) => {
+    selectGroupVisionMode();
+    removeGroupVisionColourRange(from, to);
+  }, [selectGroupVisionMode, removeGroupVisionColourRange]);
+
   return (
     <div className="Map-controls">
       <ButtonGroup className="Map-control" vertical>{layerButtons}</ButtonGroup>
@@ -276,12 +313,32 @@ function MapControls({
           icon={<FontAwesomeIcon icon={faSquare} color="white" />}
           mode={mapColourVisualisationMode} setMode={setMapColourVisualisationMode}
           name="colour-visualisation"
-        >Show painted area colours</ModeButton>
+        >Show whole map</ModeButton>
+        <Dropdown as={ButtonGroup} drop="end" autoClose="outside">
+          <OverlayTrigger placement="right" overlay={
+            <Tooltip id="group-vision-tooltip">Show group vision</Tooltip>
+          }>
+            <Button variant="dark"
+              active={mapColourVisualisationMode === MapColourVisualisationMode.GroupVision}
+              onClick={selectGroupVisionMode}>
+              <FontAwesomeIcon icon={faEye} color={groupVisionEyeColour} />
+            </Button>
+          </OverlayTrigger>
+          <Dropdown.Toggle split variant="dark" id="group-vision-dropdown" />
+          <Dropdown.Menu>
+            <ColourSelection id="groupVisionColourSelect"
+              isVertical={false}
+              selectedColours={groupVisionColours}
+              toggleColour={handleToggleGroupVision}
+              addColourRange={handleAddGroupVisionRange}
+              removeColourRange={handleRemoveGroupVisionRange} />
+          </Dropdown.Menu>
+        </Dropdown>
         <ModeButton value={MapColourVisualisationMode.Connectivity}
           icon={<FontAwesomeIcon icon={faSuitcase} color="white" />}
           mode={mapColourVisualisationMode} setMode={setMapColourVisualisationMode}
           name="colour-visualisation"
-        >Show each room in a different colour</ModeButton>
+        >Colourise rooms</ModeButton>
       </ButtonGroup>
       <ButtonGroup className="Map-control" hidden={isNotOwner} vertical>
         <OverlayTrigger placement="right" overlay={

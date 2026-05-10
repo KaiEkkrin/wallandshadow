@@ -37,8 +37,13 @@ async function createMap(
   description = 'First map',
   ty: MapType = MapType.Square,
   ffa = false,
+  enableGroupVision = false,
 ): Promise<string> {
-  const res = await apiPost(app, `/api/adventures/${adventureId}/maps`, { name, description, ty, ffa }, token);
+  const res = await apiPost(
+    app, `/api/adventures/${adventureId}/maps`,
+    { name, description, ty, ffa, enableGroupVision },
+    token,
+  );
   expect(res.status).toBe(201);
   const { id } = (await res.json()) as { id: string };
   return id;
@@ -163,6 +168,41 @@ describe('server integration tests', () => {
       const m = (await mapRes.json()) as { name: string; ffa: boolean };
       expect(m.name).toBe('New Map Name');
       expect(m.ffa).toBe(true);
+    });
+
+    test('enableGroupVision defaults to false and round-trips via PATCH', async () => {
+      const { token } = await registerUser(app, 'Owner');
+      const aId = await createAdventure(token, 'Adventure', 'desc');
+      const mId = await createMap(token, aId, 'Map', 'desc', MapType.Square, false);
+
+      // Default should be false
+      const initial = await apiGet(app, `/api/adventures/${aId}/maps/${mId}`, token);
+      expect(initial.status).toBe(200);
+      const m0 = (await initial.json()) as { enableGroupVision: boolean };
+      expect(m0.enableGroupVision).toBe(false);
+
+      // PATCH to true
+      const patch = await apiPatch(app, `/api/adventures/${aId}/maps/${mId}`, { enableGroupVision: true }, token);
+      expect(patch.status).toBe(204);
+
+      const after = await apiGet(app, `/api/adventures/${aId}/maps/${mId}`, token);
+      const m1 = (await after.json()) as { enableGroupVision: boolean };
+      expect(m1.enableGroupVision).toBe(true);
+
+      // Map list also includes it
+      const list = await apiGet(app, `/api/adventures/${aId}/maps`, token);
+      const rows = (await list.json()) as { id: string; enableGroupVision: boolean }[];
+      expect(rows.find(r => r.id === mId)?.enableGroupVision).toBe(true);
+    });
+
+    test('createMap with enableGroupVision=true persists', async () => {
+      const { token } = await registerUser(app, 'Owner');
+      const aId = await createAdventure(token, 'Adventure', 'desc');
+      const mId = await createMap(token, aId, 'Map', 'desc', MapType.Square, false, true);
+
+      const res = await apiGet(app, `/api/adventures/${aId}/maps/${mId}`, token);
+      const m = (await res.json()) as { enableGroupVision: boolean };
+      expect(m.enableGroupVision).toBe(true);
     });
 
     test('update player allowed status and characters', async () => {
