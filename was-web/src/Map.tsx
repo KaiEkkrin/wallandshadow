@@ -169,6 +169,20 @@ function Map() {
   );
 
   const [mapColourMode, setMapColourMode] = useState(MapColourVisualisationMode.Areas);
+  const [groupVisionColours, setGroupVisionColours] = useState<ReadonlySet<number>>(
+    () => new Set([0])
+  );
+  const toggleGroupVisionColour = useCallback((value: number) => {
+    setGroupVisionColours(prev => {
+      const next = new Set(prev);
+      if (next.has(value)) {
+        next.delete(value);
+      } else {
+        next.add(value);
+      }
+      return next;
+    });
+  }, []);
 
   // Map controls stuff
   const resetView = useCallback((c?: string | undefined) => stateMachine?.resetView(c), [stateMachine]);
@@ -177,10 +191,26 @@ function Map() {
   const zoomInDisabled = useMemo(() => mapState.zoom >= zoomMax, [mapState.zoom]);
   const zoomOutDisabled = useMemo(() => mapState.zoom <= zoomMin, [mapState.zoom]);
 
-  // Sync the drawing with the map colour mode
   useEffect(() => {
-    stateMachine?.setShowMapColourVisualisation(mapColourMode === MapColourVisualisationMode.Connectivity);
-  }, [stateMachine, mapColourMode]);
+    stateMachine?.setDisplayMode(mapColourMode, groupVisionColours);
+  }, [stateMachine, mapColourMode, groupVisionColours]);
+
+  const myCharacterIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (user?.uid !== undefined && players !== undefined) {
+      for (const p of players) {
+        if (p.playerId === user.uid) {
+          for (const c of p.characters) {
+            ids.add(c.id);
+          }
+        }
+      }
+    }
+    return ids;
+  }, [players, user]);
+  useEffect(() => {
+    stateMachine?.setMyCharacterIds(myCharacterIds);
+  }, [stateMachine, myCharacterIds]);
 
   // Our token sizes are map dependent
   const tokenSizes = useMemo(
@@ -394,6 +424,8 @@ function Map() {
             zoomInDisabled={zoomInDisabled} zoomOutDisabled={zoomOutDisabled}
             mapColourVisualisationMode={mapColourMode}
             setMapColourVisualisationMode={setMapColourMode}
+            groupVisionColours={groupVisionColours}
+            toggleGroupVisionColour={toggleGroupVisionColour}
             canDoAnything={mapState.seeEverything}
             isOwner={mapState.isOwner}
             openMapEditor={() => ui?.showMapEditor()}

@@ -64,6 +64,7 @@ export const maps = pgTable('maps', {
   description: text('description').notNull().default(''),
   ty: text('ty').notNull(),
   ffa: boolean('ffa').notNull().default(false),
+  enableGroupVision: boolean('enable_group_vision').notNull().default(false),
   imagePath: text('image_path').notNull().default(''),
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [

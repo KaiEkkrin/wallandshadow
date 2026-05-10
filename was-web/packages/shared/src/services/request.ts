@@ -26,6 +26,7 @@ export type CreateMapRequest = {
   description?: string;
   ty?: MapType;
   ffa?: boolean;
+  enableGroupVision?: boolean;
 };
 
 export type CloneMapRequest = {

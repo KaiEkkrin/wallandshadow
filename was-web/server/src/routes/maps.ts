@@ -36,6 +36,7 @@ mapRoutes.get('/adventures/:id/maps', async (c) => {
       description: mapsTable.description,
       ty: mapsTable.ty,
       ffa: mapsTable.ffa,
+      enableGroupVision: mapsTable.enableGroupVision,
       imagePath: mapsTable.imagePath,
     })
     .from(mapsTable)
@@ -60,6 +61,7 @@ mapRoutes.get('/adventures/:id/maps/:mapId', async (c) => {
       description: mapsTable.description,
       ty: mapsTable.ty,
       ffa: mapsTable.ffa,
+      enableGroupVision: mapsTable.enableGroupVision,
       imagePath: mapsTable.imagePath,
     })
     .from(mapsTable)
@@ -83,12 +85,16 @@ mapRoutes.post('/adventures/:id/maps', async (c) => {
     description?: string;
     ty?: MapType;
     ffa?: boolean;
+    enableGroupVision?: boolean;
   }>();
-  const { name, description, ty, ffa } = body;
+  const { name, description, ty, ffa, enableGroupVision } = body;
   if (!name || !ty) {
     return c.json({ error: 'name and ty are required' }, 400);
   }
-  const id = await createMap(db, uid, adventureId, name, description ?? '', ty, ffa ?? false);
+  const id = await createMap(
+    db, uid, adventureId, name, description ?? '', ty,
+    ffa ?? false, enableGroupVision ?? false,
+  );
   return c.json({ id }, 201);
 });
 
@@ -103,12 +109,17 @@ mapRoutes.patch('/adventures/:id/maps/:mapId', async (c) => {
     description?: string;
     imagePath?: string;
     ffa?: boolean;
+    enableGroupVision?: boolean;
   }>();
-  const fields: { name?: string; description?: string; imagePath?: string; ffa?: boolean } = {};
+  const fields: {
+    name?: string; description?: string; imagePath?: string;
+    ffa?: boolean; enableGroupVision?: boolean;
+  } = {};
   if (body.name !== undefined) fields.name = body.name;
   if (body.description !== undefined) fields.description = body.description;
   if (body.imagePath !== undefined) fields.imagePath = body.imagePath;
   if (body.ffa !== undefined) fields.ffa = body.ffa;
+  if (body.enableGroupVision !== undefined) fields.enableGroupVision = body.enableGroupVision;
   await updateMap(db, uid, adventureId, mapId, fields);
   return c.body(null, 204);
 });
@@ -186,6 +197,7 @@ mapRoutes.post('/adventures/:id/maps/:mapId/consolidate', async (c) => {
     description: mapsTable.description,
     ty: mapsTable.ty,
     ffa: mapsTable.ffa,
+    enableGroupVision: mapsTable.enableGroupVision,
     imagePath: mapsTable.imagePath,
     adventureName: adventures.name,
     ownerId: adventures.ownerId,
@@ -205,6 +217,7 @@ mapRoutes.post('/adventures/:id/maps/:mapId/consolidate', async (c) => {
     description: row.description,
     ty: row.ty as MapType,
     ffa: row.ffa,
+    enableGroupVision: row.enableGroupVision,
     imagePath: row.imagePath,
     owner: row.ownerId,
   };

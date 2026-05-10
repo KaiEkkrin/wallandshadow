@@ -5,25 +5,22 @@ import { hexColours } from '../models/featureColour';
 import ButtonGroup from 'react-bootstrap/ButtonGroup';
 import ToggleButton from 'react-bootstrap/ToggleButton';
 
-// Use same colours as Bootstrap dark buttons for consistency
-const BORDER_UNSELECTED = '#212529';  // dark button default background
-const BORDER_HOVER = '#424649';       // dark button hover background
-const BORDER_SELECTED = '#0d6efd';    // primary blue when selected
+const BORDER_UNSELECTED = '#212529';
+const BORDER_HOVER = '#424649';
+const BORDER_SELECTED = '#0d6efd';
 const BORDER_WIDTH = '6px';
 
 interface IColourButtonProps {
   id: string;
   value: number;
-  colour: string;  // background colour
+  colour: string;
   isSelected: boolean;
   onSelect: () => void;
 }
 
-// Individual colour button that manages its own hover state
 function ColourButton({ id, value, colour, isSelected, onSelect }: IColourButtonProps) {
   const [isHovered, setIsHovered] = useState(false);
 
-  // Border colour: selected always blue, otherwise hover or default
   const borderColour = isSelected ? BORDER_SELECTED
     : isHovered ? BORDER_HOVER
     : BORDER_UNSELECTED;
@@ -46,61 +43,61 @@ function ColourButton({ id, value, colour, isSelected, onSelect }: IColourButton
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={style}>
-      {/* Empty - button background IS the colour */}
     </ToggleButton>
   );
 }
 
-interface INegativeColourProps {
-  includeNegative: boolean;
-  selectedColour: number;
-  setSelectedColour(value: number): void;
-}
-
-function NegativeColour(props: INegativeColourProps & { parentId: string }) {
-  if (props.includeNegative === false) {
-    return null;
-  }
-
-  return (
-    <ColourButton
-      id={`${props.parentId}-neg`}
-      value={-1}
-      colour="#1a1a1a"
-      isSelected={props.selectedColour === -1}
-      onSelect={() => props.setSelectedColour(-1)}
-    />
-  );
-}
-
-interface IColourSelectionProps {
+interface IColourSelectionPropsBase {
   className?: string | undefined;
-  hidden: boolean;
+  hidden?: boolean;
   id: string;
-  includeNegative: boolean;
   isVertical: boolean;
+}
+
+interface ISingleColourSelectionProps extends IColourSelectionPropsBase {
+  includeNegative: boolean;
   selectedColour: number;
   setSelectedColour(value: number): void;
 }
 
+interface IMultiColourSelectionProps extends IColourSelectionPropsBase {
+  selectedColours: ReadonlySet<number>;
+  toggleColour(value: number): void;
+}
+
+type IColourSelectionProps = ISingleColourSelectionProps | IMultiColourSelectionProps;
+
+// Multi-select mode never includes the negative ("black") colour — issue #332
+// requires it to be excluded from group-vision selections.
 function ColourSelection(props: IColourSelectionProps) {
-  const colourButtons = hexColours.map((c, i) => (
+  const isMulti = 'selectedColours' in props;
+
+  const buttons = hexColours.map((c, i) => (
     <ColourButton
       key={i}
       id={`${props.id}-${i}`}
       value={i}
       colour={c}
-      isSelected={props.selectedColour === i}
-      onSelect={() => props.setSelectedColour(i)}
+      isSelected={isMulti ? props.selectedColours.has(i) : props.selectedColour === i}
+      onSelect={() => isMulti ? props.toggleColour(i) : props.setSelectedColour(i)}
     />
   ));
 
+  const showNegative = !isMulti && props.includeNegative;
+
   return (
-    <ButtonGroup className={props.className} id={props.id} hidden={props.hidden} vertical={props.isVertical === true}>
-      {colourButtons}
-      <NegativeColour parentId={props.id} includeNegative={props.includeNegative}
-        selectedColour={props.selectedColour}
-        setSelectedColour={props.setSelectedColour} />
+    <ButtonGroup className={props.className} id={props.id} hidden={props.hidden}
+      vertical={props.isVertical === true}>
+      {buttons}
+      {showNegative && (
+        <ColourButton
+          id={`${props.id}-neg`}
+          value={-1}
+          colour="#1a1a1a"
+          isSelected={props.selectedColour === -1}
+          onSelect={() => props.setSelectedColour(-1)}
+        />
+      )}
     </ButtonGroup>
   );
 }

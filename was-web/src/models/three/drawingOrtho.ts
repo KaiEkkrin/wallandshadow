@@ -586,6 +586,11 @@ export class DrawingOrtho implements IDrawing {
     // Doing this makes fully-hidden areas show up a bit if we can notionally
     // see everything -- for the map owner / FFA mode.
     this._losParameters.fullyHidden = seeEverything ? 0.25 : 0.0;
+
+    // LoS-only changes don't dirty any scene member, so flag the redraw
+    // explicitly — otherwise the toolbar's group-vision toggle is invisible
+    // until some other event happens to force a render.
+    this._needsRedraw.setNeedsRedraw();
   }
 
   setMount(newMount: HTMLDivElement | undefined) {

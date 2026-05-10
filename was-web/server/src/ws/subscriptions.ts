@@ -58,6 +58,7 @@ export interface MapRowPayload {
   description: string;
   ty: string;
   ffa: boolean;
+  enableGroupVision: boolean;
   imagePath: string;
 }
 
@@ -331,6 +332,7 @@ export async function snapshotMap(
         description: mapsTable.description,
         ty: mapsTable.ty,
         ffa: mapsTable.ffa,
+        enableGroupVision: mapsTable.enableGroupVision,
         imagePath: mapsTable.imagePath,
       })
       .from(mapsTable)
@@ -370,6 +372,7 @@ export async function snapshotMap(
       description: mapRow.description,
       ty: mapRow.ty,
       ffa: mapRow.ffa,
+      enableGroupVision: mapRow.enableGroupVision,
       imagePath: mapRow.imagePath,
     },
   };
@@ -406,6 +409,7 @@ export async function fetchAdventureMapPairs(
         description: mapsTable.description,
         ty: mapsTable.ty,
         ffa: mapsTable.ffa,
+        enableGroupVision: mapsTable.enableGroupVision,
         imagePath: mapsTable.imagePath,
       })
       .from(mapsTable)
@@ -431,6 +435,7 @@ export async function fetchAdventureMapPairs(
       description: m.description,
       ty: m.ty,
       ffa: m.ffa,
+      enableGroupVision: m.enableGroupVision,
       imagePath: m.imagePath,
     },
   }));

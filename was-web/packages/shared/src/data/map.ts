@@ -31,6 +31,7 @@ export interface IMap {
   owner: string; // to check whether we can consolidate
   ty: MapType;
   ffa: boolean;
+  enableGroupVision: boolean;
   imagePath: string;
 }
 
