@@ -22,9 +22,21 @@ export interface ILoSSourceInput {
 // not the default owner behaviour of suppressing LoS entirely.
 export function chooseLoSSourceTokens(input: ILoSSourceInput): readonly IToken[] | undefined {
   const seeEverything = input.uid === input.owner || input.ffa;
+  const groupVisionActive = seeEverything
+    ? input.displayMode === MapColourVisualisationMode.GroupVision
+    : input.enableGroupVision;
   const selected = input.allTokens.filter(t => input.selectedTokenIds.has(t.id));
 
   if (selected.length > 0) {
+    if (groupVisionActive) {
+      // `-1` ("black") never participates in group vision, so a selected black
+      // token does not widen the pool. If the entire selection is black, fall
+      // back to the selection itself so the LoS pool isn't accidentally empty.
+      const selectedColours = new Set<number>();
+      for (const t of selected) if (t.colour !== -1) selectedColours.add(t.colour);
+      if (selectedColours.size === 0) return selected;
+      return input.allTokens.filter(t => selectedColours.has(t.colour));
+    }
     return selected;
   }
 

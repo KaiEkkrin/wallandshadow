@@ -86,26 +86,35 @@ describe('chooseLoSSourceTokens', () => {
     expect(result).not.toBeUndefined();
   });
 
-  test('owner, GroupVision, with token selected → only the selected tokens', () => {
+  test('owner, GroupVision, selected token → expands to all tokens of that colour', () => {
     const result = chooseLoSSourceTokens(input({
       displayMode: MapColourVisualisationMode.GroupVision,
       groupVisionColours: new Set([RED]),
       allTokens: [
         token('r1', { colour: RED }),
-        token('r2', { colour: RED }),
         token('g1', { colour: GREEN }),
+        token('g2', { colour: GREEN }),
       ],
       selectedTokenIds: new Set(['g1']),
     }));
-    expect(ids(result)).toEqual(['g1']);
+    expect(ids(result)).toEqual(['g1', 'g2']);
   });
 
-  test('owner, Areas, with token selected → only the selected tokens', () => {
+  test('owner, Areas, with token selected → only the selected tokens (no expansion)', () => {
     const result = chooseLoSSourceTokens(input({
       allTokens: [
         token('a', { colour: RED }),
         token('b', { colour: RED }),
       ],
+      selectedTokenIds: new Set(['a']),
+    }));
+    expect(ids(result)).toEqual(['a']);
+  });
+
+  test('owner, Connectivity, selected token → only the selected token (no expansion)', () => {
+    const result = chooseLoSSourceTokens(input({
+      displayMode: MapColourVisualisationMode.Connectivity,
+      allTokens: [token('a', { colour: RED }), token('b', { colour: RED })],
       selectedTokenIds: new Set(['a']),
     }));
     expect(ids(result)).toEqual(['a']);
@@ -184,7 +193,10 @@ describe('chooseLoSSourceTokens', () => {
     expect(ids(result)).toEqual(['char-token', 'other-green']);
   });
 
-  test('player, group vision on, with token selected → only selected', () => {
+  test('player, group vision on, selected token → expands to all tokens of that colour', () => {
+    // Selecting your own token while group vision is on must widen the LoS pool
+    // to every token sharing the colour, so movement validity matches the team's
+    // shared vision (issue #332 follow-up).
     const result = chooseLoSSourceTokens(input({
       uid: 'p1',
       owner: 'u1',
@@ -192,10 +204,72 @@ describe('chooseLoSSourceTokens', () => {
       allTokens: [
         token('mine', { colour: RED, players: ['p1'] }),
         token('teammate', { colour: RED, players: ['p2'] }),
+        token('green-monster', { colour: GREEN, players: [] }),
+      ],
+      selectedTokenIds: new Set(['mine']),
+    }));
+    expect(ids(result)).toEqual(['mine', 'teammate']);
+  });
+
+  test('player, group vision off, selected token → only the selected token (no expansion)', () => {
+    const result = chooseLoSSourceTokens(input({
+      uid: 'p1',
+      owner: 'u1',
+      enableGroupVision: false,
+      allTokens: [
+        token('mine', { colour: RED, players: ['p1'] }),
+        token('teammate', { colour: RED, players: ['p2'] }),
       ],
       selectedTokenIds: new Set(['mine']),
     }));
     expect(ids(result)).toEqual(['mine']);
+  });
+
+  test('group vision active, multi-token selection of mixed colours → union of those colours', () => {
+    const result = chooseLoSSourceTokens(input({
+      uid: 'p1',
+      owner: 'u1',
+      enableGroupVision: true,
+      allTokens: [
+        token('mine-r', { colour: RED, players: ['p1'] }),
+        token('mine-g', { colour: GREEN, players: ['p1'] }),
+        token('other-r', { colour: RED, players: ['p2'] }),
+        token('other-g', { colour: GREEN, players: ['p2'] }),
+        token('purple', { colour: 2, players: [] }),
+      ],
+      selectedTokenIds: new Set(['mine-r', 'mine-g']),
+    }));
+    expect(ids(result)).toEqual(['mine-g', 'mine-r', 'other-g', 'other-r']);
+  });
+
+  test('group vision active, selected black token → only the selected token (-1 never expands)', () => {
+    const result = chooseLoSSourceTokens(input({
+      uid: 'p1',
+      owner: 'u1',
+      enableGroupVision: true,
+      allTokens: [
+        token('mine-black', { colour: BLACK, players: ['p1'] }),
+        token('other-black', { colour: BLACK, players: ['p2'] }),
+      ],
+      selectedTokenIds: new Set(['mine-black']),
+    }));
+    expect(ids(result)).toEqual(['mine-black']);
+  });
+
+  test('group vision active, mixed selection of black + coloured → expands by the coloured ones only', () => {
+    const result = chooseLoSSourceTokens(input({
+      uid: 'p1',
+      owner: 'u1',
+      enableGroupVision: true,
+      allTokens: [
+        token('mine-r', { colour: RED, players: ['p1'] }),
+        token('mine-black', { colour: BLACK, players: ['p1'] }),
+        token('other-r', { colour: RED, players: ['p2'] }),
+        token('other-black', { colour: BLACK, players: [] }),
+      ],
+      selectedTokenIds: new Set(['mine-r', 'mine-black']),
+    }));
+    expect(ids(result)).toEqual(['mine-r', 'other-r']);
   });
 
   test('player, group vision on, owns no tokens → empty array', () => {
