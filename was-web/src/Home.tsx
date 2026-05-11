@@ -7,6 +7,7 @@ import Navigation from './components/Navigation';
 import { ProfileContext } from './components/ProfileContext';
 import { UserContext } from './components/UserContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
+import { useRecentMaps } from './hooks/useRecentMaps';
 
 import Col from 'react-bootstrap/Col';
 import Container from 'react-bootstrap/Container';
@@ -36,7 +37,7 @@ function Home() {
 
   const showNewMap = useMemo(() => myAdventures.length > 0, [myAdventures]);
   const adventures = useMemo(() => profile?.adventures ?? [], [profile]);
-  const latestMaps = useMemo(() => profile?.latestMaps ?? [], [profile]);
+  const latestMaps = useRecentMaps(user?.uid);
 
   return (
     <div>

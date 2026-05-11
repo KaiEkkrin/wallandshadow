@@ -1,4 +1,3 @@
-import { IMapSummary } from './adventure';
 import { UserLevel } from './policy';
 
 export interface IProfile {
@@ -8,8 +7,7 @@ export interface IProfile {
   email: string; // auto sync with user record; should be useful for looking up accounts to upgrade/downgrade
   level: UserLevel; // the user's permission level.  Server-side checks stop us from
                     // changing this willy nilly.
-  adventures: IAdventureSummary[]; 
-  latestMaps: IMapSummary[];
+  adventures: IAdventureSummary[];
 }
 
 export interface IAdventureSummary {

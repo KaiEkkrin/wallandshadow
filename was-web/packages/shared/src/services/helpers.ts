@@ -48,30 +48,3 @@ export function updateAdventureMaps(maps: IMapSummary[], changed: IMapSummary): 
 
   return updated;
 }
-
-export function updateProfileMaps(maps: IMapSummary[] | undefined, changed: IMapSummary): IMapSummary[] | undefined {
-  const existingIndex = maps?.findIndex(m => m.id === changed.id) ?? -1;
-  if (maps !== undefined && existingIndex >= 0) {
-    if (
-      changed.name === maps[existingIndex].name &&
-      changed.description === maps[existingIndex].description &&
-      changed.imagePath === maps[existingIndex].imagePath
-    ) {
-      // No change to make
-      return undefined;
-    }
-
-    const updated = [...maps];
-    updated[existingIndex].name = changed.name;
-    updated[existingIndex].description = changed.description;
-    updated[existingIndex].imagePath = changed.imagePath;
-    return updated;
-  } else {
-    const created = [changed];
-    if (maps !== undefined) {
-      created.push(...maps.slice(0, maxProfileEntries - 1));
-    }
-
-    return created;
-  }
-}

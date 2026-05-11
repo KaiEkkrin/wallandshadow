@@ -4,7 +4,8 @@ import { trackChanges, IAdventureIdentified, IMap } from '@wallandshadow/shared'
 import { MapLifecycleManager } from '../models/mapLifecycleManager';
 import { createDefaultState, MapStateMachine } from '../models/mapStateMachine';
 import { networkStatusTracker } from '../models/networkStatusTracker';
-import { registerMapAsRecent, removeMapFromRecent, watchChangesAndConsolidate } from '../services/extensions';
+import { watchChangesAndConsolidate } from '../services/extensions';
+import { forgetMap, markMapRecent } from '../services/recentMaps';
 import { logError } from '../services/consoleLogger';
 
 import { AdventureContext } from './AdventureContext';
@@ -70,8 +71,7 @@ function MapContextProvider(props: IContextProviderProps) {
     function couldNotLoad(message: string) {
       console.warn('[MapContextProvider] couldNotLoad called with message:', message);
       if (lcm && mapRef) {
-        removeMapFromRecent(lcm.dataService, lcm.uid, mapRef.id)
-          .catch(e => logError("Error removing map from recent", e));
+        forgetMap(lcm.uid, mapRef.id);
       }
 
       toasts.next({
@@ -100,14 +100,18 @@ function MapContextProvider(props: IContextProviderProps) {
       return stopWatchingMap;
     }).pipe(share());
 
-    // On first load, register the map as recent, and fire a consolidate.
-    // Neither of these is fatal if it goes wrong
-    const registerAsRecentSub = watchMap.pipe(first(), switchMap(m =>
-      from(registerMapAsRecent(lcm.dataService, lcm.uid, m.adventureId, m.id, m.record))
-    )).subscribe(
-      () => {},
-      e => logError(`Error registering map ${adventureId}/${mapId} as recent`, e)
-    );
+    // On first load, register the map as recent.
+    const registerAsRecentSub = watchMap.pipe(first()).subscribe({
+      next: m => markMapRecent(lcm.uid, {
+        adventureId: m.adventureId,
+        id: m.id,
+        name: m.record.name,
+        description: m.record.description,
+        ty: m.record.ty,
+        imagePath: m.record.imagePath,
+      }),
+      error: e => logError(`Error registering map ${adventureId}/${mapId} as recent`, e),
+    });
 
     const consolidateSub = watchMap.pipe(first(), switchMap(m =>
       from((async () => {

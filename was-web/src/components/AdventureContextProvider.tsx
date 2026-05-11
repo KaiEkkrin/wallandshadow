@@ -6,7 +6,6 @@ import { IAdventureContext, IContextProviderProps } from './interfaces';
 import { StatusContext } from './StatusContext';
 
 import { IAdventure, IPlayer, IIdentified, ISpriteManager, PresenceSubscription, PresenceUserState } from '@wallandshadow/shared';
-import { registerAdventureAsRecent, removeAdventureFromRecent } from '../services/extensions';
 import { SpriteManager } from '../services/spriteManager';
 import { logError } from '../services/consoleLogger';
 
@@ -47,11 +46,6 @@ function AdventureContextProvider(props: IContextProviderProps) {
     }
 
     function couldNotLoad(message: string) {
-      if (uid && d) {
-        removeAdventureFromRecent(dataService, uid, d.id)
-          .catch(e => logError("Error removing adventure from recent", e));
-      }
-
       toasts.next({
         id: uuidv7(),
         record: { title: 'Error loading adventure', message: message }
@@ -106,10 +100,6 @@ function AdventureContextProvider(props: IContextProviderProps) {
       setSpriteManager(undefined);
       return undefined;
     }
-
-    registerAdventureAsRecent(dataService, uid, adventure.id, adventure.record)
-      .then(() => console.debug("registered adventure " + adventure.id + " as recent"))
-      .catch(e => logError("Failed to register adventure " + adventure.id + " as recent", e));
 
     // We need the feed of players both so that we can expose it in the adventure context
     // and so that the sprite manager can use it, so we publish it thus:

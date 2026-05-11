@@ -123,25 +123,6 @@ class HonoDataAndReference<T> extends HonoDataReference<T> implements IDataAndRe
   }
 }
 
-// ── localStorage latestMaps ──────────────────────────────────────────────────
-
-function getLatestMapsKey(uid: string): string {
-  return `was_hono_latest_maps_${uid}`;
-}
-
-function readLatestMaps(uid: string): IMapSummary[] {
-  try {
-    const raw = localStorage.getItem(getLatestMapsKey(uid));
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeLatestMaps(uid: string, maps: IMapSummary[]): void {
-  localStorage.setItem(getLatestMapsKey(uid), JSON.stringify(maps.slice(0, 10)));
-}
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function isNotFound(e: unknown): boolean {
@@ -431,9 +412,6 @@ export class HonoDataService implements IDataService {
     switch (ref.meta.kind) {
       case 'profile': {
         const c = changes as Partial<IProfile>;
-        if (c.latestMaps !== undefined) {
-          writeLatestMaps(this.uid, c.latestMaps);
-        }
         if (c.name !== undefined) {
           await this.api.updateMe(c.name);
         }
@@ -519,7 +497,6 @@ export class HonoDataService implements IDataService {
       email: me.email ?? '',
       level: me.level,
       adventures: adventures.map(adventureRowToSummary),
-      latestMaps: readLatestMaps(this.uid),
     };
   }
 
