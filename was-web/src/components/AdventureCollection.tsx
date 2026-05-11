@@ -34,13 +34,13 @@ function AdventureCollection(props: IAdventureCollectionProps) {
   }, [setEditName, setEditDescription, setShowEditAdventure]);
 
   const handleNewAdventureSave = useCallback(async () => {
-    const functionsService = userContext.functionsService;
-    if (functionsService === undefined) {
+    const api = userContext.api;
+    if (api === undefined) {
       return;
     }
 
     try {
-      const id = await functionsService.createAdventure(editName, editDescription);
+      const id = await api.createAdventure(editName, editDescription);
       navigate('/adventure/' + id, { replace: true });
     } catch (e: unknown) {
       setShowEditAdventure(false);

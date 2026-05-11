@@ -23,7 +23,7 @@ interface IMapCloneModalProps {
 }
 
 function MapCloneModal({ show, adventure, sourceMap, handleClose }: IMapCloneModalProps) {
-  const { functionsService } = useContext(UserContext);
+  const { api } = useContext(UserContext);
   const navigate = useNavigate();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -51,7 +51,7 @@ function MapCloneModal({ show, adventure, sourceMap, handleClose }: IMapCloneMod
 
   const handleSave = useCallback(() => {
     if (
-      functionsService === undefined ||
+      api === undefined ||
       adventure === undefined ||
       sourceMap === undefined
     ) {
@@ -59,7 +59,7 @@ function MapCloneModal({ show, adventure, sourceMap, handleClose }: IMapCloneMod
     }
 
     setIsSaving(true);
-    functionsService.cloneMap(adventure.id, sourceMap.id, name, description)
+    api.cloneMap(adventure.id, sourceMap.id, name, description)
       .then(mapId => navigate('/adventure/' + adventure?.id + '/map/' + mapId, { replace: true }))
       .catch(e => {
         handleClose();
@@ -67,7 +67,7 @@ function MapCloneModal({ show, adventure, sourceMap, handleClose }: IMapCloneMod
         logError("Failed to clone map " + sourceMap?.name, e);
       });
   }, [
-    description, navigate, name, setIsSaving, functionsService,
+    description, navigate, name, setIsSaving, api,
     adventure, handleClose, sourceMap
   ]);
 

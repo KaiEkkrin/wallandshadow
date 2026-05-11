@@ -4,7 +4,7 @@ import { trackChanges, IAdventureIdentified, IMap } from '@wallandshadow/shared'
 import { MapLifecycleManager } from '../models/mapLifecycleManager';
 import { createDefaultState, MapStateMachine } from '../models/mapStateMachine';
 import { networkStatusTracker } from '../models/networkStatusTracker';
-import { watchChangesAndConsolidate } from '../services/extensions';
+import { watchChangesAndConsolidate } from '../models/mapChangeConsolidator';
 import { forgetMap, markMapRecent } from '../services/recentMaps';
 import { logError } from '../services/consoleLogger';
 
@@ -21,7 +21,7 @@ import { first, map, scan, share, switchMap } from 'rxjs/operators';
 import { v7 as uuidv7 } from 'uuid';
 
 function MapContextProvider(props: IContextProviderProps) {
-  const { dataService, functionsService, resolveImageUrl, user } = useContext(UserContext);
+  const { api, live, resolveImageUrl, user } = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
   const { toasts } = useContext(StatusContext);
   const { spriteManager } = useContext(AdventureContext);
@@ -39,39 +39,30 @@ function MapContextProvider(props: IContextProviderProps) {
 
   useEffect(() => {
     const uid = user?.uid;
-    if (!dataService || !functionsService || !resolveImageUrl || !uid) {
+    if (!live || !resolveImageUrl || !uid) {
       setLcm(undefined);
       return;
     }
 
-    setLcm(new MapLifecycleManager(dataService, functionsService, logError, resolveImageUrl, uid));
-  }, [dataService, functionsService, resolveImageUrl, user]);
+    setLcm(new MapLifecycleManager(live, logError, resolveImageUrl, uid));
+  }, [live, resolveImageUrl, user]);
 
   // Watch the map when it changes.
-  // We'll try not to depend on `dataService` in here to avoid repeated calls
   const [mapContext, setMapContext] = useState<IMapContext>({ mapState: createDefaultState() });
   useEffect(() => {
-    //console.debug('[MapContextProvider] useEffect running, pathname:', location?.pathname);
     const matches = /^\/adventure\/([^/]+)\/map\/([^/]+)$/.exec(location?.pathname);
-    //console.debug('[MapContextProvider] regex matches:', matches ? 'YES' : 'NO');
-    //console.debug('[MapContextProvider] lcm:', lcm ? 'DEFINED' : 'UNDEFINED');
-    //console.debug('[MapContextProvider] profile:', profile ? 'DEFINED' : 'UNDEFINED');
-    //console.debug('[MapContextProvider] spriteManager:', spriteManager ? 'DEFINED' : 'UNDEFINED');
-
-    if (!lcm || !matches || !profile || !spriteManager) {
-      //console.debug('[MapContextProvider] Early return - missing dependencies');
+    if (!lcm || !matches || !profile || !spriteManager || !api || !live) {
       return undefined;
     }
 
     const [adventureId, mapId] = [matches[1], matches[2]];
     console.debug('[MapContextProvider] Setting up map watch for:', adventureId, mapId);
-    const mapRef = lcm.dataService.getMapRef(adventureId, mapId);
 
     // How to handle a map load failure.
     function couldNotLoad(message: string) {
       console.warn('[MapContextProvider] couldNotLoad called with message:', message);
-      if (lcm && mapRef) {
-        forgetMap(lcm.uid, mapRef.id);
+      if (lcm) {
+        forgetMap(lcm.uid, mapId);
       }
 
       toasts.next({
@@ -85,8 +76,8 @@ function MapContextProvider(props: IContextProviderProps) {
     // underlying stop function
     let stopWatchingMap: (() => void) | undefined = undefined;
     const watchMap = new Observable<IAdventureIdentified<IMap>>(sub => {
-      stopWatchingMap = lcm.dataService.watch(
-        mapRef,
+      stopWatchingMap = live.watchMap(
+        mapId,
         m => {
           if (m === undefined) {
             sub.error("That map does not exist.");
@@ -95,7 +86,6 @@ function MapContextProvider(props: IContextProviderProps) {
           }
         },
         e => sub.error(e),
-        () => sub.complete()
       );
       return stopWatchingMap;
     }).pipe(share());
@@ -116,7 +106,7 @@ function MapContextProvider(props: IContextProviderProps) {
     const consolidateSub = watchMap.pipe(first(), switchMap(m =>
       from((async () => {
         console.debug(`consolidating map changes for ${m.adventureId}/${m.id}`);
-        await lcm.functionsService?.consolidateMapChanges(m.adventureId, m.id, false);
+        await api.consolidateMap(m.adventureId, m.id, false);
       })())
     )).subscribe(
       () => {},
@@ -132,8 +122,8 @@ function MapContextProvider(props: IContextProviderProps) {
 
       networkStatusTracker.clear();
       const stop = watchChangesAndConsolidate(
-        lcm.dataService,
-        lcm.functionsService,
+        live,
+        api,
         m.adventureId,
         m.id,
         chs => {
@@ -170,7 +160,7 @@ function MapContextProvider(props: IContextProviderProps) {
       stopWatchingMap?.();
     };
   }, [
-    lcm, location,
+    api, live, lcm, location,
     profile, setMapContext, spriteManager, toasts
   ]);
 

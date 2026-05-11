@@ -1,10 +1,9 @@
 import { IToast } from "../components/interfaces";
 import { EditMode } from "../components/MapControls.types";
-import { IAnnotation, Change, ChangeCategory, ChangeType, ITokenProperties, IAdventureIdentified, IIdentified, IImage, IMapImageProperties, IMap, IDataService, IFunctionsService } from '@wallandshadow/shared';
+import { IAnnotation, IApi, Change, ChangeCategory, ChangeType, ITokenProperties, IAdventureIdentified, IIdentified, IImage, IMapImageProperties, IMap } from '@wallandshadow/shared';
 import { Layer } from './interfaces';
 import { isAMovementKeyDown, KeysDown, keysDownReducer } from "./keys";
 import { MapStateMachine } from "./mapStateMachine";
-import { editMap } from "../services/extensions";
 
 import { Subject } from 'rxjs';
 import * as THREE from 'three';
@@ -522,8 +521,7 @@ export class MapUi {
   }
 
   async mapEditorSave(
-    dataService: IDataService | undefined,
-    functionsService: IFunctionsService | undefined,
+    api: IApi | undefined,
     map: IAdventureIdentified<IMap> | undefined,
     updated: IMap,
     logError: (message: string, e: unknown) => void
@@ -533,7 +531,7 @@ export class MapUi {
     }
 
     this.changeState({ ...this._state, showMapEditor: false });
-    if (dataService === undefined || functionsService === undefined || map === undefined) {
+    if (api === undefined || map === undefined) {
       return;
     }
 
@@ -541,14 +539,20 @@ export class MapUi {
       // We should do a consolidate first, otherwise we might be invalidating the
       // backlog of non-owner moves.
       try {
-        await functionsService.consolidateMapChanges(map.adventureId, map.id, false);
+        await api.consolidateMap(map.adventureId, map.id, false);
       } catch (e) {
         logError(`Error consolidating map ${map.adventureId}/${map.id} changes`, e);
       }
     }
 
     try {
-      await editMap(dataService, map.adventureId, map.id, updated);
+      await api.updateMap(map.adventureId, map.id, {
+        name: updated.name,
+        description: updated.description,
+        imagePath: updated.imagePath,
+        ffa: updated.ffa,
+        enableGroupVision: updated.enableGroupVision,
+      });
     } catch (e) {
       logError('Failed to update map', e);
     }

@@ -23,7 +23,6 @@ import Modal from 'react-bootstrap/Modal';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronLeft, faChevronRight, faTimes } from '@fortawesome/free-solid-svg-icons';
 import { from } from 'rxjs';
-import { v7 as uuidv7 } from 'uuid';
 
 interface IImageStatusProps {
   message: string;
@@ -45,7 +44,7 @@ interface IImagePickerFormProps {
 }
 
 export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDelete }: IImagePickerFormProps) {
-  const { dataService, storageService, user } = useContext(UserContext);
+  const { api, user } = useContext(UserContext);
 
   const [status, setStatus] = useState<IImageStatusProps>({ message: "" });
 
@@ -59,11 +58,10 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
   // File uploads
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!storageService || !user) {
+    if (!api || !user) {
       return;
     }
 
-    const path = "/images/" + user.uid + "/" + uuidv7();
     const file = e.target.files?.[0];
     if (!file) {
       return;
@@ -72,11 +70,7 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
     setStatus({ message: `Uploading ${file.name}...` });
     const doUpload = async () => {
       try {
-        await storageService.ref(path).put(file, {
-          customMetadata: {
-            originalName: file.name
-          }
-        });
+        await api.uploadImage(file, file.name);
         setStatus({ message: `Processing ${file.name}...` }); // will be replaced when the onUpload function finishes
       }
       catch (e: unknown) {
@@ -87,28 +81,27 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
 
     const sub = from(doUpload()).subscribe();
     return () => sub.unsubscribe();
-  }, [setStatus, storageService, user]);
+  }, [setStatus, api, user]);
 
   const [images, setImages] = useState<IImage[]>([]);
   useEffect(() => {
-    if (!dataService || !user) {
+    // Refetch the image list each time the modal opens; images change
+    // infrequently and we don't have a live update channel for them.
+    if (!api || !user || !show) {
       return undefined;
     }
 
-    const imagesRef = dataService.getImagesRef(user.uid);
-    console.debug("watching images");
-    return dataService.watch(
-      imagesRef,
-      r => {
-        setImages(r?.images ?? []);
-        setImageCount(r?.images?.length ?? 0);
-        if (r !== undefined) {
-          setStatus({ message: r.lastError, isError: r.lastError.length > 0 });
-        }
-      },
-      e => logError("Error watching images", e)
-    );
-  }, [setImageCount, setImages, setStatus, dataService, user]);
+    console.debug("fetching images");
+    let cancelled = false;
+    api.listImages()
+      .then(list => {
+        if (cancelled) return;
+        setImages(list);
+        setImageCount(list.length);
+      })
+      .catch(e => logError("Error listing images", e));
+    return () => { cancelled = true; };
+  }, [setImageCount, setImages, api, user, show]);
 
   const [index, setIndex] = useReducer(
     (state: number, action: number) => action === 0 ? 0 : state + action,

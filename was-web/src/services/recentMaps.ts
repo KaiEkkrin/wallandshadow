@@ -71,10 +71,3 @@ export function forgetMap(uid: string, mapId: string): void {
     return next.length === current.length ? current : next;
   });
 }
-
-export function forgetAdventureMaps(uid: string, adventureId: string): void {
-  update(uid, (current) => {
-    const next = current.filter(m => m.adventureId !== adventureId);
-    return next.length === current.length ? current : next;
-  });
-}

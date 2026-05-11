@@ -6,15 +6,10 @@ import './Navigation.css';
 import { AuthContext } from './AuthContext';
 import { logError } from '../services/consoleLogger';
 import { ProfileContext } from './ProfileContext';
-import * as Policy from '@wallandshadow/shared';
-import { StatusContext } from './StatusContext';
-import { SignInMethodsContext } from './SignInMethodsContext';
 import { UserContext } from './UserContext';
-import { updateProfile } from '../services/extensions';
 
 import Button from 'react-bootstrap/Button';
 import ButtonGroup from 'react-bootstrap/ButtonGroup';
-import Dropdown from 'react-bootstrap/Dropdown';
 import Form from 'react-bootstrap/Form';
 import Modal from 'react-bootstrap/Modal';
 import Nav from 'react-bootstrap/Nav';
@@ -25,80 +20,6 @@ import { LinkContainer } from 'react-router-bootstrap';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCheck } from '@fortawesome/free-solid-svg-icons';
-
-import { v7 as uuidv7 } from 'uuid';
-
-interface IChangePasswordModalProps {
-  shown: boolean;
-  handleClose: () => void;
-  handleChange: (oldPassword: string, newPassword: string) => void;
-  username?: string;
-}
-
-function ChangePasswordModal({ shown, handleClose, handleChange, username }: IChangePasswordModalProps) {
-  const [oldPassword, setOldPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  const changeDisabled = useMemo(
-    () => !(oldPassword.length > 0 && Policy.passwordIsValid(newPassword) && confirmPassword === newPassword),
-    [oldPassword, newPassword, confirmPassword]
-  );
-
-  const doHandleChange = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      handleChange(oldPassword, newPassword);
-    },
-    [handleChange, oldPassword, newPassword]
-  );
-
-  return (
-    <Modal show={shown} onHide={handleClose}>
-      <Modal.Header closeButton>
-        <Modal.Title>Change password</Modal.Title>
-      </Modal.Header>
-      <Form onSubmit={doHandleChange}>
-        <Modal.Body>
-          {/* Hidden username field for accessibility and password managers */}
-          <input
-            type="text"
-            autoComplete="username"
-            value={username || ''}
-            readOnly
-            style={{ display: 'none' }}
-            aria-hidden="true"
-          />
-          <Form.Group>
-            <Form.Label htmlFor="oldPasswordInput">Old password</Form.Label>
-            <Form.Control id="oldPasswordInput" type="password" value={oldPassword}
-              autoComplete="current-password"
-              onChange={e => setOldPassword(e.target.value)} />
-          </Form.Group>
-          <Form.Group>
-            <Form.Label htmlFor="newPasswordInput">New password</Form.Label>
-            <Form.Control id="newPasswordInput" type="password" value={newPassword}
-              autoComplete="new-password"
-              onChange={e => setNewPassword(e.target.value)} />
-            <Form.Text className="text-muted">
-              Your password must be at least 8 characters long and contain at least one letter and one number.
-            </Form.Text>
-          </Form.Group>
-          <Form.Group>
-            <Form.Label htmlFor="confirmPasswordInput">Confirm new password</Form.Label>
-            <Form.Control id="confirmPasswordInput" type="password" value={confirmPassword}
-              autoComplete="new-password"
-              onChange={e => setConfirmPassword(e.target.value)} />
-          </Form.Group>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={handleClose}>Close</Button>
-          <Button variant="primary" type="submit" disabled={changeDisabled}>Change password</Button>
-        </Modal.Footer>
-      </Form>
-    </Modal>
-  );
-}
 
 function NavPageLinks() {
   const userContext = useContext(UserContext);
@@ -153,17 +74,10 @@ function Avatar(props: { children?: React.ReactNode }) {
   );
 }
 
-function NavLogin({ expanded }: { expanded: boolean }) {
+function NavLogin() {
   const { auth } = useContext(AuthContext);
-  const { dataService, user } = useContext(UserContext);
-  const { signInMethods } = useContext(SignInMethodsContext);
+  const { api, user } = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
-  const statusContext = useContext(StatusContext);
-
-  const isPasswordUser = useMemo(
-    () => signInMethods.find(m => /password/i.test(m)) !== undefined,
-    [signInMethods]
-  );
 
   const isOidcUser = useMemo(
     () => user?.providerId === 'oidc',
@@ -180,54 +94,41 @@ function NavLogin({ expanded }: { expanded: boolean }) {
       .catch(e => logError("Error signing out: ", e));
   }, [auth]);
 
-  const [showChangePassword, setShowChangePassword] = useState(false);
-
   // The profile editor:
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState("");
 
   const handleEditProfile = useCallback(() => {
-    setShowChangePassword(false);
     setEditDisplayName(displayName);
     setShowEditProfile(true);
-  }, [displayName, setEditDisplayName, setShowChangePassword, setShowEditProfile]);
+  }, [displayName, setEditDisplayName, setShowEditProfile]);
 
   const handleModalClose = useCallback(() => {
-    setShowChangePassword(false);
     setShowEditProfile(false);
   }, [setShowEditProfile]);
 
   const handleSaveProfile = useCallback(() => {
     handleModalClose();
-    if (dataService === undefined) {
+    if (api === undefined) {
       return;
     }
 
     async function doUpdateProfile() {
-      if (!user) {
+      if (!user || !api) {
         return;
       }
 
-      await updateProfile(dataService, user.uid, editDisplayName);
-      if (editDisplayName !== displayName) {
-        await user.updateProfile({ displayName: displayName });
-      }
-
+      await api.updateMe({ name: editDisplayName });
       console.debug(`successfully updated profile of ${editDisplayName}`);
     }
 
     doUpdateProfile().catch(e => logError("error updating profile", e));
-  }, [displayName, editDisplayName, handleModalClose, dataService, user]);
+  }, [editDisplayName, handleModalClose, api, user]);
 
   const saveProfileDisabled = useMemo(
     () => editDisplayName.length === 0 || isOidcUser,
     [editDisplayName, isOidcUser]
   );
-
-  const handleChangePassword = useCallback(() => {
-    setShowChangePassword(true);
-    setShowEditProfile(false);
-  }, [setShowChangePassword, setShowEditProfile]);
 
   // We show a verified icon if the user's email is verified
   const verifiedIcon = useMemo(() => {
@@ -240,63 +141,21 @@ function NavLogin({ expanded }: { expanded: boolean }) {
     }
   }, [user]);
 
-  // We show the profile button as a dropdown only if there are further things to drop
-  // down from it
-  const profileButton = useMemo(() => {
-    if (isPasswordUser && !isOidcUser) {
-      return (
-        <Dropdown>
-          <Dropdown.Toggle variant="primary">
-            <Avatar>
-              {displayName}{verifiedIcon}
-            </Avatar>
-          </Dropdown.Toggle>
-          <Dropdown.Menu align={!expanded ? "end" : undefined}>
-            <Dropdown.Item onClick={handleEditProfile}>Profile</Dropdown.Item>
-            <Dropdown.Item onClick={handleChangePassword}>Change password</Dropdown.Item>
-          </Dropdown.Menu>
-        </Dropdown>
-      );
-    } else {
-      return (
-        <Button variant="primary" onClick={handleEditProfile}>
-          <Avatar>
-            {displayName}{verifiedIcon}
-          </Avatar>
-        </Button>
-      );
-    }
-  }, [
-    displayName, expanded, handleChangePassword, handleEditProfile, isOidcUser,
-    isPasswordUser, verifiedIcon
-  ]);
-
-  const handleChangePasswordSave = useCallback((oldPassword: string, newPassword: string) => {
-    handleModalClose();
-    user?.changePassword(oldPassword, newPassword)
-    .then(() => statusContext.toasts.next({
-      id: uuidv7(),
-      record: { title: "Password changed", message: "Password change was successful" }
-    }))
-    .catch(_e => statusContext.toasts.next({
-      id: uuidv7(),
-      record: { title: "Password change failed", message: "Check your old password was entered correctly." }
-    }));
-  }, [handleModalClose, statusContext, user]);
-
   return user ? (
     <div className="ms-2 me-2">
       <div className="d-flex">
         <ButtonGroup>
-          {profileButton}
+          <Button variant="primary" onClick={handleEditProfile}>
+            <Avatar>
+              {displayName}{verifiedIcon}
+            </Avatar>
+          </Button>
           <Button variant="outline-primary" onClick={handleSignOut}>Log out</Button>
         </ButtonGroup>
       </div>
-      <ChangePasswordModal shown={showChangePassword} handleClose={handleModalClose}
-        handleChange={handleChangePasswordSave} username={user?.email || undefined} />
       <Modal show={showEditProfile} onHide={handleModalClose}>
         <Modal.Header closeButton>
-          <Modal.Title>User profile settings ({signInMethods})</Modal.Title>
+          <Modal.Title>User profile settings</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
@@ -379,7 +238,7 @@ function Navigation(props: INavigationProps) {
             <Navbar.Text>{props.children}</Navbar.Text>
           </Nav>
           <Nav className="ms-auto">
-            <NavLogin expanded={expanded} />
+            <NavLogin />
           </Nav>
         </Navbar.Collapse>
       </Navbar>

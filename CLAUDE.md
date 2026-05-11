@@ -18,7 +18,7 @@ was-web/
 │   ├── components/          # React components and UI
 │   ├── data/                # TypeScript domain models
 │   ├── models/              # Business logic, state machines, Three.js rendering
-│   ├── services/            # Hono client services (honoApi, honoAuth, honoDataService, honoFunctions, honoStorage, honoWebSocket)
+│   ├── services/            # Hono client services (honoApi, honoApiClient, honoAuth, honoConverters, honoLiveData, honoWebSocket, recentMaps)
 │   └── *.tsx                # Top-level pages (Home, Map, Adventure, Login, Invite, OidcCallback)
 ├── server/                  # Hono API server
 │   ├── src/
@@ -105,8 +105,7 @@ See @README.md for comprehensive developer setup and Zitadel OIDC configuration.
 
 ### Data Access
 
-- Use `IDataReference<T>` / `IDataView<T>` types from `@wallandshadow/shared`
-- Web-side data access goes through `UserContext.dataService` (HonoDataService)
+- Web-side data access goes through `UserContext.api` (HonoApi → REST) for one-shot reads and writes, and `UserContext.live` (HonoLiveData → WebSocket) for real-time subscriptions and map change submission. Domain types (`IAdventure`, `IMap`, `IPlayer`, etc.) come from `@wallandshadow/shared`.
 - Server-side data access goes through Drizzle in `server/src/`
 
 ### Map Changes
@@ -176,13 +175,18 @@ Source of truth: `was-web/server/src/db/schema.ts`. Top-level tables: `users`, `
 ### Context Hierarchy
 
 ```
-HonoContextProvider   (auth, dataService, functionsService, storageService, resolveImageUrl, signInMethods)
+HonoContextProvider   (auth, api, live, resolveImageUrl)
   └─ ProfileContextProvider
       └─ StatusContextProvider
           └─ Routing
               └─ AdventureContextProvider
                   └─ MapContextProvider
 ```
+
+The web client talks to the Hono backend through three small interfaces from
+`@wallandshadow/shared`: `IAuth` (sign-in/out + session lifecycle), `IApi`
+(typed REST surface — every one-shot query/command), and `ILiveData`
+(WebSocket subscriptions + connection observables + `sendMapChange`).
 
 ### Real-Time Sync
 

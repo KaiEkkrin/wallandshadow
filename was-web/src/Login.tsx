@@ -45,14 +45,11 @@ interface INewUserFormProps {
 }
 
 function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, handleSignUp, handleExternalSignUp, handleExternalSignIn }: INewUserFormProps) {
-  const { auth } = useContext(AuthContext);
-
   const [key, setKey] = useState<"new" | "existing">("new");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordResetTarget, setPasswordResetTarget] = useState<string | undefined>(undefined);
   const [authMethod, setAuthMethod] = useState<'email' | 'external'>('email');
 
   // reset the password fields, auth method, and tab when the shown status changes
@@ -61,7 +58,6 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
       setKey(initialTab);
       setPassword("");
       setConfirmPassword("");
-      setPasswordResetTarget(undefined);
       setAuthMethod('email');
     }
   }, [shown, initialTab]);
@@ -102,38 +98,6 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
       }
     }
   }, [authMethod, displayName, email, key, password, handleSignIn, handleSignUp, handleExternalSignUp, handleExternalSignIn]);
-
-  // The password reset helpers
-  const handleResetPassword = useCallback(() => {
-    const target = email; // just in case it changes during the async operation
-    if (!Policy.emailIsValid(target)) {
-      return;
-    }
-
-    auth?.sendPasswordResetEmail(target)
-      .then(() => setPasswordResetTarget(target))
-      .catch(e => logError("Error sending password reset email", e));
-  }, [email, auth, setPasswordResetTarget]);
-
-  const passwordResetComponent = useMemo(() => {
-    if (!Policy.emailIsValid(email)) {
-      return (
-        <Form.Text className="text-muted"></Form.Text>
-      );
-    } else if (passwordResetTarget === undefined) {
-      return (
-        <Form.Text className="text-muted">
-          Forgot your password?  <Button variant="link" size="sm" onClick={handleResetPassword}>Send a password reset email.</Button>
-        </Form.Text>
-      );
-    } else {
-      return (
-        <Form.Text className="text-muted">
-          A password reset email was sent to {passwordResetTarget}.
-        </Form.Text>
-      );
-    }
-  }, [email, handleResetPassword, passwordResetTarget]);
 
   // Label for the external auth radio button
   const externalLabel = oidcEnabled ? 'External provider' : 'Google account';
@@ -233,7 +197,6 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
                     <Form.Label htmlFor="passwordInput">Password</Form.Label>
                     <Form.Control id="passwordInput" type="password" value={password}
                       onChange={e => setPassword(e.target.value)} />
-                    {passwordResetComponent}
                   </Form.Group>
                 </>
               )}
@@ -251,7 +214,7 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
 
 function Login() {
   const { auth } = useContext(AuthContext);
-  const { profile, expectNewUser } = useContext(ProfileContext);
+  const { profile } = useContext(ProfileContext);
   const navigate = useNavigate();
 
   useDocumentTitle('Login');
@@ -301,12 +264,11 @@ function Login() {
   const handleEmailFormSignUp = useCallback((displayName: string, email: string, password: string) => {
     setShowEmailForm(false);
     setLoginFailedVisible(false);
-    expectNewUser?.(email, displayName);
     auth?.createUserWithEmailAndPassword(email, password, displayName)
       .then(u => handleLoginResult(u))
       .then(finishLogin)
       .catch(handleLoginError);
-  }, [auth, expectNewUser, finishLogin, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
+  }, [auth, finishLogin, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
 
   const handleEmailFormSignIn = useCallback((email: string, password: string) => {
     setShowEmailForm(false);

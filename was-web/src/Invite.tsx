@@ -38,13 +38,12 @@ function Invite({ inviteId }: IInvitePageProps) {
 
   const [invite, setInvite] = useState(undefined as IInvite | undefined);
   useEffect(() => {
-    if (userContext.dataService !== undefined) {
-      const inviteRef = userContext.dataService.getInviteRef(inviteId);
-      userContext.dataService.get(inviteRef)
+    if (userContext.api !== undefined) {
+      userContext.api.getInvite(inviteId)
         .then(i => setInvite(i))
         .catch(e => logError("Failed to fetch invite " + inviteId, e));
     }
-  }, [userContext.dataService, inviteId]);
+  }, [userContext.api, inviteId]);
 
   const inviteDescription = useMemo(() =>
     invite === undefined ? "(no such invite)" : invite.adventureName + " by " + invite.ownerName,
@@ -58,7 +57,7 @@ function Invite({ inviteId }: IInvitePageProps) {
 
   const handleJoin = useCallback(() => {
     setButtonDisabled(true);
-    userContext.functionsService?.joinAdventure(inviteId)
+    userContext.api?.joinInvite(inviteId)
       .then(adventureId => {
         navigate("/adventure/" + adventureId, { replace: true });
       })

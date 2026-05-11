@@ -15,7 +15,6 @@ import StatusContextProvider from './components/StatusContextProvider';
 import Throbber from './components/Throbber';
 import ToastCollection from './components/ToastCollection';
 import VersionBadge from './components/VersionBadge';
-import VersionChecker from './components/VersionChecker';
 import ChunkErrorHandler from './components/ChunkErrorHandler';
 import { getEnvironmentColors } from './utils/environment';
 
@@ -65,7 +64,6 @@ function App(props: IRoutingProps) {
             <Status />
             <ToastCollection />
             <ChunkErrorHandler />
-            <VersionChecker />
             <VersionBadge />
           </StatusContextProvider>
         </ProfileContextProvider>

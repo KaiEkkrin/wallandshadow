@@ -4,7 +4,7 @@ import { readRecentMaps, recentMaps$ } from '../services/recentMaps';
 
 export function useRecentMaps(uid: string | undefined): IMapSummary[] {
   const [maps, setMaps] = useState<IMapSummary[]>(
-    uid ? readRecentMaps(uid) : []
+    () => (uid ? readRecentMaps(uid) : [])
   );
 
   useEffect(() => {
