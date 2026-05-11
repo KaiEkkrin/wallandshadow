@@ -53,7 +53,7 @@ interface MapChangesSnapshot {
 
 // ── Reference types ──────────────────────────────────────────────────────────
 
-type RefKind = 'profile' | 'adventure' | 'player' | 'map' | 'invite' | 'images' | 'version' | 'mapBaseChange' | 'mapChanges';
+type RefKind = 'profile' | 'adventure' | 'player' | 'map' | 'invite' | 'images' | 'version';
 
 interface RefMeta {
   kind: RefKind;
@@ -61,7 +61,6 @@ interface RefMeta {
   mapId?: string;
 }
 
-const RE_MAP_CHANGES = /^adventures\/([^/]+)\/maps\/([^/]+)\/changes/;
 const RE_MAP = /^adventures\/([^/]+)\/maps\/([^/]+)$/;
 const RE_PLAYER = /^adventures\/([^/]+)\/players\/([^/]+)$/;
 
@@ -70,12 +69,6 @@ function parsePath(path: string): RefMeta {
   if (path.startsWith('version')) return { kind: 'version' };
   if (path.startsWith('images/')) return { kind: 'images' };
   if (path.startsWith('invites/')) return { kind: 'invite' };
-
-  const mapChangeMatch = RE_MAP_CHANGES.exec(path);
-  if (mapChangeMatch) {
-    const kind = path.endsWith('/changes/base') ? 'mapBaseChange' as const : 'mapChanges' as const;
-    return { kind, adventureId: mapChangeMatch[1], mapId: mapChangeMatch[2] };
-  }
 
   const mapMatch = RE_MAP.exec(path);
   if (mapMatch) return { kind: 'map', adventureId: mapMatch[1], mapId: mapMatch[2] };
@@ -414,18 +407,6 @@ export class HonoDataService implements IDataService {
         }
       }
 
-      case 'mapBaseChange': {
-        if (ref.meta.adventureId && ref.meta.mapId) {
-          try {
-            const response = await this.api.getMapChanges(ref.meta.adventureId, ref.meta.mapId);
-            if (response.base) {
-              return ref.convert(response.base as Record<string, unknown>);
-            }
-          } catch { /* return undefined */ }
-        }
-        return undefined;
-      }
-
       case 'images': {
         try {
           const response = await this.api.getImages();
@@ -436,7 +417,6 @@ export class HonoDataService implements IDataService {
       }
 
       case 'version':
-      case 'mapChanges':
         return undefined;
     }
   }
@@ -572,12 +552,6 @@ export class HonoDataService implements IDataService {
     );
   }
 
-  getMapBaseChangeRef(adventureId: string, id: string, converter: IConverter<Changes>): IDataReference<Changes> {
-    return new HonoDataReference<Changes>(
-      'base', `adventures/${adventureId}/maps/${id}/changes/base`, converter
-    );
-  }
-
   getPlayerRef(adventureId: string, uid: string): IDataReference<IPlayer> {
     return new HonoDataReference<IPlayer>(uid, `adventures/${adventureId}/players/${uid}`, passthroughConverter());
   }
@@ -640,23 +614,6 @@ export class HonoDataService implements IDataService {
       passthroughConverter(),
       playerRowToIPlayer(p, adv),
     ));
-  }
-
-  async getMapIncrementalChangesRefs(
-    adventureId: string, id: string, _limit: number, converter: IConverter<Changes>
-  ): Promise<IDataAndReference<Changes>[] | undefined> {
-    try {
-      const response = await this.api.getMapChanges(adventureId, id);
-      if (response.incremental.length === 0) return undefined;
-      return response.incremental.map(row => new HonoDataAndReference<Changes>(
-        row.id,
-        `adventures/${adventureId}/maps/${id}/changes/${row.id}`,
-        converter,
-        converter.convert(row.changes as Record<string, unknown>),
-      ));
-    } catch {
-      return undefined;
-    }
   }
 
   async getSpritesheetsBySource(

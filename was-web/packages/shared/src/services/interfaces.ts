@@ -10,7 +10,6 @@ import { IInviteExpiryPolicy } from '../data/policy';
 import { PresenceSubscription, PresenceUserState } from '../data/presence';
 import { IProfile } from '../data/profile';
 import { ISprite, ISpritesheet } from '../data/sprite';
-import { IConverter } from './converter';
 
 import { Observable } from 'rxjs';
 
@@ -86,8 +85,6 @@ export interface IDataService extends IDataView {
 
   // Gets a map.
   getMapRef(adventureId: string, id: string): IChildDataReference<IMap, IAdventure>;
-  getMapBaseChangeRef(adventureId: string, id: string, converter: IConverter<Changes>): IDataReference<Changes>;
-  getMapIncrementalChangesRefs(adventureId: string, id: string, limit: number, converter: IConverter<Changes>): Promise<IDataAndReference<Changes>[] | undefined>;
 
   // Gets all my adventures, invites, and player records.
   getMyAdventures(uid: string): Promise<IDataAndReference<IAdventure>[]>;

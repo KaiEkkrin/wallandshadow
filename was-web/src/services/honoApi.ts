@@ -63,11 +63,6 @@ export interface ImageRow {
   path: string;
 }
 
-export interface MapChangesResponse {
-  base: Record<string, unknown> | null;
-  incremental: { id: string; changes: Record<string, unknown> }[];
-}
-
 export interface SpritesheetRow {
   id: string;
   sprites: string[];
@@ -247,12 +242,6 @@ export class HonoApiClient {
 
   joinInvite(inviteId: string, policy?: IInviteExpiryPolicy): Promise<{ adventureId: string }> {
     return this.request('POST', `/api/invites/${inviteId}/join`, policy ? { policy } : {});
-  }
-
-  // ── Map changes ───────────────────────────────────────────────────────────
-
-  getMapChanges(adventureId: string, mapId: string): Promise<MapChangesResponse> {
-    return this.request('GET', `/api/adventures/${adventureId}/maps/${mapId}/changes`);
   }
 
   // ── Images ────────────────────────────────────────────────────────────────

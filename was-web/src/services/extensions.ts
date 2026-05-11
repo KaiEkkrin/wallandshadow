@@ -1,5 +1,4 @@
 import { IAdventure, IPlayer, Changes, ICharacter, IMap, summariseMap, UserLevel, IAdventureSummary, IProfile, IDataService, IDataView, IDataReference, IDataAndReference, IUser, IFunctionsService, updateProfileAdventures, updateAdventureMaps, updateProfileMaps } from '@wallandshadow/shared';
-import * as Convert from '@wallandshadow/shared';
 
 import { interval, Subject } from 'rxjs';
 import { throttle } from 'rxjs/operators';
@@ -201,48 +200,6 @@ export async function editAdventure(
   );
 }
 
-async function deleteAdventureTransaction(
-  view: IDataView,
-  profileRef: IDataReference<IProfile>,
-  adventureRef: IDataReference<IAdventure>,
-  playerRefs: IDataAndReference<IPlayer>[]
-) {
-  // Fetch the profile, which we'll want to edit (maybe)
-  const profile = await view.get(profileRef);
-  if (profile === undefined) {
-    throw Error("No profile available");
-  }
-
-  // Fetch the adventure, so I can complain if it still had maps
-  const adventure = await view.get(adventureRef);
-  if (adventure !== undefined && adventure.maps.length > 0) {
-    throw Error("An adventure with maps cannot be deleted");
-  }
-
-  // Remove that adventure from the profile, if it's there
-  if (profile.adventures !== undefined && profile.adventures.find(a => a.id === adventureRef.id) !== undefined) {
-    await view.update(profileRef, {
-      adventures: profile.adventures.filter(a => a.id !== adventureRef.id)
-    });
-  }
-
-  // Remove the adventure record itself and any player records
-  await Promise.all(playerRefs.map(p => view.delete(p)));
-  await view.delete(adventureRef);
-}
-
-export async function deleteAdventure(dataService: IDataService | undefined, uid: string | undefined, adventureId: string) {
-  if (dataService === undefined || uid === undefined) {
-    return;
-  }
-
-  const profileRef = dataService.getProfileRef(uid);
-  const adventureRef = dataService.getAdventureRef(adventureId);
-  const playerRefs = await dataService.getPlayerRefs(adventureId);
-  await dataService.runTransaction(view =>
-    deleteAdventureTransaction(view, profileRef, adventureRef, playerRefs));
-}
-
 async function editMapTransaction(
   view: IDataView,
   profileRef: IDataReference<IProfile>,
@@ -311,59 +268,6 @@ export async function editMap(
   const mapRef = dataService.getMapRef(adventureId, mapId);
   await dataService.runTransaction(view =>
     editMapTransaction(view, profileRef, adventureRef, mapRef, changed)
-  );
-}
-
-async function deleteMapTransaction(
-  view: IDataView,
-  profileRef: IDataReference<IProfile>,
-  adventureRef: IDataReference<IAdventure>,
-  mapRef: IDataReference<IMap>,
-  mapId: string
-): Promise<void> {
-  // Fetch the profile, which we'll want to edit (maybe)
-  const profile = await view.get(profileRef);
-
-  // Fetch the adventure, which we'll certainly want to edit
-  const adventure = await view.get(adventureRef);
-  if (adventure === undefined) {
-    throw Error("Adventure not found");
-  }
-
-  // Update the profile to omit this map
-  if (profile?.latestMaps?.find(m => m.id === mapId) !== undefined) {
-    const latestMaps = profile.latestMaps.filter(m => m.id !== mapId);
-    await view.update(profileRef, { latestMaps: latestMaps });
-  }
-
-  // Update the adventure record to omit this map
-  const allMaps = adventure.maps.filter(m => m.id !== mapId);
-  await view.update(adventureRef, { maps: allMaps });
-
-  // TODO: We also need to remove the sub-collection of changes.
-  // Maybe, write a Function to do this deletion instead?
-  // server-side deletion handles cascade for subcollections
-
-  // Remove the map record itself
-  await view.delete(mapRef);
-}
-
-export async function deleteMap(
-  dataService: IDataService | undefined,
-  uid: string | undefined,
-  adventureId: string,
-  mapId: string
-): Promise<void> {
-  if (dataService === undefined || uid === undefined) {
-    return;
-  }
-
-  const profileRef = dataService.getProfileRef(uid);
-  const adventureRef = dataService.getAdventureRef(adventureId);
-  const mapRef = dataService.getMapRef(adventureId, mapId);
-
-  await dataService.runTransaction(view =>
-    deleteMapTransaction(view, profileRef, adventureRef, mapRef, mapId)
   );
 }
 
@@ -517,35 +421,6 @@ export async function removeMapFromRecent(
   await dataService.runTransaction(
     view => removeMapFromRecentTransaction(view, profileRef, id)
   );
-}
-
-// A simple helper to fetch all map changes instantaneously -- useful for testing; the
-// live application should probably be watching changes instead
-export async function getAllMapChanges(
-  dataService: IDataService | undefined,
-  adventureId: string,
-  mapId: string,
-  limit: number
-) {
-  if (dataService === undefined) {
-    return;
-  }
-
-  const converter = Convert.createChangesConverter();
-  const baseChangeRef = dataService.getMapBaseChangeRef(adventureId, mapId, converter);
-  const baseChange = await dataService.get(baseChangeRef);
-  const incrementalChanges = await dataService.getMapIncrementalChangesRefs(adventureId, mapId, limit, converter);
-
-  const changes = [];
-  if (baseChange !== undefined) {
-    changes.push(baseChange);
-  }
-
-  if (incrementalChanges !== undefined) {
-    changes.push(...incrementalChanges.map(c => c.convert(c.data)));
-  }
-
-  return changes;
 }
 
 async function editCharacterTransaction(
