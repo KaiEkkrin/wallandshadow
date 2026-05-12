@@ -362,6 +362,49 @@ describe('server integration tests', () => {
       expect(joinRes2.status).toBe(200);
     });
 
+    test('player cap is enforced under concurrent joins', async () => {
+      // Standard-user policy caps a single adventure at 8 allowed players
+      // (see packages/shared/src/data/policy.ts). The owner occupies one slot,
+      // so at most 7 joiners should succeed. With READ COMMITTED isolation and
+      // no row lock on the parent adventure, concurrent count-then-insert
+      // transactions can both pass the cap check and both insert — overshooting
+      // the cap. The fix takes a FOR UPDATE lock on the adventures row inside
+      // joinAdventure() so concurrent joiners serialise per adventure.
+      const cap = 8;
+      const owner = await registerUser(app, 'Owner');
+      const a1Id = await createAdventure(owner.token);
+
+      // Register cap users and have them all attempt to join in parallel.
+      // (Sequential registration keeps the user_counter / email collisions
+      // predictable; only the joins need to be concurrent.)
+      const joiners: { token: string; uid: string }[] = [];
+      for (let i = 0; i < cap; i++) {
+        joiners.push(await registerUser(app, `Joiner ${i}`));
+      }
+
+      const inviteRes = await apiPost(app, `/api/adventures/${a1Id}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+
+      // Fire all joins in parallel — this is the actual probe for the race.
+      const results = await Promise.all(
+        joiners.map(j => apiPost(app, `/api/invites/${inviteId}/join`, {}, j.token)),
+      );
+      const statuses = results.map(r => r.status);
+
+      // Owner takes one of the 8 slots, so cap - 1 joiners may succeed and
+      // the remainder must be denied with the cap error.
+      const successes = statuses.filter(s => s === 200).length;
+      const denials = statuses.filter(s => s === 403).length;
+      expect(successes).toBe(cap - 1);
+      expect(denials).toBe(statuses.length - (cap - 1));
+
+      // Database state must agree: exactly `cap` allowed players in total
+      // (owner + cap - 1 joiners).
+      const playersRes = await apiGet(app, `/api/adventures/${a1Id}/players`, owner.token);
+      const players = (await playersRes.json()) as { allowed: boolean }[];
+      expect(players.filter(p => p.allowed).length).toBe(cap);
+    });
+
     test('invites expire', async () => {
       const owner = await registerUser(app, 'Owner');
       const user1 = await registerUser(app, 'User 1');

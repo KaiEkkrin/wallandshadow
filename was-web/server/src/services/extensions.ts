@@ -768,9 +768,10 @@ export async function joinAdventure(
   const adventureId = invite.adventureId;
 
   const joinedAdventureId = await db.transaction(async (tx) => {
-    // Get adventure owner's policy for player cap
+    // FOR UPDATE serialises concurrent joins to this adventure: without it,
+    // two joiners can both pass the cap check at READ COMMITTED and both insert.
     const [adventure] = await tx.select({ ownerId: adventures.ownerId, name: adventures.name })
-      .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
+      .from(adventures).where(eq(adventures.id, adventureId)).for('update').limit(1);
     if (!adventure) {
       throwApiError('not-found', 'No such adventure');
     }
