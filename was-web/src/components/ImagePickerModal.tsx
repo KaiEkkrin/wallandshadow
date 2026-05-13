@@ -55,6 +55,8 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
     }
   }, [show, setStatus]);
 
+  const [images, setImages] = useState<IImage[]>([]);
+
   // File uploads
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,8 +72,12 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
     setStatus({ message: `Uploading ${file.name}...` });
     const doUpload = async () => {
       try {
-        await api.uploadImage(file, file.name);
-        setStatus({ message: `Processing ${file.name}...` }); // will be replaced when the onUpload function finishes
+        const uploaded = await api.uploadImage(file, file.name);
+        // Prepend: the listImages endpoint orders newest-first, and the
+        // effect that watches `images` resets the carousel to index 0 to
+        // surface the latest upload.
+        setImages(prev => [uploaded, ...prev]);
+        setStatus({ message: "" });
       }
       catch (e: unknown) {
         setStatus({ message: `Upload failed: ${e instanceof Error ? e.message : String(e)}`, isError: true });
@@ -81,12 +87,12 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
 
     const sub = from(doUpload()).subscribe();
     return () => sub.unsubscribe();
-  }, [setStatus, api, user]);
+  }, [setStatus, setImages, api, user]);
 
-  const [images, setImages] = useState<IImage[]>([]);
   useEffect(() => {
     // Refetch the image list each time the modal opens; images change
     // infrequently and we don't have a live update channel for them.
+    // Within an open session, upload/delete update `images` locally.
     if (!api || !user || !show) {
       return undefined;
     }
@@ -97,11 +103,14 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
       .then(list => {
         if (cancelled) return;
         setImages(list);
-        setImageCount(list.length);
       })
       .catch(e => logError("Error listing images", e));
     return () => { cancelled = true; };
-  }, [setImageCount, setImages, api, user, show]);
+  }, [setImages, api, user, show]);
+
+  useEffect(() => {
+    setImageCount(images.length);
+  }, [images, setImageCount]);
 
   const [index, setIndex] = useReducer(
     (state: number, action: number) => action === 0 ? 0 : state + action,
@@ -141,6 +150,15 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
 
   const saveDisabled = useMemo(() => shownIndex === undefined, [shownIndex]);
 
+  const doHandleDelete = useCallback(() => {
+    // Optimistically drop the active image from the local list so the picker
+    // updates immediately. The parent triggers the actual server delete via
+    // handleDelete (typically behind a confirmation modal). If the user
+    // cancels, they can close and reopen the picker to refetch.
+    setImages(prev => shownIndex === undefined ? prev : prev.filter((_, i) => i !== shownIndex));
+    handleDelete();
+  }, [handleDelete, setImages, shownIndex]);
+
   return (
     <Fragment>
       <Form>
@@ -166,7 +184,7 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
         >
           <FontAwesomeIcon icon={faChevronRight} color="white" />
         </Button>
-        <Button variant="danger" disabled={saveDisabled} onClick={handleDelete}
+        <Button variant="danger" disabled={saveDisabled} onClick={doHandleDelete}
           style={{ gridRow: '3', gridColumn: '3', width: '2.5rem' }}
         >
           <FontAwesomeIcon icon={faTimes} color="white" />
