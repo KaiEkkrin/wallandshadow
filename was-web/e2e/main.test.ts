@@ -52,14 +52,14 @@ test.describe('Basic tests', () => {
     // Sign up a new user
     const user = await Util.signUp(page, deviceName);
 
-    // I should now see my new user name appear in the nav bar.
+    // The navbar shows the display name on a button that opens the profile modal.
     await Util.ensureNavbarExpanded(page, deviceName);
-    await expect(page.locator(`.dropdown >> text=${user.displayName}`)).toBeVisible();
+    const profileButton = page.locator(`button:has-text("${user.displayName}")`);
+    await expect(profileButton).toBeVisible();
 
-    // Click the navbar dropdown
-    await page.click(`.dropdown >> text=${user.displayName}`);
+    // Open the profile modal by clicking the display-name button
+    await profileButton.click();
     await Util.takeScreenshot(page, browserName, deviceName, 'create-account-navbar-dropdown');
-    await page.click('text="Profile"');
 
     // Change the display name
     expect(await page.getAttribute('[id=nameInput]', 'value')).toBe(user.displayName);
@@ -68,10 +68,10 @@ test.describe('Basic tests', () => {
     await page.click('text="Save profile"');
 
     // This should have edited the name in the nav bar
-    await expect(page.locator(`.dropdown >> text=Re-test ${user.number}`)).toBeVisible();
+    await expect(page.locator(`button:has-text("Re-test ${user.number}")`)).toBeVisible();
 
     // If we log out, we should get `Sign up/Login` back:
-    await page.click('text="Log out"');
+    await page.click('button:has-text("Log out")');
     await Util.ensureNavbarExpanded(page, deviceName);
     await expect(page.locator('.nav-link >> text="Sign up/Login"')).toBeVisible();
 
@@ -79,7 +79,7 @@ test.describe('Basic tests', () => {
     const editedName = `Re-test ${user.number}`;
     await Util.signIn(page, user, deviceName);
     await Util.ensureNavbarExpanded(page, deviceName);
-    await expect(page.locator(`.dropdown >> text=${editedName}`)).toBeVisible();
+    await expect(page.locator(`button:has-text("${editedName}")`)).toBeVisible();
   });
 
   test.describe('Two-context tests', () => {
@@ -165,7 +165,8 @@ test.describe('Basic tests', () => {
 
           // Wait for either the map to render or a WebGL error
           const throbberGone = expect(page2.locator('.Throbber-container')).not.toBeVisible({ timeout: 30000 });
-          const errorToast = page2.locator('.toast-header:has-text("Error loading map")');
+          // Multiple WebGL error toasts can stack; first() avoids strict-mode violation.
+          const errorToast = page2.locator('.toast-header:has-text("Error loading map")').first();
           const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
 
           const which = await Promise.race([

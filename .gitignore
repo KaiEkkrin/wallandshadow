@@ -14,3 +14,6 @@ ansible/secrets/
 /.usercache/.pki
 /.usercache/.yarn
 /.usercache/.yarnrc
+
+# misc stuff
+*.log
