@@ -24,18 +24,28 @@ async function createMontage(
   sources: string[],
   geometry: string,
   newSheetId: string,
-): Promise<IStorageReference> {
+): Promise<{ ref: IStorageReference; effectiveSources: string[] }> {
   const tmp = os.tmpdir();
   const tmpPaths: string[] = [];
   try {
     logger.logInfo('downloading: ' + sources);
-    const downloaded = await Promise.all(sources.map(async s => {
+    // A missing source (e.g. the uploader was deleted and their image was
+    // cleaned up before the spritesheet was repaired) must not blow up the
+    // whole montage — leave the slot empty and let the gap propagate to the
+    // new sheet's sprites row so the sheet self-heals.
+    const downloaded = await Promise.all(sources.map(async (s, i) => {
       if (s === '') return null;
       const tmpPath = path.join(tmp, uuidv7());
-      await storage.ref(s).download(tmpPath);
-      tmpPaths.push(tmpPath);
-      return tmpPath;
+      try {
+        await storage.ref(s).download(tmpPath);
+        tmpPaths.push(tmpPath);
+        return tmpPath;
+      } catch (e) {
+        logger.logWarning(`Skipping missing sprite source at slot ${i}: ${s}`, e);
+        return null;
+      }
     }));
+    const effectiveSources = sources.map((s, i) => downloaded[i] === null ? '' : s);
 
     const { columns, rows } = fromSpriteGeometryString(geometry);
     const tileWidth = Math.floor(1024 / columns);
@@ -67,7 +77,7 @@ async function createMontage(
     logger.logInfo(`uploading: ${spritePath}`);
     const sheetRef = storage.ref(spritePath);
     await sheetRef.upload(tmpSheetPath, { contentType: 'image/png' });
-    return sheetRef;
+    return { ref: sheetRef, effectiveSources };
   } finally {
     await Promise.all(
       tmpPaths.map(p => fs.unlink(p).catch(() => {})),
@@ -183,19 +193,23 @@ async function writeNewSpritesheets(
   allocated: AllocatedSprites[],
   geometry: string,
   adventureId: string,
-): Promise<void> {
+): Promise<AllocatedSprites[]> {
   try {
-    await Promise.all(allocated.map(a => createMontage(storage, logger, a.sources, geometry, a.newSheetId)));
+    const montaged = await Promise.all(allocated.map(async a => {
+      const m = await createMontage(storage, logger, a.sources, geometry, a.newSheetId);
+      return { ...a, sources: m.effectiveSources };
+    }));
 
     const toDelete: string[] = [];
     await db.transaction(async (tx) => {
       const sg = fromSpriteGeometryString(geometry);
 
-      for (const a of allocated) {
+      for (const a of montaged) {
+        const usedSlots = a.sources.filter(s => s !== '').length;
         const newSheet: ISpritesheet = {
           sprites: a.sources,
           geometry,
-          freeSpaces: sg.columns * sg.rows - a.sources.length,
+          freeSpaces: sg.columns * sg.rows - usedSlots,
           date: Date.now(),
           supersededBy: '',
           refs: 0,
@@ -229,6 +243,7 @@ async function writeNewSpritesheets(
     });
 
     await Promise.all(toDelete.map(i => storage.ref(getSpritePathFromId(i)).delete()));
+    return montaged;
   } catch (e) {
     // Roll back refs increment on failure
     await db.transaction(async (tx) => {
@@ -281,15 +296,15 @@ export async function addSprites(
 
   logger.logInfo(`found ${found.length}, missing ${missing.length}`);
   const allocated = await allocateNewSpritesToSheets(db, logger, adventureId, geometry, missing);
-  await writeNewSpritesheets(db, storage, logger, allocated, geometry, adventureId);
+  const written = await writeNewSpritesheets(db, storage, logger, allocated, geometry, adventureId);
 
-  for (const a of allocated) {
-    found.push(...a.sources.map((s, i) => ({
+  for (const a of written) {
+    found.push(...a.sources.flatMap((s, i) => s === '' ? [] : [{
       source: s,
       geometry,
       id: a.newSheetId,
       position: i,
-    })));
+    }]));
   }
 
   await notifySafe(notifyAdventureSpritesheets(adventureId));

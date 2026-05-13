@@ -9,8 +9,9 @@ import {
 import { ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { createApp } from '../app.js';
 import { db } from '../db/connection.js';
-import { images } from '../db/schema.js';
+import { images, spritesheets } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
+import { storage } from '../services/storage.js';
 import {
   registerUser,
   apiGet,
@@ -567,4 +568,138 @@ describe('sprite reference cleanup on image deletion', () => {
     const afterToken = afterBase!.chs.find(ch => ch.cat === ChangeCategory.Token) as TokenAdd;
     expect(afterToken.feature.id).toBe('plain-token');
   }, 30000);
+});
+
+// ─── S3 batch delete (Storage.deleteMany) ──────────────────────────────────────
+
+describe('Storage.deleteMany', () => {
+  test('removes multiple existing objects in one call', async () => {
+    const { token } = await registerUser(app);
+    const a = await uploadImage(token, 'A');
+    const b = await uploadImage(token, 'B');
+    expect(await s3ObjectExists(a.path)).toBe(true);
+    expect(await s3ObjectExists(b.path)).toBe(true);
+
+    const { failed } = await storage.deleteMany([a.path, b.path]);
+
+    expect(failed).toEqual([]);
+    expect(await s3ObjectExists(a.path)).toBe(false);
+    expect(await s3ObjectExists(b.path)).toBe(false);
+  });
+
+  test('is idempotent: re-running with the same list succeeds', async () => {
+    // The user's stated requirement: if a deletion fails part way through, a
+    // second attempt with the same path list must succeed. S3 DELETE returns
+    // success for missing keys, so the second pass is a no-op.
+    const { token } = await registerUser(app);
+    const a = await uploadImage(token, 'A');
+    const b = await uploadImage(token, 'B');
+
+    const first = await storage.deleteMany([a.path, b.path]);
+    expect(first.failed).toEqual([]);
+
+    const second = await storage.deleteMany([a.path, b.path]);
+    expect(second.failed).toEqual([]);
+    expect(await s3ObjectExists(a.path)).toBe(false);
+    expect(await s3ObjectExists(b.path)).toBe(false);
+  });
+
+  test('tolerates a mix of present and never-existed keys', async () => {
+    const { token, uid } = await registerUser(app);
+    const real = await uploadImage(token, 'Real');
+    const phantom = `images/${uid}/never-existed`;
+
+    const { failed } = await storage.deleteMany([real.path, phantom]);
+
+    expect(failed).toEqual([]);
+    expect(await s3ObjectExists(real.path)).toBe(false);
+  });
+
+  test('empty input is a no-op', async () => {
+    const { failed } = await storage.deleteMany([]);
+    expect(failed).toEqual([]);
+  });
+});
+
+// ─── S3 cleanup on adventure deletion ──────────────────────────────────────────
+
+describe('adventure deletion cleans up spritesheet PNGs', () => {
+  test('DELETE /api/adventures/:id removes spritesheet objects but leaves user images', async () => {
+    const { token, uid } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const img1 = await uploadImage(token, 'Sprite 1');
+    const img2 = await uploadImage(token, 'Sprite 2');
+
+    // Create a spritesheet so there's a sprites/ object to clean up
+    const sheetRes = await apiPost(app, `/api/adventures/${adventureId}/spritesheets`, {
+      geometry: '2x1',
+      sources: [img1.path, img2.path],
+    }, token);
+    expect(sheetRes.status).toBe(200);
+    expect(await s3PrefixCount('sprites/')).toBeGreaterThan(0);
+
+    const sheetRows = await db.select({ id: spritesheets.id })
+      .from(spritesheets).where(eq(spritesheets.adventureId, adventureId));
+    expect(sheetRows.length).toBeGreaterThan(0);
+
+    // Delete the adventure
+    const delRes = await apiDelete(app, `/api/adventures/${adventureId}`, token);
+    expect(delRes.status).toBe(204);
+
+    // Spritesheet rows are gone (CASCADE) and the PNGs are gone from S3
+    const sheetRowsAfter = await db.select({ id: spritesheets.id })
+      .from(spritesheets).where(eq(spritesheets.adventureId, adventureId));
+    expect(sheetRowsAfter).toHaveLength(0);
+    expect(await s3PrefixCount('sprites/')).toBe(0);
+
+    // The user's images are still around — they belong to the user, not the adventure
+    expect(await s3ObjectExists(img1.path)).toBe(true);
+    expect(await s3ObjectExists(img2.path)).toBe(true);
+    const imageRows = await db.select({ id: images.id })
+      .from(images).where(eq(images.userId, uid));
+    expect(imageRows).toHaveLength(2);
+  }, 60000);
+
+  test('adventure with no spritesheet deletes cleanly', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+
+    const delRes = await apiDelete(app, `/api/adventures/${adventureId}`, token);
+    expect(delRes.status).toBe(204);
+  });
+});
+
+// ─── S3 cleanup on user deletion ───────────────────────────────────────────────
+
+describe('user deletion cleans up images and spritesheets', () => {
+  test('DELETE /api/auth/me removes the user\'s images AND their adventures\' spritesheets', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const img1 = await uploadImage(token, 'Sprite 1');
+    const img2 = await uploadImage(token, 'Sprite 2');
+
+    const sheetRes = await apiPost(app, `/api/adventures/${adventureId}/spritesheets`, {
+      geometry: '2x1',
+      sources: [img1.path, img2.path],
+    }, token);
+    expect(sheetRes.status).toBe(200);
+
+    expect(await s3PrefixCount('images/')).toBeGreaterThan(0);
+    expect(await s3PrefixCount('sprites/')).toBeGreaterThan(0);
+
+    // Delete the user account
+    const delRes = await apiDelete(app, '/api/auth/me', token);
+    expect(delRes.status).toBe(200);
+
+    // Both prefixes are empty
+    expect(await s3PrefixCount('images/')).toBe(0);
+    expect(await s3PrefixCount('sprites/')).toBe(0);
+  }, 60000);
+
+  test('user with no images and no adventures deletes cleanly', async () => {
+    const { token } = await registerUser(app);
+
+    const delRes = await apiDelete(app, '/api/auth/me', token);
+    expect(delRes.status).toBe(200);
+  });
 });

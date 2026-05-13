@@ -82,6 +82,12 @@ export interface ISpriteManager {
 export interface IStorage {
   // Gets a reference to this path.
   ref(path: string): IStorageReference;
+
+  // Best-effort batch delete. Idempotent: keys that don't exist are treated as
+  // success, so re-running with the same list after a partial failure
+  // completes the cleanup. Per-key S3 errors are returned in `failed`; only
+  // transport-level errors throw.
+  deleteMany(paths: string[]): Promise<{ failed: { path: string; message: string }[] }>;
 }
 
 export interface IStorageReference {

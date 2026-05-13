@@ -32,6 +32,7 @@ import {
   ICharacter,
   IStorage,
   ILogger,
+  getSpritePathFromId,
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
@@ -41,6 +42,7 @@ import {
   notifyAdventuresUsers,
   notifyAdventurePlayers,
   notifyAdventureDetail,
+  notifyAdventureSpritesheets,
   notifySafe,
 } from '../ws/notify.js';
 import {
@@ -51,6 +53,7 @@ import {
   mapImages,
   images,
   invites,
+  spritesheets,
   users,
 } from '../db/schema.js';
 import { eq, and, count, sql, inArray, gt } from 'drizzle-orm';
@@ -190,6 +193,29 @@ export async function assertAdventureOwner(db: Db, uid: string, adventureId: str
   throwApiError('not-found', 'Adventure not found');
 }
 
+// ─── S3 cleanup helper ───────────────────────────────────────────────────────
+
+// Best-effort batch delete of S3 objects after a successful DB delete. Failures
+// are logged at warning level and never thrown — an orphaned S3 object is
+// preferable to rolling back a committed DB delete. The underlying
+// storage.deleteMany call is idempotent (S3 DELETE succeeds for missing keys),
+// so it is safe to re-run with the same path list if an attempt is interrupted.
+async function bestEffortDeleteS3(
+  storage: IStorage,
+  logger: ILogger,
+  paths: string[],
+  context: string,
+): Promise<void> {
+  try {
+    const { failed } = await storage.deleteMany(paths);
+    for (const f of failed) {
+      logger.logWarning(`Failed to delete S3 object ${f.path} during ${context}: ${f.message}`);
+    }
+  } catch (e) {
+    logger.logWarning(`S3 batch delete threw during ${context} (paths: ${paths.length})`, e);
+  }
+}
+
 // ─── Adventure ───────────────────────────────────────────────────────────────
 
 export async function createAdventure(
@@ -231,7 +257,13 @@ export async function createAdventure(
   return id;
 }
 
-export async function deleteAdventure(db: Db, uid: string, adventureId: string): Promise<void> {
+export async function deleteAdventure(
+  db: Db,
+  storage: IStorage,
+  logger: ILogger,
+  uid: string,
+  adventureId: string,
+): Promise<void> {
   const [adventure] = await db.select({ ownerId: adventures.ownerId })
     .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
 
@@ -242,13 +274,27 @@ export async function deleteAdventure(db: Db, uid: string, adventureId: string):
     throwApiError('not-found', 'Adventure not found');
   }
 
-  // Capture members now so we can notify them after CASCADE wipes the rows.
-  const memberRows = await db.select({ userId: adventurePlayers.userId })
-    .from(adventurePlayers)
-    .where(eq(adventurePlayers.adventureId, adventureId));
+  // Capture members + spritesheet ids now: CASCADE wipes the rows, so we need
+  // their identities before the delete to notify members and clean up the
+  // spritesheet PNGs in S3.
+  const [memberRows, sheetRows] = await Promise.all([
+    db.select({ userId: adventurePlayers.userId })
+      .from(adventurePlayers)
+      .where(eq(adventurePlayers.adventureId, adventureId)),
+    db.select({ id: spritesheets.id })
+      .from(spritesheets)
+      .where(eq(spritesheets.adventureId, adventureId)),
+  ]);
 
   // CASCADE handles maps, map_changes, adventure_players, spritesheets, invites
   await db.delete(adventures).where(eq(adventures.id, adventureId));
+
+  await bestEffortDeleteS3(
+    storage,
+    logger,
+    sheetRows.map(r => getSpritePathFromId(r.id)),
+    'adventure delete',
+  );
 
   await notifySafe(notifyAdventuresUsers(memberRows.map(r => r.userId)));
 }
@@ -262,10 +308,16 @@ export async function deleteUser(
   uid: string,
 ): Promise<void> {
   // Pre-transaction snapshots: we need recipient ids and S3 paths after the
-  // rows are gone, so capture them before the DELETE runs.
-  const [imageRows, coMemberRows, otherAdventureRows] = await Promise.all([
+  // rows are gone, so capture them before the DELETE runs. Spritesheets are
+  // captured so we can clean up their PNGs after CASCADE wipes the rows when
+  // the user's adventures are deleted.
+  const [imageRows, sheetRows, coMemberRows, otherAdventureRows] = await Promise.all([
     db.select({ path: images.path })
       .from(images).where(eq(images.userId, uid)),
+    db.select({ id: spritesheets.id })
+      .from(spritesheets)
+      .innerJoin(adventures, eq(adventures.id, spritesheets.adventureId))
+      .where(eq(adventures.ownerId, uid)),
     db.select({ userId: adventurePlayers.userId })
       .from(adventurePlayers)
       .innerJoin(adventures, eq(adventures.id, adventurePlayers.adventureId))
@@ -274,30 +326,60 @@ export async function deleteUser(
       .from(adventurePlayers).where(eq(adventurePlayers.userId, uid)),
   ]);
   const imagePaths = imageRows.map(r => r.path);
+  const sheetPaths = sheetRows.map(r => getSpritePathFromId(r.id));
   const coMemberIds = Array.from(new Set(coMemberRows.map(r => r.userId)));
   const otherAdventureIds = otherAdventureRows.map(r => r.adventureId);
 
+  const affectedSheetAdventureIds = new Set<string>();
   await db.transaction(async (tx) => {
     await tx.delete(adventures).where(eq(adventures.ownerId, uid));
     await tx.delete(adventurePlayers).where(eq(adventurePlayers.userId, uid));
     await tx.delete(invites).where(eq(invites.ownerId, uid));
+    // Scrub stale references to this user's images from other adventures the
+    // user was a member of. Without this, spritesheets, map_images, and map
+    // backgrounds in those adventures keep pointing at paths whose S3 objects
+    // and images rows are about to vanish — extending a spritesheet that holds
+    // such a reference then 500s when createMontage tries to download it.
+    if (imagePaths.length > 0) {
+      await tx.update(adventures).set({ imagePath: '' })
+        .where(inArray(adventures.imagePath, imagePaths));
+      await tx.update(maps).set({ imagePath: '' })
+        .where(inArray(maps.imagePath, imagePaths));
+      await tx.delete(mapImages).where(inArray(mapImages.path, imagePaths));
+
+      for (const path of imagePaths) {
+        const rows = await tx.select({
+          id: spritesheets.id,
+          adventureId: spritesheets.adventureId,
+          sprites: spritesheets.sprites,
+          freeSpaces: spritesheets.freeSpaces,
+        })
+          .from(spritesheets)
+          .where(sql`${spritesheets.sprites}::jsonb @> ${JSON.stringify([path])}::jsonb`);
+
+        for (const row of rows) {
+          const sprites = row.sprites as string[];
+          const newSprites = sprites.map(s => s === path ? '' : s);
+          const freed = sprites.filter(s => s === path).length;
+          await tx.update(spritesheets)
+            .set({ sprites: newSprites as unknown as object, freeSpaces: row.freeSpaces + freed })
+            .where(eq(spritesheets.id, row.id));
+          affectedSheetAdventureIds.add(row.adventureId);
+        }
+      }
+    }
     // NULL preserves the change row + history while releasing the FK so the
     // user can be deleted.
     await tx.update(mapChanges).set({ userId: null }).where(eq(mapChanges.userId, uid));
     await tx.delete(users).where(eq(users.id, uid));
   });
 
-  // Best-effort: orphaned S3 objects are tolerable, a failed DELETE here must
-  // not undo the committed DB deletion.
-  await Promise.allSettled(imagePaths.map(path =>
-    storage.ref(path).delete().catch(e => {
-      logger.logWarning(`Failed to delete S3 object ${path} during user delete`, e);
-    }),
-  ));
+  await bestEffortDeleteS3(storage, logger, [...imagePaths, ...sheetPaths], 'user delete');
 
   await notifySafe(
     notifyAdventuresUsers(coMemberIds),
     ...otherAdventureIds.map(id => notifyAdventurePlayers(id)),
+    ...Array.from(affectedSheetAdventureIds).map(id => notifyAdventureSpritesheets(id)),
   );
 }
 
@@ -591,7 +673,10 @@ export async function deleteMap(db: Db, uid: string, adventureId: string, mapId:
     throwApiError('not-found', 'Adventure not found');
   }
 
-  // CASCADE handles map_changes
+  // CASCADE handles map_changes and map_images. No S3 cleanup here: every
+  // image referenced by a map (background, placed images, token sprites) is a
+  // user-owned object in the images table that survives the map and is only
+  // collected when the user is deleted.
   await db.delete(maps).where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)));
 
   await notifySafe(notifyAdventureDetail(adventureId));
