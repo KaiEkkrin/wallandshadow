@@ -25,6 +25,9 @@ import {
   Tokens,
   SimpleTokenDrawing,
   createChangesConverter,
+  createTokenAdd,
+  createTokenRemove,
+  IUserPolicy,
   UserLevel,
   ICharacter,
 } from '@wallandshadow/shared';
@@ -52,6 +55,22 @@ import { v7 as uuidv7 } from 'uuid';
 import dayjs from 'dayjs';
 
 // ─── Shared query helpers ────────────────────────────────────────────────────
+
+function buildMapChangeTracker(m: IMap, ownerPolicy: IUserPolicy | undefined) {
+  const tokens = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
+  const outlineTokens = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
+  const tracker = new SimpleChangeTracker(
+    new FeatureDictionary<GridCoord, StripedArea>(coordString),
+    new FeatureDictionary<GridCoord, StripedArea>(coordString),
+    tokens,
+    outlineTokens,
+    new FeatureDictionary<GridEdge, IFeature<GridEdge>>(edgeString),
+    new FeatureDictionary<GridCoord, IAnnotation>(coordString),
+    new IdDictionary<IMapImage>(),
+    ownerPolicy,
+  );
+  return { tracker, tokens };
+}
 
 /** Fetch base and incremental map changes in parallel. */
 export async function fetchMapChanges(db: Db, mapId: string) {
@@ -87,6 +106,7 @@ function extractImagePaths(chs: Change[]): string[] {
 
 // Accept both the top-level Db and a transaction scope.
 type DbOrTx = Pick<Db, 'insert' | 'delete'>;
+type MapChangesTx = Pick<Db, 'insert' | 'delete' | 'select' | 'execute'>;
 
 async function syncMapImagesFromChanges(
   tx: DbOrTx,
@@ -416,24 +436,11 @@ async function tryConsolidateMapChanges(
       return { baseChange, isNew: false };
     }
 
-    // Look up owner policy for object cap
     const [user] = await tx.select({ level: users.level })
       .from(users).where(eq(users.id, m.owner)).limit(1);
     const ownerPolicy = getUserPolicy((user?.level ?? 'standard') as UserLevel);
 
-    // Replay all changes through SimpleChangeTracker
-    const tokenDict = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
-    const outlineTokenDict = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
-    const tracker = new SimpleChangeTracker(
-      new FeatureDictionary<GridCoord, StripedArea>(coordString),
-      new FeatureDictionary<GridCoord, StripedArea>(coordString),
-      tokenDict,
-      outlineTokenDict,
-      new FeatureDictionary<GridEdge, IFeature<GridEdge>>(edgeString),
-      new FeatureDictionary<GridCoord, IAnnotation>(coordString),
-      new IdDictionary<IMapImage>(),
-      ownerPolicy,
-    );
+    const { tracker, tokens: tokenDict } = buildMapChangeTracker(m, ownerPolicy);
 
     if (baseChange !== undefined) {
       trackChanges(m, tracker, baseChange.chs, baseChange.user);
@@ -679,6 +686,62 @@ export async function leaveAdventure(db: Db, uid: string, adventureId: string): 
 
 // ─── Map changes ─────────────────────────────────────────────────────────────
 
+/**
+ * Caller is responsible for auth/map-existence checks and for firing
+ * notifyMapChange after commit (the lock is shared so it ordering relative
+ * to consolidation's exclusive lock is preserved, but commit must finish
+ * before clients are notified).
+ */
+export async function insertMapChangesInTx(
+  tx: MapChangesTx,
+  uid: string,
+  mapId: string,
+  chs: Change[],
+  idempotencyKey?: string,
+): Promise<{ id: string; seq: string }> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(hashtext(${mapId}))`);
+
+  const changesDoc: Changes = {
+    chs,
+    incremental: true,
+    user: uid,
+    resync: false,
+  };
+
+  const id = uuidv7();
+  const values = {
+    id,
+    mapId,
+    changes: changesDoc as unknown as object,
+    isBase: false as const,
+    resync: false as const,
+    userId: uid,
+    ...(idempotencyKey ? { idempotencyKey } : {}),
+  };
+
+  let returning: { id: string; seq: bigint }[] = await tx.insert(mapChanges)
+    .values(values)
+    .onConflictDoNothing()
+    .returning({ id: mapChanges.id, seq: mapChanges.seq });
+
+  if (returning.length === 0 && idempotencyKey) {
+    // Duplicate submission: fetch the existing row by idempotency key.
+    returning = await tx.select({ id: mapChanges.id, seq: mapChanges.seq })
+      .from(mapChanges)
+      .where(eq(mapChanges.idempotencyKey, idempotencyKey))
+      .limit(1);
+  }
+
+  const row = returning[0];
+  if (!row) throwApiError('internal', 'Failed to insert map change');
+
+  // Record any new placed-image paths so other adventure members can
+  // download them. Orphans are reconciled at consolidation time.
+  await syncMapImagesFromChanges(tx, mapId, chs);
+
+  return { id: row.id, seq: row.seq.toString() };
+}
+
 export async function addMapChanges(
   db: Db,
   uid: string,
@@ -697,55 +760,88 @@ export async function addMapChanges(
     throwApiError('not-found', 'Map not found');
   }
 
-  const changesDoc: Changes = {
-    chs,
-    incremental: true,
-    user: uid,
-    resync: false,
-  };
-
-  const result = await db.transaction(async (tx) => {
-    // Shared advisory lock: compatible with other writes, but blocks if an
-    // exclusive consolidation lock is held. Ensures all incrementals get a
-    // seq higher than the base row written at the end of consolidation.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(hashtext(${mapId}))`);
-
-    const id = uuidv7();
-    const values = {
-      id,
-      mapId,
-      changes: changesDoc as unknown as object,
-      isBase: false as const,
-      resync: false as const,
-      userId: uid,
-      ...(idempotencyKey ? { idempotencyKey } : {}),
-    };
-
-    let returning: { id: string; seq: bigint }[] = await tx.insert(mapChanges)
-      .values(values)
-      .onConflictDoNothing()
-      .returning({ id: mapChanges.id, seq: mapChanges.seq });
-
-    if (returning.length === 0 && idempotencyKey) {
-      // Duplicate submission: fetch the existing row by idempotency key.
-      returning = await tx.select({ id: mapChanges.id, seq: mapChanges.seq })
-        .from(mapChanges)
-        .where(eq(mapChanges.idempotencyKey, idempotencyKey))
-        .limit(1);
-    }
-
-    const row = returning[0];
-    if (!row) throwApiError('internal', 'Failed to insert map change');
-
-    // Record any new placed-image paths so other adventure members can
-    // download them. Orphans are reconciled at consolidation time.
-    await syncMapImagesFromChanges(tx, mapId, chs);
-
-    return { id: row.id, seq: row.seq.toString() };
-  });
+  const result = await db.transaction(async (tx) =>
+    insertMapChangesInTx(tx, uid, mapId, chs, idempotencyKey),
+  );
 
   await notifySafe(notifyMapChange(mapId, result.id, result.seq));
   return result;
+}
+
+/**
+ * The cleanup batch is attributed to the adventure owner so the change
+ * tracker's permission checks accept it (a player not on this map may
+ * have authored the original TokenAdd). Uses only the shared advisory
+ * lock: a concurrent TokenMove between read and write may make the
+ * cleanup batch fail to apply during the next consolidation — an accepted
+ * race for what is otherwise an interactive operation.
+ */
+export async function scrubMapSpriteReferences(
+  tx: MapChangesTx,
+  mapId: string,
+  spritePath: string,
+): Promise<{ id: string; seq: string } | undefined> {
+  const [row] = await tx.select({
+    name: maps.name,
+    description: maps.description,
+    ty: maps.ty,
+    ffa: maps.ffa,
+    enableGroupVision: maps.enableGroupVision,
+    imagePath: maps.imagePath,
+    adventureName: adventures.name,
+    ownerId: adventures.ownerId,
+  })
+    .from(maps)
+    .innerJoin(adventures, eq(adventures.id, maps.adventureId))
+    .where(eq(maps.id, mapId))
+    .limit(1);
+  if (!row) return undefined;
+
+  const m: IMap = {
+    adventureName: row.adventureName,
+    name: row.name,
+    description: row.description,
+    owner: row.ownerId,
+    ty: row.ty as MapType,
+    ffa: row.ffa,
+    enableGroupVision: row.enableGroupVision,
+    imagePath: row.imagePath,
+  };
+
+  const [baseRow] = await tx.select({ changes: mapChanges.changes })
+    .from(mapChanges)
+    .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, true)))
+    .limit(1);
+  const incRows = await tx.select({ changes: mapChanges.changes })
+    .from(mapChanges)
+    .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false)))
+    .orderBy(mapChanges.seq);
+
+  const { tracker } = buildMapChangeTracker(m, undefined);
+  const converter = createChangesConverter();
+  if (baseRow) {
+    const baseChange = converter.convert(baseRow.changes as Record<string, unknown>);
+    trackChanges(m, tracker, baseChange.chs, baseChange.user);
+  }
+  for (const r of incRows) {
+    const ch = converter.convert(r.changes as Record<string, unknown>);
+    trackChanges(m, tracker, ch.chs, ch.user);
+  }
+
+  const cleanupChs: Change[] = [];
+  for (const ch of tracker.getConsolidated()) {
+    if (ch.cat !== ChangeCategory.Token || ch.ty !== ChangeType.Add) continue;
+    const token = ch.feature;
+    if (!token.sprites.some(s => s.source === spritePath)) continue;
+    cleanupChs.push(createTokenRemove(token.position, token.id));
+    cleanupChs.push(createTokenAdd({
+      ...token,
+      sprites: token.sprites.filter(s => s.source !== spritePath),
+    }));
+  }
+
+  if (cleanupChs.length === 0) return undefined;
+  return insertMapChangesInTx(tx, row.ownerId, mapId, cleanupChs);
 }
 
 // ─── Invites ─────────────────────────────────────────────────────────────────

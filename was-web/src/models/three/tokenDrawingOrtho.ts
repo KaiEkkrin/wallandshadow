@@ -73,11 +73,18 @@ class TokenFeatures<K extends GridCoord, F extends (IFeature<K> & ITokenProperti
       return super.add(f);
     }
 
-    // Lookup the sprite, adding the sprite feature when we've got it:
+    // Lookup the sprite, adding the sprite feature when we've got it. The
+    // observable emits `undefined` to signal "this token no longer has a
+    // sprite" (e.g. its character's sprite reference was just scrubbed); we
+    // tear down any existing sprite feature without replacing it.
     const sub = this._textureCache.resolve(f).subscribe(e => {
       const removed = this._spriteFeatures.remove(f.position); // just in case
       if (removed !== undefined) {
         removed.texture.release().then(() => { /* nothing to do here */ });
+      }
+
+      if (e === undefined) {
+        return;
       }
 
       if (this._spriteFeatures.add({ ...f, sheetEntry: e, texture: e.texture }) === false) {

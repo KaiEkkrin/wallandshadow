@@ -1,5 +1,11 @@
 import { describe, test, expect } from 'vitest';
-import { MapType } from '@wallandshadow/shared';
+import {
+  ChangeCategory,
+  ChangeType,
+  MapType,
+  type ICharacter,
+  type TokenAdd,
+} from '@wallandshadow/shared';
 import { ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { createApp } from '../app.js';
 import { db } from '../db/connection.js';
@@ -12,6 +18,8 @@ import {
   apiPatch,
   apiDelete,
   apiUploadImage,
+  getBaseChange,
+  postMapChanges,
   s3ObjectExists,
   TINY_PNG,
 } from './helpers.js';
@@ -426,4 +434,137 @@ describe('end-to-end storage flow', () => {
     const { sprites } = (await gapRes.json()) as { sprites: { source: string }[] };
     expect(sprites.some(s => s.source === img4.path)).toBe(true);
   }, 120000);
+});
+
+// ─── Sprite reference cleanup on image deletion ────────────────────────────────
+
+describe('sprite reference cleanup on image deletion', () => {
+  test('deletion scrubs the sprite from any token that referenced it', async () => {
+    const { token, uid } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const mapId = await createMap(token, adventureId);
+    const img = await uploadImage(token, 'Tokened');
+
+    // Add the image to a 1x1 spritesheet so the adventure has a real sprite for it.
+    const sheetRes = await apiPost(app, `/api/adventures/${adventureId}/spritesheets`, {
+      geometry: '1x1',
+      sources: [img.path],
+    }, token);
+    expect(sheetRes.status).toBe(200);
+
+    // Place a token that references the sprite.
+    const tokenWithSprite: TokenAdd = {
+      ty: ChangeType.Add,
+      cat: ChangeCategory.Token,
+      feature: {
+        position: { x: 1, y: 1 },
+        colour: 1,
+        id: 'sprite-token',
+        players: [uid],
+        size: '1',
+        text: 'SP',
+        note: '',
+        noteVisibleToPlayers: false,
+        characterId: '',
+        sprites: [{ source: img.path, geometry: '1x1' }],
+        outline: false,
+      },
+    };
+    await postMapChanges(app, token, adventureId, mapId, [tokenWithSprite]);
+
+    await apiPost(app, `/api/adventures/${adventureId}/maps/${mapId}/consolidate`, {}, token);
+    const beforeBase = await getBaseChange(mapId);
+    const beforeToken = beforeBase!.chs.find(ch => ch.cat === ChangeCategory.Token) as TokenAdd | undefined;
+    expect(beforeToken?.feature.sprites).toEqual([{ source: img.path, geometry: '1x1' }]);
+
+    const apiPath = img.path.replace(/^images\//, '');
+    const delRes = await apiDelete(app, `/api/images/${apiPath}`, token);
+    expect(delRes.status).toBe(204);
+
+    await apiPost(app, `/api/adventures/${adventureId}/maps/${mapId}/consolidate`, {}, token);
+    const afterBase = await getBaseChange(mapId);
+    const afterToken = afterBase!.chs.find(ch => ch.cat === ChangeCategory.Token) as TokenAdd | undefined;
+    expect(afterToken?.feature.id).toBe('sprite-token');
+    expect(afterToken?.feature.sprites).toHaveLength(0);
+  }, 60000);
+
+  test('deletion scrubs the sprite from characters in adventure_players', async () => {
+    const { token, uid } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const img = await uploadImage(token, 'Charactered');
+
+    // Add the image to a 1x1 spritesheet (so the adventure has a real sprite).
+    const sheetRes = await apiPost(app, `/api/adventures/${adventureId}/spritesheets`, {
+      geometry: '1x1',
+      sources: [img.path],
+    }, token);
+    expect(sheetRes.status).toBe(200);
+
+    // Set a character that references the sprite via the player update API.
+    const character: ICharacter = {
+      id: 'char-with-sprite',
+      name: 'Alice',
+      text: 'AL',
+      sprites: [{ source: img.path, geometry: '1x1' }],
+    };
+    const patchRes = await apiPatch(app, `/api/adventures/${adventureId}/players/${uid}`, {
+      characters: [character],
+    }, token);
+    expect(patchRes.status).toBe(204);
+
+    const beforeRes = await apiGet(app, `/api/adventures/${adventureId}/players`, token);
+    const beforePlayers = (await beforeRes.json()) as { characters: ICharacter[] }[];
+    expect(beforePlayers[0].characters[0].sprites).toHaveLength(1);
+
+    const apiPath = img.path.replace(/^images\//, '');
+    const delRes = await apiDelete(app, `/api/images/${apiPath}`, token);
+    expect(delRes.status).toBe(204);
+
+    const afterRes = await apiGet(app, `/api/adventures/${adventureId}/players`, token);
+    const afterPlayers = (await afterRes.json()) as { characters: ICharacter[] }[];
+    expect(afterPlayers[0].characters).toHaveLength(1);
+    expect(afterPlayers[0].characters[0].id).toBe('char-with-sprite');
+    expect(afterPlayers[0].characters[0].sprites).toHaveLength(0);
+  }, 60000);
+
+  test('deletion of an unused image (no spritesheet) does not emit map changes', async () => {
+    // Guards against emitting cleanup batches for maps where the deleted
+    // image was never referenced — the JSONB EXISTS pre-filter must catch
+    // those before scrubMapSpriteReferences runs.
+    const { token, uid } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const mapId = await createMap(token, adventureId);
+    const img = await uploadImage(token, 'Unused');
+
+    const plainToken: TokenAdd = {
+      ty: ChangeType.Add,
+      cat: ChangeCategory.Token,
+      feature: {
+        position: { x: 0, y: 0 },
+        colour: 1,
+        id: 'plain-token',
+        players: [uid],
+        size: '1',
+        text: 'PL',
+        note: '',
+        noteVisibleToPlayers: false,
+        characterId: '',
+        sprites: [],
+        outline: false,
+      },
+    };
+    await postMapChanges(app, token, adventureId, mapId, [plainToken]);
+    await apiPost(app, `/api/adventures/${adventureId}/maps/${mapId}/consolidate`, {}, token);
+    const beforeBase = await getBaseChange(mapId);
+    expect(beforeBase!.chs).toHaveLength(1);
+
+    const apiPath = img.path.replace(/^images\//, '');
+    const delRes = await apiDelete(app, `/api/images/${apiPath}`, token);
+    expect(delRes.status).toBe(204);
+
+    const afterBase = await getBaseChange(mapId);
+    expect(afterBase!.chs).toHaveLength(1);
+    const afterToken = afterBase!.chs.find(ch => ch.cat === ChangeCategory.Token) as TokenAdd;
+    expect(afterToken.feature.id).toBe('plain-token');
+  }, 30000);
 });

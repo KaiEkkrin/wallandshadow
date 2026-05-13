@@ -67,8 +67,11 @@ export interface ISpriteManager {
   lookupSprite(sprite: ISprite): Observable<ISpritesheetEntry>;
 
   // Looks up a token's character and sprite, which could either be the token's character, or
-  // (if none) embedded in the token itself.
-  lookupToken(token: ITokenProperties): Observable<ISpritesheetEntry & { character: ICharacter | undefined }>;
+  // (if none) embedded in the token itself. Emits `undefined` when the token has no sprite
+  // (or its sprite reference is not present in any current spritesheet) so that subscribers
+  // can clear stale renderings — without an explicit signal, an observable that switched to
+  // "no sprite" would silently retain its last emitted value.
+  lookupToken(token: ITokenProperties): Observable<(ISpritesheetEntry & { character: ICharacter | undefined }) | undefined>;
 
   // Cleans up this manager, stopping subscriptions.
   dispose(): void;
