@@ -24,6 +24,7 @@ export interface IApi {
   // ── Account ──────────────────────────────────────────────────────────────
   getMe(): Promise<IMe>;
   updateMe(fields: { name?: string }): Promise<void>;
+  deleteMe(): Promise<void>;
 
   // ── Adventures ───────────────────────────────────────────────────────────
   listAdventures(): Promise<IIdentified<IAdventureSummary>[]>;

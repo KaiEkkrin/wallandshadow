@@ -3,6 +3,7 @@ import * as React from 'react';
 import '../App.css';
 
 import ExpansionToggle from './ExpansionToggle';
+import { UserName } from './UserName';
 
 import { IAdventureSummary } from '@wallandshadow/shared';
 
@@ -23,7 +24,7 @@ const AdventureCard = ({ adventure, collapsing }: IAdventureCardProps) => {
   const content = useMemo(
     () => (
       <React.Fragment>
-        <Card.Subtitle>By {adventure.ownerName}</Card.Subtitle>
+        <Card.Subtitle>By <UserName name={adventure.ownerName} /></Card.Subtitle>
         <Card.Text>{adventure.description}</Card.Text>
         <LinkContainer to={"/adventure/" + adventure.id}>
           <Card.Link>Open adventure</Card.Link>

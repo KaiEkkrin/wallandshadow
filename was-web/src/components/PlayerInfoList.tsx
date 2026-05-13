@@ -4,6 +4,8 @@ import { IPlayer, ITokenProperties, PresenceUserState } from '@wallandshadow/sha
 import { hexColours } from '../models/featureColour';
 
 import SpriteImage from './SpriteImage';
+import { UserName } from './UserName';
+import { userNameText } from './userNameText';
 
 import Badge from 'react-bootstrap/Badge';
 import Dropdown from 'react-bootstrap/Dropdown';
@@ -89,11 +91,13 @@ function PlayerInfoListItem({
   blockPlayer, resetView, unblockPlayer
 }: IPlayerInfoListItemProps) {
   const playerPresence = presence?.get(player.playerId);
+  // Fallback label for tooltips / aria attrs — JSX nodes aren't valid there.
+  const playerNameText = userNameText(player.playerName);
   const blockedBadge = useMemo(
     () => player.allowed === false ?
-      <Badge className="ms-2 mt-1" bg="danger" title={"Player " + player.playerName + " is blocked"}>BLOCKED</Badge> :
+      <Badge className="ms-2 mt-1" bg="danger" title={"Player " + playerNameText + " is blocked"}>BLOCKED</Badge> :
       undefined,
-    [player]
+    [player.allowed, playerNameText]
   );
 
   const blockItem = useMemo(
@@ -117,16 +121,16 @@ function PlayerInfoListItem({
     if (player.playerId === ownerUid) {
       return [(
         <Badge key="ownerBadge" className="ms-2 mt-1" bg="warning"
-          title={"Player " + player.playerName + " is the owner"}
+          title={"Player " + playerNameText + " is the owner"}
         >Owner</Badge>
       )];
     } else if (myTokens.length > 0) {
       return myTokens.map(t => {
         const key = `badge_${t.id}`;
-        const title = `Player ${player.playerName} has token ${t.text}`;
+        const title = `Player ${playerNameText} has token ${t.text}`;
         if (t.characterId.length > 0 || t.sprites.length > 0) { // TODO #46 deal with no-image characters...
           return (
-            <SpriteImage key={key} className="ms-2 mt-1" altName={player.playerName}
+            <SpriteImage key={key} className="ms-2 mt-1" altName={playerNameText}
               size={32} border="1px solid" borderColour={hexColours[t.colour]} token={t}
               onClick={() => resetView?.(t.id)} />
           );
@@ -142,21 +146,21 @@ function PlayerInfoListItem({
     } else if (showNoTokenWarning === true) {
       return [(
         <Badge key="noTokenBadge" className="ms-2 mt-1" hidden={isNoTokenHidden} bg="warning"
-          title={"Player " + player.playerName + " has no token"}
+          title={"Player " + playerNameText + " has no token"}
         >No token</Badge>
       )];
     } else {
       return [];
     }
-  }, [isNoTokenHidden, myTokens, ownerUid, player, resetView, showNoTokenWarning]);
+  }, [isNoTokenHidden, myTokens, ownerUid, player.playerId, playerNameText, resetView, showNoTokenWarning]);
 
   const contentItems = useMemo(() => {
     // Always show the player name
     const items = [(
       <div key="nameItem"
         style={{ wordBreak: "break-all", wordWrap: "break-word", display: "flex", alignItems: "center" }}
-        aria-label={`Player ${player.playerName}`}
-      >{player.playerName}<PresenceBadge presence={playerPresence} playerName={player.playerName} viewerCurrentMapId={viewerCurrentMapId} />{blockedBadge}</div>
+        aria-label={`Player ${playerNameText}`}
+      ><UserName name={player.playerName} /><PresenceBadge presence={playerPresence} playerName={playerNameText} viewerCurrentMapId={viewerCurrentMapId} />{blockedBadge}</div>
     )];
 
     // If we have a block item, show that in a little menu to make it less threatening
@@ -179,7 +183,7 @@ function PlayerInfoListItem({
     }
 
     return items;
-  }, [badges, blockedBadge, blockItem, player, playerPresence, viewerCurrentMapId]);
+  }, [badges, blockedBadge, blockItem, player.playerName, playerNameText, playerPresence, viewerCurrentMapId]);
 
   return (
     <ListGroup.Item className="Map-info-list-item">

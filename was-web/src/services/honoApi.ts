@@ -49,6 +49,10 @@ export class HonoApi implements IApi {
     await this.client.updateMe(fields.name);
   }
 
+  async deleteMe(): Promise<void> {
+    await this.client.deleteMe();
+  }
+
   // ── Adventures ─────────────────────────────────────────────────────────────
 
   async listAdventures(): Promise<IIdentified<IAdventureSummary>[]> {

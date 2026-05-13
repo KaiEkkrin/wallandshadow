@@ -30,6 +30,8 @@ import {
   IUserPolicy,
   UserLevel,
   ICharacter,
+  IStorage,
+  ILogger,
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
@@ -47,6 +49,7 @@ import {
   maps,
   mapChanges,
   mapImages,
+  images,
   invites,
   users,
 } from '../db/schema.js';
@@ -248,6 +251,54 @@ export async function deleteAdventure(db: Db, uid: string, adventureId: string):
   await db.delete(adventures).where(eq(adventures.id, adventureId));
 
   await notifySafe(notifyAdventuresUsers(memberRows.map(r => r.userId)));
+}
+
+// ─── User account deletion ───────────────────────────────────────────────────
+
+export async function deleteUser(
+  db: Db,
+  storage: IStorage,
+  logger: ILogger,
+  uid: string,
+): Promise<void> {
+  // Pre-transaction snapshots: we need recipient ids and S3 paths after the
+  // rows are gone, so capture them before the DELETE runs.
+  const [imageRows, coMemberRows, otherAdventureRows] = await Promise.all([
+    db.select({ path: images.path })
+      .from(images).where(eq(images.userId, uid)),
+    db.select({ userId: adventurePlayers.userId })
+      .from(adventurePlayers)
+      .innerJoin(adventures, eq(adventures.id, adventurePlayers.adventureId))
+      .where(eq(adventures.ownerId, uid)),
+    db.select({ adventureId: adventurePlayers.adventureId })
+      .from(adventurePlayers).where(eq(adventurePlayers.userId, uid)),
+  ]);
+  const imagePaths = imageRows.map(r => r.path);
+  const coMemberIds = Array.from(new Set(coMemberRows.map(r => r.userId)));
+  const otherAdventureIds = otherAdventureRows.map(r => r.adventureId);
+
+  await db.transaction(async (tx) => {
+    await tx.delete(adventures).where(eq(adventures.ownerId, uid));
+    await tx.delete(adventurePlayers).where(eq(adventurePlayers.userId, uid));
+    await tx.delete(invites).where(eq(invites.ownerId, uid));
+    // NULL preserves the change row + history while releasing the FK so the
+    // user can be deleted.
+    await tx.update(mapChanges).set({ userId: null }).where(eq(mapChanges.userId, uid));
+    await tx.delete(users).where(eq(users.id, uid));
+  });
+
+  // Best-effort: orphaned S3 objects are tolerable, a failed DELETE here must
+  // not undo the committed DB deletion.
+  await Promise.allSettled(imagePaths.map(path =>
+    storage.ref(path).delete().catch(e => {
+      logger.logWarning(`Failed to delete S3 object ${path} during user delete`, e);
+    }),
+  ));
+
+  await notifySafe(
+    notifyAdventuresUsers(coMemberIds),
+    ...otherAdventureIds.map(id => notifyAdventurePlayers(id)),
+  );
 }
 
 // ─── Maps ────────────────────────────────────────────────────────────────────

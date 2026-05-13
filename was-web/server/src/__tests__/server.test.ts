@@ -2,6 +2,9 @@ import { describe, test, expect } from 'vitest';
 import { MapType, ChangeCategory, ChangeType } from '@wallandshadow/shared';
 import type { TokenAdd, WallAdd } from '@wallandshadow/shared';
 import { createApp } from '../app.js';
+import { db } from '../db/connection.js';
+import { users, adventures, adventurePlayers, images, mapChanges } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 import {
   registerUser,
   apiGet,
@@ -17,6 +20,7 @@ import {
   createMoveToken1,
   createAddWall1,
   createAddImage,
+  s3ObjectExists,
 } from './helpers.js';
 
 const app = createApp();
@@ -758,6 +762,107 @@ describe('server integration tests', () => {
       const body = (await res.json()) as { uid: string; email: string; name: string; level: string };
       expect(body.email).toBe(email);
       expect(body.name).toBe('Bob');
+    });
+  });
+
+  // ── DELETE /api/auth/me ──────────────────────────────────────────────────
+
+  describe('DELETE /api/auth/me', () => {
+    test('returns 401 without auth token', async () => {
+      const res = await app.request('/api/auth/me', { method: 'DELETE' });
+      expect(res.status).toBe(401);
+    });
+
+    test('deletes user, owned adventures, player memberships, and uploaded images', async () => {
+      const owner = await registerUser(app, 'Owner');
+      const coMember = await registerUser(app, 'CoMember');
+      const otherOwner = await registerUser(app, 'OtherOwner');
+
+      // Owner creates an adventure with a map and uploads an image.
+      const aOwnedId = await createAdventure(owner.token, 'Owned Adventure');
+      const mOwnedId = await createMap(owner.token, aOwnedId);
+      await postMapChanges(app, owner.token, aOwnedId, mOwnedId, [createAddToken1(owner.uid)]);
+      await consolidate(owner.token, aOwnedId, mOwnedId);
+
+      const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'test.png', 'image/png');
+      expect(uploadRes.status).toBe(201);
+      const uploadedImage = (await uploadRes.json()) as { path: string };
+
+      // CoMember joins owner's adventure.
+      const inviteRes = await apiPost(app, `/api/adventures/${aOwnedId}/invites`, {}, owner.token);
+      const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${inviteId}/join`, {}, coMember.token);
+
+      // Owner joins OtherOwner's adventure so we can verify membership removal +
+      // mapChanges anonymisation in someone else's adventure.
+      const aOtherId = await createAdventure(otherOwner.token, 'Other Adventure');
+      const mOtherId = await createMap(otherOwner.token, aOtherId);
+      const otherInviteRes = await apiPost(app, `/api/adventures/${aOtherId}/invites`, {}, otherOwner.token);
+      const { inviteId: otherInviteId } = (await otherInviteRes.json()) as { inviteId: string };
+      await apiPost(app, `/api/invites/${otherInviteId}/join`, {}, owner.token);
+      // Owner contributes a map change in OtherOwner's adventure.
+      await postMapChanges(app, owner.token, aOtherId, mOtherId, [createAddToken1(owner.uid)]);
+
+      // Sanity — owner's records exist before deletion.
+      expect(await s3ObjectExists(uploadedImage.path)).toBe(true);
+      const [imageRow] = await db.select({ id: images.id }).from(images).where(eq(images.userId, owner.uid));
+      expect(imageRow).toBeTruthy();
+
+      // Delete the owner account.
+      const delRes = await apiDelete(app, '/api/auth/me', owner.token);
+      expect(delRes.status).toBe(200);
+
+      // User row is gone.
+      const userRows = await db.select({ id: users.id }).from(users).where(eq(users.id, owner.uid));
+      expect(userRows).toHaveLength(0);
+
+      // Owned adventure cascaded.
+      const advRows = await db.select({ id: adventures.id }).from(adventures).where(eq(adventures.id, aOwnedId));
+      expect(advRows).toHaveLength(0);
+
+      // Player rows for the deleted user in OTHER adventures are gone.
+      const playerRows = await db.select({ adventureId: adventurePlayers.adventureId })
+        .from(adventurePlayers).where(eq(adventurePlayers.userId, owner.uid));
+      expect(playerRows).toHaveLength(0);
+
+      // mapChanges contributed to OTHER adventures have userId NULLed but
+      // the change rows themselves are preserved.
+      const remainingChanges = await db.select({ userId: mapChanges.userId })
+        .from(mapChanges).where(eq(mapChanges.mapId, mOtherId));
+      expect(remainingChanges.length).toBeGreaterThan(0);
+      for (const row of remainingChanges) {
+        expect(row.userId).toBeNull();
+      }
+
+      // Image row + S3 object are gone.
+      const imageRowsAfter = await db.select({ id: images.id }).from(images).where(eq(images.userId, owner.uid));
+      expect(imageRowsAfter).toHaveLength(0);
+      expect(await s3ObjectExists(uploadedImage.path)).toBe(false);
+
+      // The deleted user's token is no longer valid: fetching /me returns 404
+      // (the JWT carries an internal uid that no longer resolves to a row).
+      const meRes = await apiGet(app, '/api/auth/me', owner.token);
+      expect(meRes.status).toBe(404);
+    });
+
+    test('email is not burned — same address can re-register after deletion', async () => {
+      // Local-auth analogue of the OIDC "same provider_sub re-creates a fresh
+      // user" property. For OIDC, the partial unique index on provider_sub
+      // releases on delete; this test proves the equivalent for local users
+      // by re-registering with the same email and confirming a brand-new uid.
+      const email = `reuse-${Date.now()}@example.com`;
+      const first = await registerUser(app, 'First', email, 'TestPass1');
+
+      const delRes = await apiDelete(app, '/api/auth/me', first.token);
+      expect(delRes.status).toBe(200);
+
+      const second = await registerUser(app, 'Second', email, 'TestPass1');
+      expect(second.uid).not.toBe(first.uid);
+
+      // The fresh account has a clean slate.
+      const advListRes = await apiGet(app, '/api/adventures', second.token);
+      const advList = (await advListRes.json()) as unknown[];
+      expect(advList).toHaveLength(0);
     });
   });
 

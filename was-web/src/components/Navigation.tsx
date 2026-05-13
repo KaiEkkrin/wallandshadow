@@ -4,6 +4,7 @@ import * as React from 'react';
 import './Navigation.css';
 
 import { AuthContext } from './AuthContext';
+import DeleteAccountModal from './DeleteAccountModal';
 import { logError } from '../services/consoleLogger';
 import { ProfileContext } from './ProfileContext';
 import { UserContext } from './UserContext';
@@ -97,6 +98,7 @@ function NavLogin() {
   // The profile editor:
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState("");
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   const handleEditProfile = useCallback(() => {
     setEditDisplayName(displayName);
@@ -106,6 +108,15 @@ function NavLogin() {
   const handleModalClose = useCallback(() => {
     setShowEditProfile(false);
   }, [setShowEditProfile]);
+
+  const handleOpenDeleteAccount = useCallback(() => {
+    setShowEditProfile(false);
+    setShowDeleteAccount(true);
+  }, []);
+
+  const handleCloseDeleteAccount = useCallback(() => {
+    setShowDeleteAccount(false);
+  }, []);
 
   const handleSaveProfile = useCallback(() => {
     handleModalClose();
@@ -178,12 +189,27 @@ function NavLogin() {
               </Form.Text>
             </Form.Group>
           </Form>
+          <hr />
+          <h6 className="text-danger">Danger zone</h6>
+          <p className="text-muted small mb-2">
+            Permanently delete your account and everything you own. This cannot be undone.
+          </p>
+          <Button variant="outline-danger" size="sm" onClick={handleOpenDeleteAccount}>
+            Delete account…
+          </Button>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={handleModalClose}>Close</Button>
           <Button variant="primary" disabled={saveProfileDisabled} onClick={handleSaveProfile}>Save profile</Button>
         </Modal.Footer>
       </Modal>
+      <DeleteAccountModal
+        show={showDeleteAccount}
+        displayName={displayName}
+        api={api}
+        auth={auth}
+        handleClose={handleCloseDeleteAccount}
+      />
     </div>
   ) : (
     <div className="ms-2 me-2">

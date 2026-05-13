@@ -153,6 +153,10 @@ export class HonoApiClient {
     return this.request('PATCH', '/api/auth/me', { name });
   }
 
+  deleteMe(): Promise<void> {
+    return this.request('DELETE', '/api/auth/me');
+  }
+
   // ── Adventures ────────────────────────────────────────────────────────────
 
   getAdventures(): Promise<AdventureRow[]> {

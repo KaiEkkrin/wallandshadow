@@ -10,6 +10,7 @@ import ListGroup from 'react-bootstrap/ListGroup';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEdit, faTimes } from '@fortawesome/free-solid-svg-icons';
 import SpriteImage from './SpriteImage';
+import { UserName } from './UserName';
 
 interface ICharacterBaseProps {
   canEdit?: boolean | undefined;
@@ -44,7 +45,7 @@ function CharacterItem({
   ), [character.name, character.sprites]);
 
   const pn = useMemo(
-    () => showPlayerNames === true ? (<div>{playerName}</div>) : null,
+    () => showPlayerNames === true ? (<div><UserName name={playerName} /></div>) : null,
     [playerName, showPlayerNames]
   );
 
