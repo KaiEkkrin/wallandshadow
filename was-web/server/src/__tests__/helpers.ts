@@ -106,6 +106,22 @@ export async function apiPatch(
   });
 }
 
+export async function apiPut(
+  app: Hono,
+  path: string,
+  body: unknown,
+  token: string,
+): Promise<Response> {
+  return app.request(path, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function apiDelete(
   app: Hono,
   path: string,

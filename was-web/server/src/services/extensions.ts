@@ -78,6 +78,26 @@ function buildMapChangeTracker(m: IMap, ownerPolicy: IUserPolicy | undefined) {
   return { tracker, tokens };
 }
 
+async function reconcileTokenSprites(
+  tx: Pick<Db, 'select'>,
+  mapId: string,
+  consolidated: Change[],
+): Promise<Change[]> {
+  const sheetRows = await tx.select({ sprites: spritesheets.sprites })
+    .from(spritesheets)
+    .innerJoin(maps, eq(maps.adventureId, spritesheets.adventureId))
+    .where(eq(maps.id, mapId));
+  const validSpritePaths = new Set(
+    sheetRows.flatMap(r => (r.sprites as string[]).filter(p => p !== '')),
+  );
+  return consolidated.map(ch => {
+    if (ch.cat !== ChangeCategory.Token || ch.ty !== ChangeType.Add) return ch;
+    const filteredSprites = ch.feature.sprites.filter(s => validSpritePaths.has(s.source));
+    if (filteredSprites.length === ch.feature.sprites.length) return ch;
+    return { ...ch, feature: { ...ch.feature, sprites: filteredSprites } };
+  });
+}
+
 /** Fetch base and incremental map changes in parallel. */
 export async function fetchMapChanges(db: Db, mapId: string) {
   const [baseRows, incrementalRows] = await Promise.all([
@@ -591,13 +611,24 @@ async function tryConsolidateMapChanges(
     syncChanges?.(tokenDict);
     const consolidated: Change[] = tracker.getConsolidated();
 
+    // Belt-and-braces against the `scrubMapSpriteReferences` race: a concurrent
+    // TokenMove between the scrub's read and write can leave a token still
+    // referencing a sprite path that's been removed from every spritesheet.
+    // Skip the work entirely when no consolidated token carries any sprites.
+    const hasTokenSprites = consolidated.some(
+      ch => ch.cat === ChangeCategory.Token && ch.ty === ChangeType.Add && ch.feature.sprites.length > 0,
+    );
+    const reconciled: Change[] = hasTokenSprites
+      ? await reconcileTokenSprites(tx, mapId, consolidated)
+      : consolidated;
+
     // Use the adventure owner as the consolidated-state author — the base change
     // contains all users' changes merged together, and trackChanges enforces
     // ownership (e.g. only the owner can edit areas). Using the consolidator's UID
     // would cause trackChange to reject owner-only operations when a player triggers
     // consolidation.
     const newBaseChange: Changes = {
-      chs: consolidated,
+      chs: reconciled,
       incremental: false,
       user: m.owner,
       resync: isResync,
@@ -790,6 +821,105 @@ export async function updatePlayer(
       eq(adventurePlayers.adventureId, adventureId),
       eq(adventurePlayers.userId, playerId),
     ));
+
+  await notifySafe(
+    notifyAdventurePlayers(adventureId),
+    notifyAdventuresUser(playerId),
+  );
+}
+
+// FOR UPDATE on the adventurePlayers row serialises concurrent edits on
+// the same player; without it, two concurrent character upserts both read
+// the pre-change array and the second write loses one of the characters.
+export async function upsertCharacter(
+  db: Db,
+  uid: string,
+  adventureId: string,
+  playerId: string,
+  character: ICharacter,
+): Promise<void> {
+  // Players can edit their own characters; the owner can edit anyone's.
+  if (uid === playerId) {
+    await assertAdventureMember(db, uid, adventureId);
+  } else {
+    await assertAdventureOwner(db, uid, adventureId);
+  }
+
+  await db.transaction(async (tx) => {
+    const [row] = await tx.select({ characters: adventurePlayers.characters })
+      .from(adventurePlayers)
+      .where(and(
+        eq(adventurePlayers.adventureId, adventureId),
+        eq(adventurePlayers.userId, playerId),
+      ))
+      .for('update')
+      .limit(1);
+    if (!row) {
+      throwApiError('not-found', 'Player not found');
+    }
+
+    const existing = (row.characters as ICharacter[]) ?? [];
+    const idx = existing.findIndex(c => c.id === character.id);
+    const next = idx >= 0
+      ? existing.map((c, i) => i === idx ? { ...c, ...character } : c)
+      : [...existing, character];
+
+    await tx.update(adventurePlayers)
+      .set({ characters: next as unknown as object })
+      .where(and(
+        eq(adventurePlayers.adventureId, adventureId),
+        eq(adventurePlayers.userId, playerId),
+      ));
+  });
+
+  await notifySafe(
+    notifyAdventurePlayers(adventureId),
+    notifyAdventuresUser(playerId),
+  );
+}
+
+// Same FOR-UPDATE pattern as upsertCharacter. No-op (still 204) when the
+// character isn't present so DELETE is idempotent.
+export async function removeCharacter(
+  db: Db,
+  uid: string,
+  adventureId: string,
+  playerId: string,
+  characterId: string,
+): Promise<void> {
+  if (uid === playerId) {
+    await assertAdventureMember(db, uid, adventureId);
+  } else {
+    await assertAdventureOwner(db, uid, adventureId);
+  }
+
+  const changed = await db.transaction(async (tx) => {
+    const [row] = await tx.select({ characters: adventurePlayers.characters })
+      .from(adventurePlayers)
+      .where(and(
+        eq(adventurePlayers.adventureId, adventureId),
+        eq(adventurePlayers.userId, playerId),
+      ))
+      .for('update')
+      .limit(1);
+    if (!row) {
+      throwApiError('not-found', 'Player not found');
+    }
+
+    const existing = (row.characters as ICharacter[]) ?? [];
+    const next = existing.filter(c => c.id !== characterId);
+    if (next.length === existing.length) return false;
+
+    await tx.update(adventurePlayers)
+      .set({ characters: next as unknown as object })
+      .where(and(
+        eq(adventurePlayers.adventureId, adventureId),
+        eq(adventurePlayers.userId, playerId),
+      ));
+    return true;
+  });
+
+  if (!changed) return;
 
   await notifySafe(
     notifyAdventurePlayers(adventureId),

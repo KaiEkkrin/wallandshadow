@@ -94,7 +94,14 @@ export class HonoApi implements IApi {
         if (isNotFound(e)) return [];
         throw e;
       }),
-      this.client.getAdventure(adventureId).catch(() => emptyAdventureRow(adventureId)),
+      // 404 on the adventure (e.g. it was deleted between actions) is a soft
+      // failure: fall back to the empty stub so we can still emit the player
+      // list. Any other failure (500, network) must propagate — silently
+      // tainting every player with owner=`''` hides real problems.
+      this.client.getAdventure(adventureId).catch(e => {
+        if (isNotFound(e)) return emptyAdventureRow(adventureId);
+        throw e;
+      }),
     ]);
     return players.map(p => playerRowToIPlayer(p, adv));
   }
@@ -114,29 +121,11 @@ export class HonoApi implements IApi {
   }
 
   async editCharacter(adventureId: string, uid: string, character: ICharacter): Promise<void> {
-    // TODO GH-136: replace with `POST /adventures/:id/players/:uid/characters`.
-    // The server only exposes a whole-array PATCH today, so we read-modify-write.
-    const player = await this.getPlayer(adventureId, uid);
-    if (player === undefined) {
-      throw new Error('Player not found');
-    }
-    const characters = [...player.characters];
-    const existing = characters.findIndex(c => c.id === character.id);
-    if (existing >= 0) {
-      characters[existing] = { ...characters[existing], ...character };
-    } else {
-      characters.push(character);
-    }
-    await this.client.updatePlayer(adventureId, uid, { characters });
+    await this.client.putCharacter(adventureId, uid, character.id, character);
   }
 
   async deleteCharacter(adventureId: string, uid: string, characterId: string): Promise<void> {
-    // TODO GH-136: replace with `DELETE /adventures/:id/players/:uid/characters/:characterId`.
-    const player = await this.getPlayer(adventureId, uid);
-    if (player === undefined) return;
-    const characters = player.characters.filter(c => c.id !== characterId);
-    if (characters.length === player.characters.length) return;
-    await this.client.updatePlayer(adventureId, uid, { characters });
+    await this.client.deleteCharacter(adventureId, uid, characterId);
   }
 
   // ── Maps ───────────────────────────────────────────────────────────────────
@@ -144,7 +133,10 @@ export class HonoApi implements IApi {
   async listMaps(adventureId: string): Promise<IIdentified<IMap>[]> {
     const [maps, adv] = await Promise.all([
       this.client.getMaps(adventureId),
-      this.client.getAdventure(adventureId).catch(() => emptyAdventureRow(adventureId)),
+      this.client.getAdventure(adventureId).catch(e => {
+        if (isNotFound(e)) return emptyAdventureRow(adventureId);
+        throw e;
+      }),
     ]);
     return maps.map(m => ({
       id: m.id,
@@ -254,18 +246,21 @@ export class HonoApi implements IApi {
   }
 
   async addSprites(adventureId: string, geometry: string, sources: string[]): Promise<ISprite[]> {
-    // Split into batches of 10 to match the server's limit; run in parallel.
+    // Batches of 10 match the server's per-call limit; run sequentially to
+    // avoid racing the spritesheet allocator on the same (adventureId, geometry).
     const batches: string[][] = [];
     for (let i = 0; i < sources.length; i += 10) {
       batches.push(sources.slice(i, i + 10));
     }
-    const results = await Promise.all(
-      batches.map(batch => this.client.addSprites(adventureId, geometry, batch)),
-    );
-    return results.flatMap(r =>
-      Array.isArray(r.sprites)
-        ? r.sprites.map(d => spriteConverter.convert(d as Record<string, unknown>))
-        : [],
-    );
+    const sprites: ISprite[] = [];
+    for (const batch of batches) {
+      const r = await this.client.addSprites(adventureId, geometry, batch);
+      if (Array.isArray(r.sprites)) {
+        for (const d of r.sprites) {
+          sprites.push(spriteConverter.convert(d as Record<string, unknown>));
+        }
+      }
+    }
+    return sprites;
   }
 }

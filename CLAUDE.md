@@ -110,7 +110,7 @@ See @README.md for comprehensive developer setup and Zitadel OIDC configuration.
 
 ### Map Changes
 
-**CRITICAL**: All map changes must go through `mapChangeTracker.ts` on the client, which posts to `POST /api/adventures/:id/maps/:id/changes`. The server broadcasts persisted changes back to every WebSocket in the room via PostgreSQL LISTEN/NOTIFY. Direct writes (bypassing the change tracker) break real-time sync and conflict resolution.
+**CRITICAL**: All map changes must go through the on-map change tracker / state machine on the client, which submits via `live.sendMapChange(...)` — a `mapChange` frame on the multiplexed WebSocket (`src/services/honoWebSocket.ts`). The server validates, persists, and broadcasts the change back via PostgreSQL LISTEN/NOTIFY. Direct writes (bypassing the state machine) break real-time sync and conflict resolution. There is also a `POST /api/adventures/:id/maps/:id/changes` REST endpoint, but it exists only for the server-side integration test helpers (`server/src/__tests__/helpers.ts:postMapChanges`) — do not wire new web clients to it.
 
 ### Three.js
 
@@ -190,10 +190,11 @@ The web client talks to the Hono backend through three small interfaces from
 
 ### Real-Time Sync
 
-- The client POSTs change payloads to `POST /api/adventures/:id/maps/:id/changes`
-- The server persists each change to `map_changes` and emits a PostgreSQL `NOTIFY`
-- A `LISTEN` handler fans the notification out to every WebSocket in that map's room
-- Clients reconcile incoming changes via `mapChangeTracker.ts`, which also handles optimistic updates and rollback
+- The client calls `live.sendMapChange(adventureId, mapId, chs)` on the `ILiveData` interface (`@wallandshadow/shared`), which serialises a `{ type: 'mapChange', ackId, adventureId, mapId, chs, idempotencyKey }` frame on the multiplexed WebSocket.
+- The server's WebSocket handler validates the frame, calls `insertMapChangesInTx` to persist the row in `map_changes`, and ACKs the client.
+- The insert triggers a PostgreSQL `NOTIFY` on the `map_changes` channel.
+- The `LISTEN` handler fans the notification out via `notifyMapChange` to every WebSocket subscribed to that map's room.
+- Receiving clients reconcile via `mapChangeConsolidator.ts` and the per-map state machine, which also handle optimistic updates and rollback.
 
 Ephemeral WebSocket messages (`ping`, `measurement`) are not currently implemented — see @docs/EPHEMERAL_WS.md.
 

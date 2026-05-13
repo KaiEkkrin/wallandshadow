@@ -193,6 +193,14 @@ export class HonoApiClient {
     return this.request('PATCH', `/api/adventures/${adventureId}/players/${userId}`, fields);
   }
 
+  putCharacter(adventureId: string, userId: string, characterId: string, character: ICharacter): Promise<void> {
+    return this.request('PUT', `/api/adventures/${adventureId}/players/${userId}/characters/${characterId}`, character);
+  }
+
+  deleteCharacter(adventureId: string, userId: string, characterId: string): Promise<void> {
+    return this.request('DELETE', `/api/adventures/${adventureId}/players/${userId}/characters/${characterId}`);
+  }
+
   // ── Maps ──────────────────────────────────────────────────────────────────
 
   getMaps(adventureId: string): Promise<MapRow[]> {

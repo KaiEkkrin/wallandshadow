@@ -56,6 +56,9 @@ function DeleteAccountModal({ show, displayName, api, auth, handleClose }: IDele
         await auth.signOut();
       } catch (e) {
         logError('Failed to sign out after account deletion', e);
+        // Account is gone server-side; force a reload so the SPA drops its
+        // cached auth state. Matches the pattern in HonoContextProvider.
+        window.location.replace('/login');
       }
     })().catch(e => logError('Unexpected error in delete-account flow', e));
   }, [api, auth]);
