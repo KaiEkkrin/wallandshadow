@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 
 function createS3Client(): S3Client {
-  const endpoint = process.env.S3_ENDPOINT ?? 'http://127.0.0.1:9000';
+  const endpoint = process.env.S3_ENDPOINT ?? 'http://localhost:9000';
   const region = process.env.S3_REGION ?? 'us-east-1';
   return new S3Client({
     endpoint,
@@ -52,7 +52,7 @@ export class Storage implements IStorage {
 }
 
 class StorageReference implements IStorageReference {
-  constructor(private readonly path: string) {}
+  constructor(private readonly path: string) { }
 
   async delete(): Promise<void> {
     await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: this.path }));
