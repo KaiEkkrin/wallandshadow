@@ -28,11 +28,22 @@
     // honour forwardPorts (github.com/devcontainers/cli/issues/22), so explicit -p
     // flags are the only reliable mechanism. VS Code's own forwarding is redundant
     // but harmless when these are also published.
-    "-p=3000:3000",
-    "-p=5000:5000",
-    "-p=9000:9000",
-    "-p=9001:9001",
-    "-p=9323:9323"
+    //
+    // Publish on both IPv4 (0.0.0.0) and IPv6 ([::]). The plain "-p=PORT:PORT"
+    // form binds host IPv4 only, which leaves [::1]:PORT unreachable. Chromium's
+    // WebSocket client resolves "localhost" to ::1 and (unlike its HTTP stack)
+    // does not fall back to 127.0.0.1, so without the IPv6 publish Chrome WS
+    // connections fail silently.
+    "-p=0.0.0.0:3000:3000",
+    "-p=[::]:3000:3000",
+    "-p=0.0.0.0:5000:5000",
+    "-p=[::]:5000:5000",
+    "-p=0.0.0.0:9000:9000",
+    "-p=[::]:9000:9000",
+    "-p=0.0.0.0:9001:9001",
+    "-p=[::]:9001:9001",
+    "-p=0.0.0.0:9323:9323",
+    "-p=[::]:9323:9323"
   ],
 
   // With --userns=keep-id the host UID is already mapped to the same UID inside the
