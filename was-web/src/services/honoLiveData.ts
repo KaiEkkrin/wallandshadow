@@ -38,6 +38,25 @@ interface MapChangesSnapshot {
   full: boolean;
 }
 
+interface MapChangesUpdate {
+  seq: string;
+  changes: Changes;
+}
+
+// The WS handlers deliver `unknown`; the payloads have already been through
+// `decode()` (which validates each Changes via the shared converter), so only
+// the outer frame shape needs narrowing here.
+function isMapChangesSnapshot(data: unknown): data is MapChangesSnapshot {
+  return typeof data === 'object' && data !== null
+    && Array.isArray((data as { changes?: unknown }).changes);
+}
+
+function isMapChangesUpdate(data: unknown): data is MapChangesUpdate {
+  if (typeof data !== 'object' || data === null) return false;
+  const changes = (data as { changes?: unknown }).changes;
+  return typeof changes === 'object' && changes !== null;
+}
+
 // HonoLiveData owns the multiplexed WebSocket and presents the typed
 // `ILiveData` interface to consumers.
 export class HonoLiveData implements ILiveData {
@@ -184,12 +203,18 @@ export class HonoLiveData implements ILiveData {
     try {
       const sub = this.getSocket().subscribe('mapChanges', mapId, {
         onSnapshot: (data) => {
-          const snap = data as MapChangesSnapshot;
-          for (const c of snap.changes) onNext(c);
+          if (!isMapChangesSnapshot(data)) {
+            logError('watchMapChanges: malformed snapshot frame', data);
+            return;
+          }
+          for (const c of data.changes) onNext(c);
         },
         onUpdate: (data) => {
-          const { changes } = data as { seq: string; changes: Changes };
-          onNext(changes);
+          if (!isMapChangesUpdate(data)) {
+            logError('watchMapChanges: malformed update frame', data);
+            return;
+          }
+          onNext(data.changes);
         },
         onError,
         onSubscribed,

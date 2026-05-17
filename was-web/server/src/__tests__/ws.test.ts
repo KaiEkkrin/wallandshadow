@@ -510,7 +510,7 @@ describe('players subscription', () => {
     const updatePromise = waitForFrame(ws,
       f => f.type === 'roomUpdate' && f.scope === 'players' && f.key === aId);
     const res = await apiPatch(app, `/api/adventures/${aId}/players/${owner.uid}`, {
-      characters: [{ id: 'c1', name: 'Hero' }],
+      characters: [{ id: 'c1', name: 'Hero', text: 'HE', sprites: [] }],
     }, owner.token);
     expect(res.status).toBe(204);
     const upd = await updatePromise;

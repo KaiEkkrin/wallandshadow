@@ -13,6 +13,7 @@ import {
   registerUser,
   apiGet,
   apiPost,
+  apiPatch,
   apiPut,
   apiDelete,
   getBaseChange,
@@ -111,6 +112,41 @@ describe('PUT character', () => {
 
     const after = await listCharacters(token, adventureId, uid);
     expect(after.map(c => c.id).sort()).toEqual(['c-1', 'c-2']);
+  });
+});
+
+// ─── Request body validation ─────────────────────────────────────────────────
+
+describe('character body validation', () => {
+  test.each([
+    ['a non-object body', 'not-an-object'],
+    ['a blank id', { id: '', name: 'A', text: 'A', sprites: [] }],
+    ['a non-string name', { id: 'c-1', name: 42, text: 'A', sprites: [] }],
+    ['sprites that are not an array', { id: 'c-1', name: 'A', text: 'A', sprites: 'nope' }],
+    ['a sprite missing geometry', { id: 'c-1', name: 'A', text: 'A', sprites: [{ source: 'images/uid/x' }] }],
+  ])('PUT rejects %s', async (_label, body) => {
+    const { token, uid } = await registerUser(app);
+    const adventureId = await createAdventure(app, token);
+    const r = await apiPut(app, `/api/adventures/${adventureId}/players/${uid}/characters/c-1`, body, token);
+    expect(r.status).toBe(400);
+  });
+
+  test('PATCH rejects a characters array with a malformed element', async () => {
+    const { token, uid } = await registerUser(app);
+    const adventureId = await createAdventure(app, token);
+    const r = await apiPatch(app, `/api/adventures/${adventureId}/players/${uid}`,
+      { characters: [makeCharacter('c-1', 'OK'), { id: 'c-2' }] }, token);
+    expect(r.status).toBe(400);
+  });
+
+  test('PATCH rejects a non-boolean allowed', async () => {
+    const owner = await registerUser(app, 'Owner');
+    const player = await registerUser(app, 'Player');
+    const adventureId = await createAdventure(app, owner.token);
+    await joinAdventure(app, owner.token, player.token, adventureId);
+    const r = await apiPatch(app, `/api/adventures/${adventureId}/players/${player.uid}`,
+      { allowed: 'yes' }, owner.token);
+    expect(r.status).toBe(400);
   });
 });
 

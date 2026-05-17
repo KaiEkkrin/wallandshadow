@@ -7,8 +7,8 @@
 severity.
 
 > **Status update:** the easily-fixed subset has been applied on this branch —
-> items **1, 2, 3, 4, 5, 8, 9, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
-> server tsc/lint, and all 214 client + 161 server tests pass. The rest stand as
+> items **1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
+> server tsc/lint, and all 214 client + 168 server tests pass. The rest stand as
 > follow-up work.
 
 ---
@@ -76,16 +76,31 @@ severity.
    Covered by two new `storage.test.ts` cases that reproduce the sheet-less token and
    character scenarios.
 
-6. **New `PUT .../characters/:characterId` route does not validate the body.**
+6. ✅ **New `PUT .../characters/:characterId` route does not validate the body.**
    `server/src/routes/players.ts:69-73` — `c.req.json<ICharacter>()` is persisted via
    `upsertCharacter` after only an `id` check. Add shape validation at the route
    boundary per CLAUDE.md. (The pre-existing PATCH route shares this weakness.)
+   **Resolved:** added `assertValidCharacter` — a route-boundary assertion that rejects
+   any body whose `id`/`name`/`text`/`sprites` (and each `ISprite`'s `source`/`geometry`)
+   is not the right type, throwing `invalid-argument` (400). It is applied in the PUT
+   route (before the id-laundering check) and in the PATCH route via
+   `assertValidPlayerPatch`, which also requires `allowed` to be a boolean and validates
+   every element of `characters`. Validation is shape/type only — `text` length and the
+   `maxCharacters` cap stay unenforced (per the `character.ts` comment). A shared
+   `assertObject` helper backs both validators. Covered by new `characterEndpoints.test.ts`
+   cases; one pre-existing `ws.test.ts` test that sent a partial character was corrected.
 
-7. **Unchecked `as` casts on WebSocket wire data.**
+7. ✅ **Unchecked `as` casts on WebSocket wire data.**
    `src/services/honoLiveData.ts:186, 190, 299` — `data` arrives as `unknown`; CLAUDE.md
    requires `unknown` + type guards. At minimum narrow `snap.changes` is an array before
    iterating in `watchMapChanges`. (The generic `emit(data as T)` in `dedupedHandlers` is
    harder to remove without the discriminated-union change in item 19.)
+   **Resolved:** added `isMapChangesSnapshot` / `isMapChangesUpdate` type guards;
+   `watchMapChanges` now narrows the `unknown` frame in `onSnapshot`/`onUpdate` and
+   `logError`s + drops a malformed frame instead of throwing on iteration. The guards
+   check only the outer frame shape — `decode()` already validates each `Changes` via the
+   shared converter. The `emit(data as T)` cast in `dedupedHandlers` (line 299) is left
+   for item 19, as noted.
 
 8. ✅ **`IMe` / `MeResponse` are structurally identical but unrelated types.**
    `shared/src/services/api.ts:13-19` vs `src/services/honoApiClient.ts:10-16`.
