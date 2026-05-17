@@ -213,13 +213,15 @@ export async function assertAdventureOwner(db: Db, uid: string, adventureId: str
   throwApiError('not-found', 'Adventure not found');
 }
 
-// ─── S3 cleanup helper ───────────────────────────────────────────────────────
+// ─── S3 cleanup helpers ──────────────────────────────────────────────────────
 
 // Best-effort batch delete of S3 objects after a successful DB delete. Failures
 // are logged at warning level and never thrown — an orphaned S3 object is
-// preferable to rolling back a committed DB delete. The underlying
-// storage.deleteMany call is idempotent (S3 DELETE succeeds for missing keys),
-// so it is safe to re-run with the same path list if an attempt is interrupted.
+// preferable to rolling back a committed DB delete. Note that the DB rows that
+// named these paths are already gone by this point, so a failure here is not
+// automatically recoverable: the warning log is the only surviving record of
+// the leak. For the GDPR-critical account-deletion path use auditedDeleteS3
+// instead, which logs orphans at Error level with re-runnable markers.
 async function bestEffortDeleteS3(
   storage: IStorage,
   logger: ILogger,
@@ -233,6 +235,45 @@ async function bestEffortDeleteS3(
     }
   } catch (e) {
     logger.logWarning(`S3 batch delete threw during ${context} (paths: ${paths.length})`, e);
+  }
+}
+
+// S3 cleanup for account deletion. Unlike bestEffortDeleteS3, failures here are
+// logged at Error level: orphaned uploads left behind by a GDPR erasure are a
+// data-protection event, not a tolerable inconsistency. Each leaked path is
+// logged on its own line with a stable `ORPHANED_S3_OBJECT` marker so an
+// operator can grep the error log to recover the full path list and re-run the
+// delete manually — S3 DELETE is idempotent for missing keys, so a re-run is
+// safe. Like bestEffortDeleteS3 this never throws: the user's DB rows are
+// already gone, so the erasure itself has succeeded regardless.
+async function auditedDeleteS3(
+  storage: IStorage,
+  logger: ILogger,
+  paths: string[],
+  uid: string,
+): Promise<void> {
+  if (paths.length === 0) {
+    return;
+  }
+  try {
+    const { failed } = await storage.deleteMany(paths);
+    for (const f of failed) {
+      logger.logError(
+        `ORPHANED_S3_OBJECT context=user-delete uid=${uid} path=${f.path} — ${f.message}`,
+      );
+    }
+  } catch (e) {
+    // A whole-batch throw can leave any path orphaned (deleteMany processes in
+    // chunks, and we cannot tell which chunks committed). Report every path:
+    // over-reporting is harmless because the re-run is idempotent.
+    for (const path of paths) {
+      logger.logError(`ORPHANED_S3_OBJECT context=user-delete uid=${uid} path=${path}`);
+    }
+    logger.logError(
+      `S3 batch delete threw during account deletion for uid ${uid} ` +
+      `(${paths.length} path(s) potentially orphaned)`,
+      e,
+    );
   }
 }
 
@@ -402,7 +443,7 @@ export async function deleteUser(
     await tx.delete(users).where(eq(users.id, uid));
   });
 
-  await bestEffortDeleteS3(storage, logger, [...imagePaths, ...sheetPaths], 'user delete');
+  await auditedDeleteS3(storage, logger, [...imagePaths, ...sheetPaths], uid);
 
   await notifySafe(
     notifyAdventuresUsers(coMemberIds),

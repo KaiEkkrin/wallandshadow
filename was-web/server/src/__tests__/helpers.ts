@@ -12,7 +12,7 @@ import {
 import { db } from '../db/connection.js';
 import { mapChanges } from '../db/schema.js';
 import { and, eq } from 'drizzle-orm';
-import { HeadObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { testS3, testBucket } from './setup.js';
 
 // ─── Test fixtures ─────────────────────────────────────────────────────────────
@@ -32,6 +32,12 @@ export async function s3ObjectExists(key: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// Removes a test object from S3. Idempotent (S3 DELETE succeeds for missing
+// keys); for cleaning up objects a test deliberately left orphaned.
+export async function deleteS3Object(key: string): Promise<void> {
+  await testS3.send(new DeleteObjectCommand({ Bucket: testBucket, Key: key }));
 }
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────

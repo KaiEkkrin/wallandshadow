@@ -7,23 +7,28 @@
 severity.
 
 > **Status update:** the easily-fixed subset has been applied on this branch —
-> items **2, 4, 8, 9, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
-> server tsc/lint, and all 214 client + 152 server tests pass. The rest stand as
+> items **1, 2, 4, 8, 9, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
+> server tsc/lint, and all 214 client + 155 server tests pass. The rest stand as
 > follow-up work.
 
 ---
 
 ## Critical (fix before merge)
 
-1. **Account deletion can silently leave user data in S3.**
+1. ✅ **Account deletion can silently leave user data in S3.**
    `server/src/services/extensions.ts` (`bestEffortDeleteS3` ~225–237, called from
    `deleteUser` ~390); `server/src/auth/routes.ts:60-64`.
    `bestEffortDeleteS3` logs failed S3 deletes only at Warning and never throws, then
    the route returns `{ ok: true }`. For a GDPR-relevant account deletion, a failure to
-   erase uploaded images/spritesheet PNGs is an Error-level event. Log orphaned paths at
-   Error level for the `deleteUser` path, and/or persist a re-runnable list of what
-   leaked (the current "safe to re-run with the same path list" comment is unusable —
-   no list survives the DB delete).
+   erase uploaded images/spritesheet PNGs is an Error-level event.
+   **Resolved:** added `auditedDeleteS3`, used by `deleteUser` in place of
+   `bestEffortDeleteS3`. It logs every leaked path at Error level on its own line with a
+   stable `ORPHANED_S3_OBJECT context=user-delete uid=… path=…` marker — the error log
+   is the re-runnable list. A whole-batch throw reports all paths (chunked deletes can't
+   tell which committed; over-reporting is safe as the re-run is idempotent). The route
+   still returns `{ ok: true }` — the erasure itself succeeded; the orphan log is an
+   operator signal. The misleading "safe to re-run with the same path list" comment on
+   `bestEffortDeleteS3` was corrected. Covered by `deleteUserS3Audit.test.ts`.
 
 2. ✅ **`recentMaps.readFromStorage` is a forbidden empty catch.**
    `src/services/recentMaps.ts:16-18` — `catch { return []; }` swallows
