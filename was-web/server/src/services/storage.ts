@@ -70,7 +70,15 @@ export class Storage implements IStorage {
         Delete: { Objects: chunk.map(p => ({ Key: p })), Quiet: true },
       }));
       for (const e of response.Errors ?? []) {
-        failed.push({ path: e.Key ?? '', message: e.Message ?? e.Code ?? 'unknown error' });
+        if (e.Key === undefined) {
+          // S3 reported a delete error not attributable to any specific key.
+          // We cannot name the orphaned object, so surface the whole error
+          // entry in the message — the caller's log line is otherwise empty
+          // and useless.
+          failed.push({ path: '', message: `keyless S3 delete error: ${JSON.stringify(e)}` });
+        } else {
+          failed.push({ path: e.Key, message: e.Message ?? e.Code ?? 'unknown error' });
+        }
       }
     }
     return { failed };

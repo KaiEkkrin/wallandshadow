@@ -132,7 +132,14 @@ export class HonoApi implements IApi {
 
   async listMaps(adventureId: string): Promise<IIdentified<IMap>[]> {
     const [maps, adv] = await Promise.all([
+      // A getMaps failure is not softened: with no map list there is nothing to
+      // emit, so any error (including 404) must propagate.
       this.client.getMaps(adventureId),
+      // 404 on the adventure is a soft failure, same as listPlayers: fall back
+      // to the empty stub so the map list can still be emitted. This covers the
+      // race where the adventure is deleted after getMaps responds but before
+      // getAdventure does. Any other failure must propagate rather than
+      // tainting every map with adventureName/owner=`''`.
       this.client.getAdventure(adventureId).catch(e => {
         if (isNotFound(e)) return emptyAdventureRow(adventureId);
         throw e;

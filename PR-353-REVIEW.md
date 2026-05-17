@@ -7,8 +7,8 @@
 severity.
 
 > **Status update:** the easily-fixed subset has been applied on this branch —
-> items **1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
-> server tsc/lint, and all 214 client + 168 server tests pass. The rest stand as
+> items **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
+> server tsc/lint, and all 233 client + 168 server tests pass. The rest stand as
 > follow-up work.
 
 ---
@@ -115,32 +115,62 @@ severity.
    (`players.ts:60, 74`) and `HonoApi.editCharacter` already uses `client.putCharacter`.
    Delete the TODO.
 
-10. **`HonoApi.listMaps` softens `getAdventure` but not `getMaps`.**
+10. ✅ **`HonoApi.listMaps` softens `getAdventure` but not `getMaps`.**
     `src/services/honoApi.ts:133-145` — inconsistent with the carefully-commented
     `listPlayers`. If the adventure was deleted, `getMaps` 404s and throws before the
     softened `getAdventure` matters, making the `emptyAdventureRow` fallback partly dead
     code. Either remove the fallback or add a comment matching `listPlayers` explaining
     the real case it handles.
+    **Resolved:** kept the fallback (removing it would make `listMaps` 500 in the race
+    below, inconsistent with `listPlayers`) and added a comment matching the
+    `listPlayers` precedent. The fallback genuinely covers the narrow race where the
+    adventure is deleted *after* `getMaps` has already responded but *before*
+    `getAdventure` does — the two run concurrently, so `getMaps` can succeed while
+    `getAdventure` 404s. The comment also states why `getMaps` is *not* softened: a
+    `getMaps` failure leaves no map list to emit, so it must propagate. Existing
+    `honoApi.test.ts` cases already cover the 404-fallback and 500-propagation paths.
 
-11. **`recentMaps.ts` has zero behavioural tests.**
+11. ✅ **`recentMaps.ts` has zero behavioural tests.**
     `src/services/recentMaps.ts` — untested branching: `markMapRecent` dedup /
     unchanged-short-circuit / prepend-vs-update-in-place, `forgetMap` same-reference
     short-circuit, the `maxProfileEntries` cap, and `readFromStorage`'s corrupt-storage
     path. Add a unit test (the `unit/services/expiringStringCache.test.ts` pattern fits).
+    **Resolved:** added `unit/services/recentMaps.test.ts` covering new-entry prepend,
+    unchanged-short-circuit, in-place (position-stable) update, the prepend cap at
+    `maxProfileEntries`, `forgetMap` removal and absent-map case, localStorage
+    persistence, `recentMaps$` emissions, and the corrupt-storage path (invalid JSON →
+    `[]` + a logged warning). A minimal in-memory `localStorage` stub is installed via
+    `vi.stubGlobal` (the Vitest `node` env has none); each test uses a unique uid to
+    isolate the module-level `BehaviorSubject` cache.
 
-12. **`mapChangeConsolidator.ts` is untested.**
+12. ✅ **`mapChangeConsolidator.ts` is untested.**
     `src/models/mapChangeConsolidator.ts` — `watchChangesAndConsolidate` governs
     real-time sync: the `seenBaseChange` skip, `onReset()` ordering, "map corrupt" vs
     throttled-resync branching, and the consolidate countdown. Logic was moved from the
     deleted `src/services/extensions.ts` (untested there too) — add coverage now.
     `ILiveData`/`IApi` are interface-typed and stubbable; `resyncIntervalMillis` exists
     for `TestScheduler`.
+    **Resolved:** added `unit/models/mapChangeConsolidator.test.ts` with stubbed
+    `ILiveData`/`IApi` (the test captures the `watchMapChanges` callbacks and drives
+    changes directly). Covers: `onReset`-before-`onNext` ordering on a base change, the
+    redundant-base-change skip, resync base changes bypassing the skip, the
+    `onSubscribed` full-reload re-arming the skip, the fatal "map corrupt" throw on an
+    invalid base change, an invalid incremental triggering a resync consolidate, RxJS
+    `throttle` collapsing rapid resyncs to one, the counted-interval regular consolidate
+    (`Math.random` stubbed for a deterministic interval), the `undefined` live/api
+    short-circuit, and the disposer stopping the watch.
 
-13. **`Storage.deleteMany` logs an empty path on keyless S3 errors.**
+13. ✅ **`Storage.deleteMany` logs an empty path on keyless S3 errors.**
     `server/src/services/storage.ts:39-49` — when S3 returns an error without a `Key`,
     `path` becomes `''` and `bestEffortDeleteS3` logs a warning naming no object. Log the
     raw error object instead when `e.Key` is absent (compounds item 1's auditability
     gap).
+    **Resolved:** `deleteMany` now branches on `e.Key === undefined`. `Storage` has no
+    logger dependency, so rather than logging directly it folds the raw S3 error entry
+    into the `message` field (`keyless S3 delete error: {…}`) — the `{ path, message }[]`
+    return contract is unchanged, so both `bestEffortDeleteS3`/`auditedDeleteS3` callers
+    and their tests keep working, and the otherwise-empty caller log line now carries
+    the actionable error detail.
 
 ---
 
