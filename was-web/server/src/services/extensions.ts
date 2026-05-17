@@ -56,7 +56,7 @@ import {
   spritesheets,
   users,
 } from '../db/schema.js';
-import { eq, and, count, sql, inArray, gt } from 'drizzle-orm';
+import { eq, and, count, sql, inArray, gt, or } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import dayjs from 'dayjs';
 
@@ -367,25 +367,33 @@ export async function deleteUser(
         .where(inArray(maps.imagePath, imagePaths));
       await tx.delete(mapImages).where(inArray(mapImages.path, imagePaths));
 
-      for (const path of imagePaths) {
-        const rows = await tx.select({
-          id: spritesheets.id,
-          adventureId: spritesheets.adventureId,
-          sprites: spritesheets.sprites,
-          freeSpaces: spritesheets.freeSpaces,
-        })
-          .from(spritesheets)
-          .where(sql`${spritesheets.sprites}::jsonb @> ${JSON.stringify([path])}::jsonb`);
+      // One indexed lookup for every sheet referencing any of the user's
+      // images, rather than a containment query per path. Each `@>` clause is
+      // served by the GIN index on `spritesheets.sprites`; the planner
+      // BitmapOr's them.
+      const pathSet = new Set(imagePaths);
+      const sheetRowsToScrub = await tx.select({
+        id: spritesheets.id,
+        adventureId: spritesheets.adventureId,
+        sprites: spritesheets.sprites,
+        freeSpaces: spritesheets.freeSpaces,
+      })
+        .from(spritesheets)
+        .where(or(...imagePaths.map(p =>
+          sql`${spritesheets.sprites} @> ${JSON.stringify([p])}::jsonb`)));
 
-        for (const row of rows) {
-          const sprites = row.sprites as string[];
-          const newSprites = sprites.map(s => s === path ? '' : s);
-          const freed = sprites.filter(s => s === path).length;
-          await tx.update(spritesheets)
-            .set({ sprites: newSprites as unknown as object, freeSpaces: row.freeSpaces + freed })
-            .where(eq(spritesheets.id, row.id));
-          affectedSheetAdventureIds.add(row.adventureId);
-        }
+      for (const row of sheetRowsToScrub) {
+        const sprites = row.sprites as string[];
+        let freed = 0;
+        const newSprites = sprites.map(s => {
+          if (pathSet.has(s)) { freed += 1; return ''; }
+          return s;
+        });
+        if (freed === 0) continue; // defensive — every returned row should match
+        await tx.update(spritesheets)
+          .set({ sprites: newSprites as unknown as object, freeSpaces: row.freeSpaces + freed })
+          .where(eq(spritesheets.id, row.id));
+        affectedSheetAdventureIds.add(row.adventureId);
       }
     }
     // NULL preserves the change row + history while releasing the FK so the
