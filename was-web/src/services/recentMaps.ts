@@ -1,6 +1,7 @@
 import { BehaviorSubject, Observable } from 'rxjs';
 import type { IMapSummary } from '@wallandshadow/shared';
 import { maxProfileEntries } from '@wallandshadow/shared';
+import { logWarning } from './consoleLogger';
 
 // Recently-loaded maps live in localStorage, scoped per uid + per device.
 // In-tab subscribers see updates immediately via the per-uid BehaviorSubject.
@@ -13,7 +14,8 @@ function readFromStorage(uid: string): IMapSummary[] {
   try {
     const raw = localStorage.getItem(storageKey(uid));
     return raw ? (JSON.parse(raw) as IMapSummary[]) : [];
-  } catch {
+  } catch (e) {
+    logWarning('Failed to read recent maps from localStorage', e);
     return [];
   }
 }

@@ -46,10 +46,6 @@ export interface IApi {
     fields: { allowed?: boolean; characters?: ICharacter[] },
   ): Promise<void>;
 
-  // TODO GH-136: replace with dedicated POST/DELETE character endpoints
-  // (`POST /adventures/:id/players/:uid/characters` and
-  //  `DELETE /adventures/:id/players/:uid/characters/:characterId`).
-  // For now these read the player, mutate the characters array, and PATCH.
   editCharacter(adventureId: string, uid: string, character: ICharacter): Promise<void>;
   deleteCharacter(adventureId: string, uid: string, characterId: string): Promise<void>;
 

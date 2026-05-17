@@ -13,6 +13,7 @@ import type {
   UpdateScope,
 } from '@wallandshadow/shared';
 import { BehaviorSubject, Observable } from 'rxjs';
+import { logError } from './consoleLogger';
 import { distinctUntilChanged } from 'rxjs/operators';
 import { QUALITY_WINDOW_MS, RTT_EMA_ALPHA } from '../models/networkQualityConstants';
 import type { HonoApiClient, AdventureDetailRow, AdventureRow, MapRow, PlayerRow, SpritesheetRow } from './honoApiClient';
@@ -195,7 +196,7 @@ export class HonoLiveData implements ILiveData {
       });
       return () => sub.unsubscribe();
     } catch (e) {
-      console.error('watchMapChanges subscribe failed:', e);
+      logError('watchMapChanges subscribe failed', e);
       onError?.(e instanceof Error ? e : new Error(String(e)));
       return () => {};
     }
@@ -234,7 +235,7 @@ export class HonoLiveData implements ILiveData {
         },
       };
     } catch (e) {
-      console.error('presence subscribe failed:', e);
+      logError('presence subscribe failed', e);
       onError?.(e instanceof Error ? e : new Error(String(e)));
       return { setCurrentMapId: () => {}, unsubscribe: () => {} };
     }
@@ -279,7 +280,7 @@ export class HonoLiveData implements ILiveData {
         this.lastEmitJson.delete(cacheKey);
       };
     } catch (e) {
-      console.error(`${scope} subscribe failed:`, e);
+      logError(`${scope} subscribe failed`, e);
       onError?.(e instanceof Error ? e : new Error(String(e)));
       return () => {};
     }

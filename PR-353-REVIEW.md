@@ -6,6 +6,11 @@
 `tsc --noEmit` all pass clean. Items below are numbered and actionable, grouped by
 severity.
 
+> **Status update:** the easily-fixed subset has been applied on this branch —
+> items **2, 4, 8, 9, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
+> server tsc/lint, and all 214 client + 152 server tests pass. The rest stand as
+> follow-up work.
+
 ---
 
 ## Critical (fix before merge)
@@ -20,7 +25,7 @@ severity.
    leaked (the current "safe to re-run with the same path list" comment is unusable —
    no list survives the DB delete).
 
-2. **`recentMaps.readFromStorage` is a forbidden empty catch.**
+2. ✅ **`recentMaps.readFromStorage` is a forbidden empty catch.**
    `src/services/recentMaps.ts:16-18` — `catch { return []; }` swallows
    `JSON.parse`/localStorage failures with no log, violating CLAUDE.md "all errors must
    be logged". Log a warning on corrupt storage. Also resolve the asymmetry:
@@ -38,7 +43,7 @@ severity.
    404/NoSuchKey (warn, drop) from other errors (abort the montage, or log at Error
    level).
 
-4. **`writeNewSpritesheets` rollback can mask the root-cause exception.**
+4. ✅ **`writeNewSpritesheets` rollback can mask the root-cause exception.**
    `server/src/services/spriteExtensions.ts:247-258` — if the rollback `db.transaction`
    throws, `throw e` never runs and the original error is lost. Wrap the rollback so its
    failure is logged (Error level — a `refs` leak is real) without supplanting `e`.
@@ -62,13 +67,13 @@ severity.
    iterating in `watchMapChanges`. (The generic `emit(data as T)` in `dedupedHandlers` is
    harder to remove without the discriminated-union change in item 19.)
 
-8. **`IMe` / `MeResponse` are structurally identical but unrelated types.**
+8. ✅ **`IMe` / `MeResponse` are structurally identical but unrelated types.**
    `shared/src/services/api.ts:13-19` vs `src/services/honoApiClient.ts:10-16`.
    `HonoApi.getMe()` (`honoApi.ts:43-45`) compiles only because the shapes coincide; the
    `me` payload shape is re-declared a third time inline in `watchProfile`
    (`honoLiveData.ts:135`). Map `MeResponse → IMe` explicitly, or alias the types.
 
-9. **Stale TODO contradicts shipped code.**
+9. ✅ **Stale TODO contradicts shipped code.**
    `shared/src/services/api.ts:49-52` — the comment calls `editCharacter`/
    `deleteCharacter` a temporary RMW-and-PATCH hack pending "dedicated POST/DELETE
    character endpoints (TODO GH-136)", but those endpoints exist on this branch
@@ -111,7 +116,7 @@ severity.
     `idempotencyKey`; a retried `deleteImage` inflates incremental history. Derive a
     deterministic key from `(mapId, spritePath)`.
 
-15. **`reconcileTokenSprites` treats superseded spritesheets as valid sources.**
+15. ✅ **`reconcileTokenSprites` treats superseded spritesheets as valid sources.**
     `server/src/services/extensions.ts` — `validSpritePaths` is built from all
     spritesheet rows with no `supersededBy = ''` filter, so a path in a superseded sheet
     (PNG already deleted from S3) is still "valid". Filter to current sheets.
@@ -125,7 +130,7 @@ severity.
     the WS handler calls `addMapChanges`; the only caller is `scrubMapSpriteReferences`.
     Tighten the comment to match reality.
 
-18. **Client subscribe errors use raw `console.error`.**
+18. ✅ **Client subscribe errors use raw `console.error`.**
     `src/services/honoLiveData.ts:198, 237, 282` — use the standard `logError` helper
     from `src/services/consoleLogger.ts` (as `DeleteAccountModal.tsx` does).
 
@@ -148,7 +153,7 @@ severity.
     interchangeable to the compiler. Branded types would make mismatches illegal.
     Optional; codebase uses no branding today.
 
-23. **Orphaned `IAppVersion` interface (dead code).**
+23. ✅ **Orphaned `IAppVersion` interface (dead code).**
     `shared/src/services/interfaces.ts:7-11` — its only consumer, `VersionChecker.tsx`,
     was deleted in this PR; `grep` finds zero remaining usages. Delete the interface and
     its now-false comment.
@@ -158,16 +163,16 @@ severity.
     CLAUDE.md says no symlinks. Import the real path directly. (Pre-existing pattern
     elsewhere in `unit/` — confirm intent.)
 
-25. **`docs/REPLATFORM.md:47` diagram contradicts its own prose.**
+25. ✅ **`docs/REPLATFORM.md:47` diagram contradicts its own prose.**
     Diagram still reads `• WebSocket (/ws/maps/:id)`; actual path is the multiplexed
     `/ws` (`WS_PATH = '/ws'`). Change to `• WebSocket (/ws — multiplexed)`.
 
-26. **`docs/REPLATFORM.md:78-90` REST table missing new routes.**
+26. ✅ **`docs/REPLATFORM.md:78-90` REST table missing new routes.**
     Add `PUT` and `DELETE /api/adventures/:id/players/:userId/characters/:characterId`
     (`players.ts:64, 84`). `DELETE /api/auth/me` is also new but `/api/auth/*` was never
     in the table — optional.
 
-27. **`docs/EPHEMERAL_WS.md:9-11` is factually wrong.**
+27. ✅ **`docs/EPHEMERAL_WS.md:9-11` is factually wrong.**
     States clients "do not send anything over the socket" and writes go through
     `POST .../changes` — no longer true. Pre-existing rot this PR exposes; fix the
     `**Status**` paragraph for consistency.
@@ -176,7 +181,7 @@ severity.
     Still named `create-account-navbar-dropdown`, but the navbar `Dropdown` was replaced
     with a display-name button + modal. Rename to e.g. `create-account-navbar`.
 
-29. **`extensions.ts:964` JSDoc typo.** "so it ordering" → "so its ordering".
+29. ✅ **`extensions.ts:964` JSDoc typo.** "so it ordering" → "so its ordering".
 
 30. **No test confirms a map appears in / leaves "Latest maps".**
     E2E tests only assert the heading's visibility, never that an opened map shows up or

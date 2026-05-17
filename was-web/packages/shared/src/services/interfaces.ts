@@ -4,12 +4,6 @@ import { ISprite, ISpritesheet } from '../data/sprite';
 
 import { Observable } from 'rxjs';
 
-// App version information used to detect when a new version has been deployed.
-export interface IAppVersion {
-  commit: string;
-  version?: string;
-}
-
 // Authentication abstraction implemented by HonoAuth.
 export interface IAuth {
   createUserWithEmailAndPassword(email: string, password: string, displayName: string): Promise<IUser | null>;

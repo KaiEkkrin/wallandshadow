@@ -1,4 +1,4 @@
-import type { ICharacter, IInviteExpiryPolicy, MapType, UserLevel } from '@wallandshadow/shared';
+import type { ICharacter, IInviteExpiryPolicy, IMe, MapType } from '@wallandshadow/shared';
 
 // ── Wire-format response types (server JSON shape) ───────────────────────────
 
@@ -7,13 +7,9 @@ export interface AuthResponse {
   uid: string;
 }
 
-export interface MeResponse {
-  uid: string;
-  email: string | null;
-  emailVerified: boolean;
-  name: string;
-  level: UserLevel;
-}
+// The `/me` wire payload is structurally identical to the domain type; alias
+// it rather than re-declaring the shape so the two cannot drift apart.
+export type MeResponse = IMe;
 
 export interface AdventureRow {
   id: string;

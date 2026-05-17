@@ -245,16 +245,21 @@ async function writeNewSpritesheets(
     await Promise.all(toDelete.map(i => storage.ref(getSpritePathFromId(i)).delete()));
     return montaged;
   } catch (e) {
-    // Roll back refs increment on failure
-    await db.transaction(async (tx) => {
-      for (const a of allocated) {
-        if (a.oldSheetId) {
-          await tx.update(spritesheets)
-            .set({ refs: sql`${spritesheets.refs} - 1` })
-            .where(eq(spritesheets.id, a.oldSheetId));
+    // Roll back refs increment on failure. Guard the rollback so its own
+    // failure is logged rather than masking the original error `e`.
+    try {
+      await db.transaction(async (tx) => {
+        for (const a of allocated) {
+          if (a.oldSheetId) {
+            await tx.update(spritesheets)
+              .set({ refs: sql`${spritesheets.refs} - 1` })
+              .where(eq(spritesheets.id, a.oldSheetId));
+          }
         }
-      }
-    });
+      });
+    } catch (rollbackErr) {
+      logger.logError('Failed to roll back spritesheet refs after write failure', rollbackErr);
+    }
     throw e;
   }
 }

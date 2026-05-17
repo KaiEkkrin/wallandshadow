@@ -44,7 +44,7 @@ here. See `docs/LEGACY_FIREBASE_DEPLOY.md` for its deployment guide.
 ┌─────────────────▼───────────────────────────────┐
 │  Node.js + Hono container                        │
 │  • REST API  (/api/*)                            │
-│  • WebSocket (/ws/maps/:id)                      │
+│  • WebSocket (/ws — multiplexed)                 │
 │  • OIDC JWT validation middleware                │
 │  • Business logic in server/src/services/        │
 └────────┬────────────────────┬────────────────────┘
@@ -84,6 +84,8 @@ database.
 | `POST /api/adventures/:id/maps/:id/changes`     | Write incremental map change (test-only — production clients use the WebSocket `mapChange` frame) |
 | `GET /api/adventures/:id/players`               | List players                                 |
 | `PATCH /api/adventures/:id/players/:uid`        | Update player (allowed, characters)          |
+| `PUT /api/adventures/:id/players/:uid/characters/:characterId`    | Upsert a single character          |
+| `DELETE /api/adventures/:id/players/:uid/characters/:characterId` | Delete a single character          |
 | `DELETE /api/adventures/:id/players/me`         | Leave adventure                              |
 | `POST /api/adventures/:id/invites`              | Create invite                                |
 | `POST /api/invites/:id/join`                    | Join adventure via invite                    |

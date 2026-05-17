@@ -56,7 +56,7 @@ import {
   spritesheets,
   users,
 } from '../db/schema.js';
-import { eq, and, count, sql, inArray, gt, or } from 'drizzle-orm';
+import { eq, and, count, sql, inArray, gt, or, isNull } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import dayjs from 'dayjs';
 
@@ -86,7 +86,7 @@ async function reconcileTokenSprites(
   const sheetRows = await tx.select({ sprites: spritesheets.sprites })
     .from(spritesheets)
     .innerJoin(maps, eq(maps.adventureId, spritesheets.adventureId))
-    .where(eq(maps.id, mapId));
+    .where(and(eq(maps.id, mapId), isNull(spritesheets.supersededBy)));
   const validSpritePaths = new Set(
     sheetRows.flatMap(r => (r.sprites as string[]).filter(p => p !== '')),
   );
@@ -962,7 +962,7 @@ export async function leaveAdventure(db: Db, uid: string, adventureId: string): 
 
 /**
  * Caller is responsible for auth/map-existence checks and for firing
- * notifyMapChange after commit (the lock is shared so it ordering relative
+ * notifyMapChange after commit (the lock is shared so its ordering relative
  * to consolidation's exclusive lock is preserved, but commit must finish
  * before clients are notified).
  */
