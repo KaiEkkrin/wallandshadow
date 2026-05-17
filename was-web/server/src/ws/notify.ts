@@ -242,7 +242,14 @@ export async function notifyAdventureDetail(adventureId: string): Promise<void> 
 /** Fire NOTIFYs concurrently; log and swallow failures so callers don't have
  * to repeat the same Promise.all + catch boilerplate. NOTIFY failures must not
  * fail the mutation — if the listener is briefly gone, clients will poll the
- * REST fallback (or miss a live update). */
+ * REST fallback (or miss a live update).
+ *
+ * Failure logging is deliberately coarse-grained: `Promise.all` surfaces only
+ * the first rejection, so a variadic fan-out (e.g. `deleteUser` notifying many
+ * adventures at once) logs a single generic line rather than one per failed
+ * channel. Acceptable because a dropped NOTIFY is self-healing — the next
+ * client reconciliation picks the change up — so the precise set of failed
+ * channels is not worth the extra `Promise.allSettled` bookkeeping. */
 export function notifySafe(...promises: Promise<void>[]): Promise<void> {
   return Promise.all(promises).then(() => {}, e => logger.logError('NOTIFY failed', e));
 }

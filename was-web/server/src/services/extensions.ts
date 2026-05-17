@@ -1002,10 +1002,12 @@ export async function leaveAdventure(db: Db, uid: string, adventureId: string): 
 // ─── Map changes ─────────────────────────────────────────────────────────────
 
 /**
- * Caller is responsible for auth/map-existence checks and for firing
- * notifyMapChange after commit (the lock is shared so its ordering relative
- * to consolidation's exclusive lock is preserved, but commit must finish
- * before clients are notified).
+ * Inserts one incremental map-change row inside an existing transaction.
+ * Callers — `addMapChanges` (the live WebSocket submission path) and
+ * `scrubMapSpriteReferences` (image-deletion cleanup) — are responsible for
+ * auth/map-existence checks and for firing notifyMapChange after commit (the
+ * lock is shared so its ordering relative to consolidation's exclusive lock
+ * is preserved, but commit must finish before clients are notified).
  */
 export async function insertMapChangesInTx(
   tx: MapChangesTx,

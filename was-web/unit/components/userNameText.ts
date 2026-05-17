@@ -1,1 +1,1 @@
-../../src/components/userNameText.ts
+export * from '../../src/components/userNameText';

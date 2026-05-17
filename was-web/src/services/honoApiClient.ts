@@ -29,7 +29,9 @@ export interface MapSummaryRow {
   id: string;
   name: string;
   description: string;
-  ty: MapType;
+  // Untrusted server JSON — typed as the raw wire string; honoConverters
+  // validates it into a MapType before it reaches domain code.
+  ty: string;
   imagePath: string;
 }
 

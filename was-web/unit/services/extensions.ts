@@ -1,1 +1,1 @@
-../../src/services/extensions.ts
+export * from '../../src/services/extensions';

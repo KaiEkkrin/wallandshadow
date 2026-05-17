@@ -59,7 +59,7 @@ test.describe('Basic tests', () => {
 
     // Open the profile modal by clicking the display-name button
     await profileButton.click();
-    await Util.takeScreenshot(page, browserName, deviceName, 'create-account-navbar-dropdown');
+    await Util.takeScreenshot(page, browserName, deviceName, 'create-account-navbar');
 
     // Change the display name
     expect(await page.getAttribute('[id=nameInput]', 'value')).toBe(user.displayName);

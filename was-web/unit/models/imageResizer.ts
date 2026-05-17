@@ -1,1 +1,1 @@
-../../src/models/imageResizer.ts
+export * from '../../src/models/imageResizer';

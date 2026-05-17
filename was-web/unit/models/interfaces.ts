@@ -1,1 +1,1 @@
-../../src/models/interfaces.ts
+export * from '../../src/models/interfaces';

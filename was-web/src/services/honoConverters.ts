@@ -1,3 +1,4 @@
+import { MapType } from '@wallandshadow/shared';
 import type {
   IAdventure,
   IAdventureSummary,
@@ -6,7 +7,6 @@ import type {
   IMapSummary,
   IPlayer,
   ISpritesheet,
-  MapType,
 } from '@wallandshadow/shared';
 import type {
   AdventureDetailRow,
@@ -16,6 +16,16 @@ import type {
   PlayerRow,
   SpritesheetRow,
 } from './honoApiClient';
+
+// The server sends the map type as a bare JSON string. Validate it against
+// the MapType enum at the conversion boundary so a bad/unknown value surfaces
+// as a caught error here rather than a downstream rendering fault.
+function toMapType(ty: string): MapType {
+  if (ty === MapType.Hex || ty === MapType.Square) {
+    return ty;
+  }
+  throw new Error(`Unrecognised map type from server: ${JSON.stringify(ty)}`);
+}
 
 export function emptyAdventureRow(adventureId: string): AdventureRow {
   return { id: adventureId, name: '', description: '', owner: '', ownerName: '', imagePath: '' };
@@ -28,7 +38,7 @@ export function adventureRowToIAdventure(row: AdventureRow | AdventureDetailRow)
         id: m.id,
         name: m.name,
         description: m.description,
-        ty: m.ty as MapType,
+        ty: toMapType(m.ty),
         imagePath: m.imagePath,
       }))
     : [];
@@ -60,7 +70,7 @@ export function mapRowToIMap(row: MapRow, adventureName: string, owner: string):
     name: row.name,
     description: row.description,
     owner,
-    ty: row.ty as MapType,
+    ty: toMapType(row.ty),
     ffa: row.ffa,
     enableGroupVision: row.enableGroupVision,
     imagePath: row.imagePath,

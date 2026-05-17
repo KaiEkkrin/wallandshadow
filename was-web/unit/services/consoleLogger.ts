@@ -1,1 +1,1 @@
-../../src/services/consoleLogger.ts
+export * from '../../src/services/consoleLogger';

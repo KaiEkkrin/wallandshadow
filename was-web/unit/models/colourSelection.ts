@@ -1,1 +1,1 @@
-../../src/models/colourSelection.ts
+export * from '../../src/models/colourSelection';

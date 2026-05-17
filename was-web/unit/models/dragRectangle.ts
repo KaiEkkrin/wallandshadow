@@ -1,1 +1,1 @@
-../../src/models/dragRectangle.ts
+export * from '../../src/models/dragRectangle';

@@ -1,1 +1,1 @@
-../../src/models/redrawFlag.ts
+export * from '../../src/models/redrawFlag';

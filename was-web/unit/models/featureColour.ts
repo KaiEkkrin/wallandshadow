@@ -1,1 +1,1 @@
-../../src/models/featureColour.ts
+export * from '../../src/models/featureColour';

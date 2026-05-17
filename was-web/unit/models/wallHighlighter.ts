@@ -1,1 +1,1 @@
-../../src/models/wallHighlighter.ts
+export * from '../../src/models/wallHighlighter';

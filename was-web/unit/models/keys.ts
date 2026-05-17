@@ -1,1 +1,1 @@
-../../src/models/keys.ts
+export * from '../../src/models/keys';

@@ -1,1 +1,1 @@
-../../src/models/dragHighlighter.ts
+export * from '../../src/models/dragHighlighter';

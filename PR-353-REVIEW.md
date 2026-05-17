@@ -7,9 +7,13 @@
 severity.
 
 > **Status update:** the easily-fixed subset has been applied on this branch —
-> items **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
-> server tsc/lint, and all 233 client + 168 server tests pass. The rest stand as
-> follow-up work.
+> items **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 17, 18, 20, 23, 24, 25, 26, 27, 28, 29, 32, 33, 34** (marked ✅ below).
+> Client lint/build, server tsc/lint, and all 244 client + 168 server tests pass.
+>
+> Items **14, 19, 30, 31** are worth fixing but need more than a small edit; they
+> are bundled in `PR-353-FOLLOWUP.md` for a separate GitHub improvement issue.
+> Items **16, 21, 22** were assessed and deliberately not pursued (rationale in
+> `PR-353-FOLLOWUP.md`).
 
 ---
 
@@ -176,7 +180,7 @@ severity.
 
 ## Suggestions (nice to have)
 
-14. **`scrubMapSpriteReferences` inserts a non-idempotent cleanup change.**
+14. ➡️ **`scrubMapSpriteReferences` inserts a non-idempotent cleanup change.** *(→ `PR-353-FOLLOWUP.md`)*
     `server/src/services/extensions.ts` — `insertMapChangesInTx` is called without an
     `idempotencyKey`; a retried `deleteImage` inflates incremental history. Derive a
     deterministic key from `(mapId, spritePath)`.
@@ -186,47 +190,67 @@ severity.
     spritesheet rows with no `supersededBy = ''` filter, so a path in a superseded sheet
     (PNG already deleted from S3) is still "valid". Filter to current sheets.
 
-16. **`markMapRecent` does not promote a revisited map to the front.**
+16. ❌ **`markMapRecent` does not promote a revisited map to the front.** *(not pursued)*
     `src/services/recentMaps.ts:51` — a re-loaded map updates in place rather than moving
     to position 0. Confirm position-stable is intentional vs a recency bug.
+    **Decision:** confirmed — recency ordering is *not* a requirement; position-stable
+    update is intentional. No change. (`recentMaps.test.ts` already pins this behaviour.)
 
-17. **`insertMapChangesInTx` JSDoc references a contract no caller follows.**
+17. ✅ **`insertMapChangesInTx` JSDoc references a contract no caller follows.**
     `server/src/services/extensions.ts` — the doc frames the WS handler as caller, but
     the WS handler calls `addMapChanges`; the only caller is `scrubMapSpriteReferences`.
     Tighten the comment to match reality.
+    **Resolved:** the JSDoc now names both real callers — `addMapChanges` (the live
+    WebSocket submission path) and `scrubMapSpriteReferences` (image-deletion cleanup)
+    — and states what the function does, instead of describing an abstract "caller".
 
 18. ✅ **Client subscribe errors use raw `console.error`.**
     `src/services/honoLiveData.ts:198, 237, 282` — use the standard `logError` helper
     from `src/services/consoleLogger.ts` (as `DeleteAccountModal.tsx` does).
 
-19. **WebSocket frame payloads are not a discriminated union.** *(follow-up issue)*
+19. ➡️ **WebSocket frame payloads are not a discriminated union.** *(→ `PR-353-FOLLOWUP.md`)*
     Define `type WsScopePayload = { scope: 'profile'; data: … } | { scope: 'map'; data: … } | …`
     keyed by `scope` so a `switch` gets exhaustive `never`-checking — this eliminates the
     casts in item 7 entirely. Highest-leverage type-design improvement; worth its own
     ticket.
 
-20. **`ty: m.ty as MapType` casts launder an untrusted string into an enum.**
+20. ✅ **`ty: m.ty as MapType` casts launder an untrusted string into an enum.**
     `src/services/honoConverters.ts:31, 63` — validate against `MapType` values so a bad
     server enum is a caught error, not a downstream rendering fault.
+    **Resolved:** the wire types `MapSummaryRow`/`MapRow` now declare `ty: string` (the
+    honest untrusted-JSON shape). `honoConverters` validates it through a `toMapType`
+    guard that throws `Unrecognised map type from server: …` for anything that is not a
+    `MapType` enum value — narrowing without an `as` cast. Both conversion sites
+    (`adventureRowToIAdventure`, `mapRowToIMap`) go through it. Covered by the new
+    `honoConverters.test.ts` (item 34), including the bad-enum throw path.
 
-21. **`IProfile.email: string` vs `IMe.email: string | null` mismatch.**
+21. ❌ **`IProfile.email: string` vs `IMe.email: string | null` mismatch.** *(not pursued)*
     `watchProfile` papers over it with `?? ''` (`honoLiveData.ts:138`). Consider
     `email: string | null` on `IProfile`, or document why profile guarantees non-null.
+    **Decision:** the `?? ''` coalesce is a deliberate, harmless boundary decision;
+    making `IProfile.email` nullable would ripple through every consumer for negligible
+    benefit. Not pursued — see `PR-353-FOLLOWUP.md`.
 
-22. **Consider branded id types.** Wire `*Row` types (`honoApiClient.ts:18-73`) type
-    every identifier as bare `string` — `owner`, `id`, `adventureId`, `imagePath` are
-    interchangeable to the compiler. Branded types would make mismatches illegal.
-    Optional; codebase uses no branding today.
+22. ❌ **Consider branded id types.** *(not pursued)* Wire `*Row` types
+    (`honoApiClient.ts:18-73`) type every identifier as bare `string` — `owner`, `id`,
+    `adventureId`, `imagePath` are interchangeable to the compiler. Branded types would
+    make mismatches illegal. Optional; codebase uses no branding today.
+    **Decision:** a large refactor for a codebase with no branding today; not justified
+    at present. See `PR-353-FOLLOWUP.md`.
 
 23. ✅ **Orphaned `IAppVersion` interface (dead code).**
     `shared/src/services/interfaces.ts:7-11` — its only consumer, `VersionChecker.tsx`,
     was deleted in this PR; `grep` finds zero remaining usages. Delete the interface and
     its now-false comment.
 
-24. **Symlink in the unit test tree.**
+24. ✅ **Symlink in the unit test tree.**
     `unit/components/userNameText.ts` is a symlink to `src/components/userNameText.ts`;
     CLAUDE.md says no symlinks. Import the real path directly. (Pre-existing pattern
     elsewhere in `unit/` — confirm intent.)
+    **Resolved:** swept all **28** symlinks in `unit/` (not just `userNameText.ts`).
+    Each is now a plain re-export stub — `export * from '../../src/…';` — matching the
+    pre-existing `export * from '@wallandshadow/shared'` stub pattern already used for
+    moved modules. No symlinks remain under `unit/`; no test files needed changing.
 
 25. ✅ **`docs/REPLATFORM.md:47` diagram contradicts its own prose.**
     Diagram still reads `• WebSocket (/ws/maps/:id)`; actual path is the multiplexed
@@ -242,37 +266,58 @@ severity.
     `POST .../changes` — no longer true. Pre-existing rot this PR exposes; fix the
     `**Status**` paragraph for consistency.
 
-28. **`main.test.ts:60` stale screenshot label.**
+28. ✅ **`main.test.ts:60` stale screenshot label.**
     Still named `create-account-navbar-dropdown`, but the navbar `Dropdown` was replaced
     with a display-name button + modal. Rename to e.g. `create-account-navbar`.
+    **Resolved:** renamed the `takeScreenshot` label to `create-account-navbar`. The
+    screenshot PNGs are gitignored test artifacts (written, not asserted, by
+    `takeScreenshot`); the stale-named files were removed and regenerate under the new
+    name on the next E2E run.
 
 29. ✅ **`extensions.ts:964` JSDoc typo.** "so it ordering" → "so its ordering".
 
-30. **No test confirms a map appears in / leaves "Latest maps".**
+30. ➡️ **No test confirms a map appears in / leaves "Latest maps".** *(→ `PR-353-FOLLOWUP.md`)*
     E2E tests only assert the heading's visibility, never that an opened map shows up or
     a deleted one disappears — the user-facing point of the `recentMaps` rewrite is
     unverified. Largely covered if item 11 is done; one E2E assertion would close it
     end-to-end.
 
-31. **`deleteImage` uses an ad hoc single-object S3 delete path.**
+31. ➡️ **`deleteImage` uses an ad hoc single-object S3 delete path.** *(→ `PR-353-FOLLOWUP.md`)*
     `server/src/services/imageExtensions.ts:232-244` — not routed through
     `bestEffortDeleteS3`/`deleteMany`, so it has a different failure-logging convention
     from `deleteUser`/`deleteAdventure`. Two cleanup conventions for the same operation
     class is a maintenance hazard; consider unifying.
 
-32. **`resolveImageUrl` cache — verify rejected promises are not cached.**
+32. ✅ **`resolveImageUrl` cache — verify rejected promises are not cached.**
     `src/services/resolveImageUrl.ts:11` — confirm `ExpiringStringCache` does not pin a
     rejected `getImageDownloadUrl` promise for 10 minutes (would break every image render
     for that path with no log).
+    **Resolved:** verified — `ExpiringStringCache.resolve`'s `.catch(() => delete)`
+    evicts a rejected entry *immediately*, so a failed fetch is never pinned for the
+    expiry window; the next caller re-fetches. Behaviour is already covered by the
+    existing `expiringStringCache.test.ts` "Failed entries do not stay in the cache"
+    test. Added a code comment making the success-vs-failure eviction split explicit.
 
-33. **`deleteUser` NOTIFY fan-out has all-or-nothing logging granularity.**
+33. ✅ **`deleteUser` NOTIFY fan-out has all-or-nothing logging granularity.**
     `server/src/services/extensions.ts` — a variadic `notifySafe` over many adventures'
     `notify*` calls means one rejecting NOTIFY logs one generic message and discards the
     rest. Low impact (reconciliation covers it); add a comment acknowledging it.
+    **Resolved:** expanded the `notifySafe` JSDoc (`server/src/ws/notify.ts`) to state
+    that failure logging is deliberately coarse — `Promise.all` surfaces only the first
+    rejection — and why that is acceptable (a dropped NOTIFY is self-healing via the
+    next client reconciliation, so per-channel `Promise.allSettled` bookkeeping is not
+    worth it). No behavioural change, as the review recommended.
 
-34. **`honoConverters.ts` only transitively tested.**
+34. ✅ **`honoConverters.ts` only transitively tested.**
     Pure functions (`adventureRowToIAdventure` etc.); the `'maps' in row` discriminant
     branch is uncovered. Cheap to add a small dedicated test file.
+    **Resolved:** added `unit/services/honoConverters.test.ts` covering every exported
+    converter — `emptyAdventureRow`, both `adventureRowToIAdventure` branches (plain
+    `AdventureRow` → empty `maps`, `AdventureDetailRow` → mapped summaries with the
+    parent `adventureId` threaded in), `adventureRowToSummary`, `mapRowToIMap`,
+    `playerRowToIPlayer` (including the `characters ?? []` default), `inviteRowToIInvite`
+    (ISO-string → ms timestamp), and `spritesheetRowToISpritesheet` — plus the
+    `toMapType` reject path from item 20.
 
 ---
 

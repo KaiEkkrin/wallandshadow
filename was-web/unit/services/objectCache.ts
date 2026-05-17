@@ -1,1 +1,1 @@
-../../src/services/objectCache.ts
+export * from '../../src/services/objectCache';
