@@ -184,6 +184,14 @@ export async function getBaseChange(mapId: string): Promise<Changes | undefined>
   return rows[0]?.changes as Changes | undefined;
 }
 
+export async function getIncrementalChanges(mapId: string): Promise<Changes[]> {
+  const rows = await db.select({ changes: mapChanges.changes })
+    .from(mapChanges)
+    .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false)))
+    .orderBy(mapChanges.seq);
+  return rows.map(r => r.changes as Changes);
+}
+
 export async function countMapChanges(mapId: string): Promise<number> {
   const rows = await db.select({ id: mapChanges.id })
     .from(mapChanges)

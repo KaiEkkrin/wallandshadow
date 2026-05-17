@@ -7,8 +7,8 @@
 severity.
 
 > **Status update:** the easily-fixed subset has been applied on this branch —
-> items **1, 2, 3, 4, 8, 9, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
-> server tsc/lint, and all 214 client + 159 server tests pass. The rest stand as
+> items **1, 2, 3, 4, 5, 8, 9, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
+> server tsc/lint, and all 214 client + 161 server tests pass. The rest stand as
 > follow-up work.
 
 ---
@@ -62,13 +62,19 @@ severity.
    throws, `throw e` never runs and the original error is lost. Wrap the rollback so its
    failure is logged (Error level — a `refs` leak is real) without supplanting `e`.
 
-5. **`deleteImage` skips token/character scrub when no spritesheet references the image.**
-   `server/src/services/imageExtensions.ts:184-186` — both scrub loops are nested inside
+5. ✅ **`deleteImage` skips token/character scrub when no spritesheet references the image.**
+   `server/src/services/imageExtensions.ts:184-186` — both scrub loops were nested inside
    iteration over `affectedAdventureIds`, which is populated only from spritesheet rows
    containing the path. A sprite referenced by a token/character but absent from any
-   current sheet leaves a dangling reference after the S3 object is deleted. Drive the
-   two scrub loops from their own containment queries (scan `map_changes` /
-   `adventurePlayers.characters` for the path) independent of the spritesheet set.
+   current sheet left a dangling reference after the S3 object was deleted.
+   **Resolved:** the map-token scrub now runs from its own `selectDistinct` over
+   `map_changes` containment, and the character scrub from its own `adventure_players`
+   containment query — both independent of the spritesheet set. The single
+   `affectedAdventureIds` set was split into `spritesheetAdventureIds` and
+   `playerAdventureIds`, which also fixes a pre-existing imprecision (`notifyAdventurePlayers`
+   previously fired for spritesheet-affected adventures with no character change).
+   Covered by two new `storage.test.ts` cases that reproduce the sheet-less token and
+   character scenarios.
 
 6. **New `PUT .../characters/:characterId` route does not validate the body.**
    `server/src/routes/players.ts:69-73` — `c.req.json<ICharacter>()` is persisted via

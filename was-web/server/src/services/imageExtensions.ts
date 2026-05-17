@@ -150,7 +150,8 @@ export async function deleteImage(
     throwApiError('permission-denied', 'This image path corresponds to a different user id');
   }
 
-  const affectedAdventureIds = new Set<string>();
+  const spritesheetAdventureIds = new Set<string>();  // → notifyAdventureSpritesheets
+  const playerAdventureIds = new Set<string>();        // → notifyAdventurePlayers
   const mapChangeNotifies: { mapId: string; id: string; seq: string }[] = [];
 
   await db.transaction(async (tx) => {
@@ -180,50 +181,44 @@ export async function deleteImage(
       await tx.update(spritesheets)
         .set({ sprites: newSprites as unknown as object, freeSpaces: row.freeSpaces + freed })
         .where(eq(spritesheets.id, row.id));
-      affectedAdventureIds.add(row.adventureId);
+      spritesheetAdventureIds.add(row.adventureId);
     }
 
-    for (const adventureId of affectedAdventureIds) {
-      const mapRows = await tx.select({ id: maps.id })
-        .from(maps)
-        .where(and(
-          eq(maps.adventureId, adventureId),
-          sql`EXISTS (
-            SELECT 1 FROM ${mapChanges}
-            WHERE ${mapChanges.mapId} = ${maps.id}
-              AND ${mapChanges.changes}::jsonb @> ${JSON.stringify({ chs: [{ feature: { sprites: [{ source: path }] } }] })}::jsonb
-          )`,
-        ));
+    // Driven by its own containment query, not the spritesheet set: a token
+    // can reference an image whose spritesheet slot was already recycled.
+    const mapRows = await tx.selectDistinct({ mapId: mapChanges.mapId })
+      .from(mapChanges)
+      .where(sql`${mapChanges.changes}::jsonb @> ${JSON.stringify({ chs: [{ feature: { sprites: [{ source: path }] } }] })}::jsonb`);
 
-      for (const m of mapRows) {
-        const result = await scrubMapSpriteReferences(tx, m.id, path);
-        if (result) {
-          mapChangeNotifies.push({ mapId: m.id, id: result.id, seq: result.seq });
-        }
+    for (const m of mapRows) {
+      const result = await scrubMapSpriteReferences(tx, m.mapId, path);
+      if (result) {
+        mapChangeNotifies.push({ mapId: m.mapId, id: result.id, seq: result.seq });
       }
+    }
 
-      const playerRows = await tx.select({
-        userId: adventurePlayers.userId,
-        characters: adventurePlayers.characters,
-      })
-        .from(adventurePlayers)
+    // Likewise independent of the spritesheet set: a character can reference an
+    // image with no spritesheet at all.
+    const playerRows = await tx.select({
+      adventureId: adventurePlayers.adventureId,
+      userId: adventurePlayers.userId,
+      characters: adventurePlayers.characters,
+    })
+      .from(adventurePlayers)
+      .where(sql`${adventurePlayers.characters}::jsonb @> ${JSON.stringify([{ sprites: [{ source: path }] }])}::jsonb`);
+
+    for (const p of playerRows) {
+      const updated = (p.characters as ICharacter[]).map(c => ({
+        ...c,
+        sprites: c.sprites.filter(s => s.source !== path),
+      }));
+      await tx.update(adventurePlayers)
+        .set({ characters: updated as unknown as object })
         .where(and(
-          eq(adventurePlayers.adventureId, adventureId),
-          sql`${adventurePlayers.characters}::jsonb @> ${JSON.stringify([{ sprites: [{ source: path }] }])}::jsonb`,
+          eq(adventurePlayers.adventureId, p.adventureId),
+          eq(adventurePlayers.userId, p.userId),
         ));
-
-      for (const p of playerRows) {
-        const updated = (p.characters as ICharacter[]).map(c => ({
-          ...c,
-          sprites: c.sprites.filter(s => s.source !== path),
-        }));
-        await tx.update(adventurePlayers)
-          .set({ characters: updated as unknown as object })
-          .where(and(
-            eq(adventurePlayers.adventureId, adventureId),
-            eq(adventurePlayers.userId, p.userId),
-          ));
-      }
+      playerAdventureIds.add(p.adventureId);
     }
   });
 
@@ -234,8 +229,10 @@ export async function deleteImage(
   }
 
   const notifyPromises: Promise<void>[] = [];
-  for (const adventureId of affectedAdventureIds) {
+  for (const adventureId of spritesheetAdventureIds) {
     notifyPromises.push(notifyAdventureSpritesheets(adventureId));
+  }
+  for (const adventureId of playerAdventureIds) {
     notifyPromises.push(notifyAdventurePlayers(adventureId));
   }
   for (const m of mapChangeNotifies) {

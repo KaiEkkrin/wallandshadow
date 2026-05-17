@@ -20,6 +20,7 @@ import {
   apiDelete,
   apiUploadImage,
   getBaseChange,
+  getIncrementalChanges,
   postMapChanges,
   s3ObjectExists,
   TINY_PNG,
@@ -62,6 +63,30 @@ async function listImages(token: string): Promise<{ id: string; name: string; pa
 async function s3PrefixCount(prefix: string): Promise<number> {
   const list = await testS3.send(new ListObjectsV2Command({ Bucket: testBucket, Prefix: prefix }));
   return list.Contents?.length ?? 0;
+}
+
+function spriteTokenAdd(uid: string, source: string): TokenAdd {
+  return {
+    ty: ChangeType.Add,
+    cat: ChangeCategory.Token,
+    feature: {
+      position: { x: 1, y: 1 },
+      colour: 1,
+      id: 'sprite-token',
+      players: [uid],
+      size: '1',
+      text: 'SP',
+      note: '',
+      noteVisibleToPlayers: false,
+      characterId: '',
+      sprites: [{ source, geometry: '1x1' }],
+      outline: false,
+    },
+  };
+}
+
+function spriteCharacter(source: string): ICharacter {
+  return { id: 'char-with-sprite', name: 'Alice', text: 'AL', sprites: [{ source, geometry: '1x1' }] };
 }
 
 // ─── Image upload tests ────────────────────────────────────────────────────────
@@ -454,24 +479,7 @@ describe('sprite reference cleanup on image deletion', () => {
     expect(sheetRes.status).toBe(200);
 
     // Place a token that references the sprite.
-    const tokenWithSprite: TokenAdd = {
-      ty: ChangeType.Add,
-      cat: ChangeCategory.Token,
-      feature: {
-        position: { x: 1, y: 1 },
-        colour: 1,
-        id: 'sprite-token',
-        players: [uid],
-        size: '1',
-        text: 'SP',
-        note: '',
-        noteVisibleToPlayers: false,
-        characterId: '',
-        sprites: [{ source: img.path, geometry: '1x1' }],
-        outline: false,
-      },
-    };
-    await postMapChanges(app, token, adventureId, mapId, [tokenWithSprite]);
+    await postMapChanges(app, token, adventureId, mapId, [spriteTokenAdd(uid, img.path)]);
 
     await apiPost(app, `/api/adventures/${adventureId}/maps/${mapId}/consolidate`, {}, token);
     const beforeBase = await getBaseChange(mapId);
@@ -502,14 +510,76 @@ describe('sprite reference cleanup on image deletion', () => {
     expect(sheetRes.status).toBe(200);
 
     // Set a character that references the sprite via the player update API.
-    const character: ICharacter = {
-      id: 'char-with-sprite',
-      name: 'Alice',
-      text: 'AL',
-      sprites: [{ source: img.path, geometry: '1x1' }],
-    };
     const patchRes = await apiPatch(app, `/api/adventures/${adventureId}/players/${uid}`, {
-      characters: [character],
+      characters: [spriteCharacter(img.path)],
+    }, token);
+    expect(patchRes.status).toBe(204);
+
+    const beforeRes = await apiGet(app, `/api/adventures/${adventureId}/players`, token);
+    const beforePlayers = (await beforeRes.json()) as { characters: ICharacter[] }[];
+    expect(beforePlayers[0].characters[0].sprites).toHaveLength(1);
+
+    const apiPath = img.path.replace(/^images\//, '');
+    const delRes = await apiDelete(app, `/api/images/${apiPath}`, token);
+    expect(delRes.status).toBe(204);
+
+    const afterRes = await apiGet(app, `/api/adventures/${adventureId}/players`, token);
+    const afterPlayers = (await afterRes.json()) as { characters: ICharacter[] }[];
+    expect(afterPlayers[0].characters).toHaveLength(1);
+    expect(afterPlayers[0].characters[0].id).toBe('char-with-sprite');
+    expect(afterPlayers[0].characters[0].sprites).toHaveLength(0);
+  }, 60000);
+
+  test('deletion scrubs a token even when no spritesheet references the sprite', async () => {
+    // Guards the token scrub against being skipped when the deleted image is
+    // still referenced by a map but no current spritesheet points at it.
+    const { token, uid } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const mapId = await createMap(token, adventureId);
+    const img = await uploadImage(token, 'Tokened');
+
+    // A spritesheet must exist so the token's sprite survives consolidation.
+    const sheetRes = await apiPost(app, `/api/adventures/${adventureId}/spritesheets`, {
+      geometry: '1x1',
+      sources: [img.path],
+    }, token);
+    expect(sheetRes.status).toBe(200);
+
+    await postMapChanges(app, token, adventureId, mapId, [spriteTokenAdd(uid, img.path)]);
+    await apiPost(app, `/api/adventures/${adventureId}/maps/${mapId}/consolidate`, {}, token);
+
+    const beforeBase = await getBaseChange(mapId);
+    const beforeToken = beforeBase!.chs.find(ch => ch.cat === ChangeCategory.Token) as TokenAdd | undefined;
+    expect(beforeToken?.feature.sprites).toEqual([{ source: img.path, geometry: '1x1' }]);
+
+    // Drop the spritesheet so the consolidated base references a sprite that
+    // no current spritesheet contains.
+    await db.delete(spritesheets).where(eq(spritesheets.adventureId, adventureId));
+    expect(await getIncrementalChanges(mapId)).toHaveLength(0);
+
+    const apiPath = img.path.replace(/^images\//, '');
+    const delRes = await apiDelete(app, `/api/images/${apiPath}`, token);
+    expect(delRes.status).toBe(204);
+
+    // deleteImage emits a cleanup batch as a new incremental change.
+    const incrementals = await getIncrementalChanges(mapId);
+    expect(incrementals).toHaveLength(1);
+    const cleanupToken = incrementals[0].chs.find(
+      ch => ch.cat === ChangeCategory.Token && ch.ty === ChangeType.Add,
+    ) as TokenAdd | undefined;
+    expect(cleanupToken?.feature.id).toBe('sprite-token');
+    expect(cleanupToken?.feature.sprites).toHaveLength(0);
+  }, 60000);
+
+  test('deletion scrubs a character even when no spritesheet references the sprite', async () => {
+    // A character can hold a sprite reference with no spritesheet at all, so
+    // the character scrub must not depend on the affected-spritesheet set.
+    const { token, uid } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const img = await uploadImage(token, 'Sheetless character');
+
+    const patchRes = await apiPatch(app, `/api/adventures/${adventureId}/players/${uid}`, {
+      characters: [spriteCharacter(img.path)],
     }, token);
     expect(patchRes.status).toBe(204);
 
