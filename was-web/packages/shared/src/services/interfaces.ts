@@ -88,7 +88,9 @@ export interface IStorageReference {
   // Deletes the object.
   delete(): Promise<void>;
 
-  // Downloads the object from storage.
+  // Downloads the object from storage. The server implementation throws a
+  // typed not-found error when the object genuinely does not exist, distinct
+  // from transient storage failures, so callers can react accordingly.
   download(destination: string): Promise<void>;
 
   // Gets the download URL for this object.

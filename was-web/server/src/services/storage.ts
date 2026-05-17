@@ -30,6 +30,32 @@ const bucket = process.env.S3_BUCKET ?? 'wallandshadow';
 // S3 DeleteObjects accepts at most 1000 keys per call.
 const DELETE_OBJECTS_BATCH_SIZE = 1000;
 
+// Thrown by StorageReference.download when the object genuinely does not exist
+// (S3 404 / NoSuchKey). Callers can distinguish this from a transient storage
+// error (throttling, timeout, mid-stream socket error) — a missing object is
+// permanent and must not be retried; a transient failure must not be treated as
+// a missing object.
+export class StorageObjectNotFoundError extends Error {
+  constructor(public readonly path: string, options?: { cause?: unknown }) {
+    super(`Storage object not found: ${path}`, options);
+    this.name = 'StorageObjectNotFoundError';
+  }
+}
+
+// True when an S3 SDK error means "the object is not there" rather than a
+// transient failure. MinIO and Hetzner Object Storage both return NoSuchKey.
+function isNotFoundError(e: unknown): boolean {
+  if (typeof e !== 'object' || e === null) {
+    return false;
+  }
+  const err = e as { name?: unknown; $metadata?: { httpStatusCode?: unknown } };
+  return (
+    err.name === 'NoSuchKey' ||
+    err.name === 'NotFound' ||
+    err.$metadata?.httpStatusCode === 404
+  );
+}
+
 export class Storage implements IStorage {
   ref(path: string): IStorageReference {
     return new StorageReference(path);
@@ -59,8 +85,17 @@ class StorageReference implements IStorageReference {
   }
 
   async download(destination: string): Promise<void> {
-    const response = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: this.path }));
+    let response;
+    try {
+      response = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: this.path }));
+    } catch (e) {
+      if (isNotFoundError(e)) {
+        throw new StorageObjectNotFoundError(this.path, { cause: e });
+      }
+      throw e;
+    }
     if (!response.Body) {
+      // Not a 404 — an unexpectedly empty response. Treat as transient.
       throw new Error(`No body for object ${this.path}`);
     }
     const writeStream = fs.createWriteStream(destination);

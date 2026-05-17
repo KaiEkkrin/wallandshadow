@@ -7,8 +7,8 @@
 severity.
 
 > **Status update:** the easily-fixed subset has been applied on this branch —
-> items **1, 2, 4, 8, 9, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
-> server tsc/lint, and all 214 client + 155 server tests pass. The rest stand as
+> items **1, 2, 3, 4, 8, 9, 15, 18, 23, 25, 26, 27, 29** (marked ✅ below). Client lint/build,
+> server tsc/lint, and all 214 client + 159 server tests pass. The rest stand as
 > follow-up work.
 
 ---
@@ -41,12 +41,21 @@ severity.
 
 ## Important (should fix)
 
-3. **`createMontage` permanently drops valid sprites on transient S3 errors.**
-   `server/src/services/spriteExtensions.ts:33-44` — the catch treats a transient S3
+3. ✅ **`createMontage` permanently drops valid sprites on transient S3 errors.**
+   `server/src/services/spriteExtensions.ts:33-44` — the catch treated a transient S3
    timeout/throttle (503 SlowDown, credential error) identically to a genuinely-deleted
-   image; the empty slot is written into `spritesheets.sprites` permanently. Distinguish
-   404/NoSuchKey (warn, drop) from other errors (abort the montage, or log at Error
-   level).
+   image; the empty slot was written into `spritesheets.sprites` permanently.
+   **Resolved:** `Storage.download` now throws a typed `StorageObjectNotFoundError`
+   (`storage.ts`) for a genuine S3 404, distinct from transient failures — AWS SDK
+   error-shape knowledge stays inside the one file that imports the SDK. `createMontage`
+   downloads through a `downloadWithRetry` helper: a `StorageObjectNotFoundError` warns
+   and drops the slot (the legitimate self-heal case); any other error is retried up to
+   3× with backoff (covers shared-storage hiccups without a background job) and, if it
+   persists, is logged at Error level and re-thrown to **abort the whole montage**.
+   `writeNewSpritesheets` runs the montages with `Promise.allSettled` so an abort still
+   rolls back the `refs` increment (existing catch) and best-effort deletes the assembled
+   PNGs of any montage that did complete — no orphan, no partial write. A user retry
+   re-montages cleanly because nothing was persisted. Covered by `createMontageErrors.test.ts`.
 
 4. ✅ **`writeNewSpritesheets` rollback can mask the root-cause exception.**
    `server/src/services/spriteExtensions.ts:247-258` — if the rollback `db.transaction`
