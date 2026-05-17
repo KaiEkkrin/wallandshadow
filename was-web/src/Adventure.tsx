@@ -20,8 +20,7 @@ import { RequireLoggedIn } from './components/RequireLoggedIn';
 import { UserContext } from './components/UserContext';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 
-import { IAdventure, summariseAdventure, IPlayer, IMapSummary, ICharacter, maxCharacters, IImage, IMap, getUserPolicy } from '@wallandshadow/shared';
-import { editAdventure, leaveAdventure, editMap, editCharacter, deleteCharacter } from './services/extensions';
+import { summariseAdventure, IPlayer, IMapSummary, ICharacter, maxCharacters, IImage, getUserPolicy } from '@wallandshadow/shared';
 import { logError } from './services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
@@ -41,7 +40,7 @@ interface IAdventureProps {
 }
 
 function Adventure({ adventureId }: IAdventureProps) {
-  const { dataService, functionsService, user } = useContext(UserContext);
+  const { api, user } = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
   const { adventure, players, presence, viewerCurrentMapId } = useContext(AdventureContext);
   const navigate = useNavigate();
@@ -91,18 +90,18 @@ function Adventure({ adventureId }: IAdventureProps) {
   // Invitations
   const [inviteLink, setInviteLink] = useState<string | undefined>(undefined);
   const createInviteLink = useCallback(() => {
-    if (adventure === undefined || functionsService === undefined) {
+    if (adventure === undefined || api === undefined) {
       return;
     }
 
     setCreateInviteButtonDisabled(true);
-    functionsService.inviteToAdventure(adventure.id)
+    api.createInvite(adventure.id)
       .then(l => setInviteLink("/invite/" + l))
       .catch(e => {
         setCreateInviteButtonDisabled(false);
         logError("Failed to create invite link for " + adventureId, e);
       });
-  }, [adventure, adventureId, setCreateInviteButtonDisabled, setInviteLink, functionsService]);
+  }, [adventure, adventureId, setCreateInviteButtonDisabled, setInviteLink, api]);
 
   // Adventure editing support
   const playersTitle = useMemo(() => {
@@ -198,16 +197,13 @@ function Adventure({ adventureId }: IAdventureProps) {
 
   const handleBlockPlayerSave = useCallback((allowed: boolean) => {
     handleModalClose();
-    if (playerToBlock === undefined) {
+    if (playerToBlock === undefined || api === undefined) {
       return;
     }
 
-    const playerRef = dataService?.getPlayerRef(adventureId, playerToBlock.playerId);
-    if (playerRef !== undefined) {
-      dataService?.update(playerRef, { allowed: allowed })
-        .catch(e => logError("Failed to block/unblock player", e));
-    }
-  }, [handleModalClose, playerToBlock, adventureId, dataService]);
+    api.updatePlayer(adventureId, playerToBlock.playerId, { allowed })
+      .catch(e => logError("Failed to block/unblock player", e));
+  }, [handleModalClose, playerToBlock, adventureId, api]);
 
   const handleShowEditAdventure = useCallback(() => {
     if (adventure === undefined) {
@@ -240,94 +236,71 @@ function Adventure({ adventureId }: IAdventureProps) {
 
   const handleEditAdventureSave = useCallback(async () => {
     handleModalClose();
-    if (adventure === undefined) {
+    if (adventure === undefined || api === undefined) {
       return;
     }
 
-    const updated = {
-      ...adventure.record,
+    await api.updateAdventure(adventureId, {
       name: editAdventureName,
-      description: editAdventureDescription
-    };
-
-    await editAdventure(
-      dataService, user?.uid, summariseAdventure(adventureId, updated)
-    );
-  }, [dataService, user, adventureId, adventure, editAdventureName, editAdventureDescription, handleModalClose]);
+      description: editAdventureDescription,
+    });
+  }, [api, adventureId, adventure, editAdventureName, editAdventureDescription, handleModalClose]);
 
   const handleImagePickerSave = useCallback((path: string | undefined) => {
     handleModalClose();
-    if (adventure === undefined || dataService === undefined) {
+    if (adventure === undefined || api === undefined) {
       return;
     }
 
     // We might be choosing an image for either the adventure or one of its maps
     if (pickImageForMap === undefined) {
-      const updated: IAdventure = { ...adventure.record, imagePath: path ?? "" };
-      editAdventure(
-        dataService, user?.uid, summariseAdventure(adventureId, updated)
-      )
+      api.updateAdventure(adventureId, { imagePath: path ?? "" })
         .then(() => console.debug(`Adventure ${adventureId} successfully edited`))
         .catch(e => logError(`Error editing adventure ${adventureId}`, e));
     } else {
       const mapSummary = pickImageForMap;
-      async function getAndUpdateMap() {
-        if (dataService === undefined) {
-          return;
-        }
-
-        // This is not transactional when it ought to be, but I'm not expecting that
-        // two concurrent, conflicting writes to the same map record would be very likely
-        const map = await dataService.get(dataService.getMapRef(
-          mapSummary.adventureId, mapSummary.id
-        ));
-        if (!map) {
-          throw Error("No map of id " + mapSummary.id);
-        }
-
-        const updated: IMap = { ...map, imagePath: path ?? "" };
-        await editMap(dataService, mapSummary.adventureId, mapSummary.id, updated);
-      }
-
-      getAndUpdateMap()
+      api.updateMap(mapSummary.adventureId, mapSummary.id, { imagePath: path ?? "" })
         .then(() => console.debug(`Map ${mapSummary.id} successfully edited`))
         .catch(e => logError(`Error editing map ${mapSummary.id}`, e));
     }
-  }, [adventure, handleModalClose, pickImageForMap, adventureId, dataService, user]);
+  }, [adventure, handleModalClose, pickImageForMap, adventureId, api]);
 
   const handleImageDeletionSave = useCallback(() => {
     handleModalClose();
-    if (imageToDelete === undefined || functionsService === undefined) {
+    if (imageToDelete === undefined || api === undefined) {
       return;
     }
 
-    functionsService.deleteImage(imageToDelete.path)
+    api.deleteImage(imageToDelete.path)
       .then(() => console.debug(`deleted image ${imageToDelete.path}`))
       .catch(e => logError(`failed to delete image ${imageToDelete}`, e));
-  }, [handleModalClose, imageToDelete, functionsService]);
+  }, [handleModalClose, imageToDelete, api]);
 
   const handleDeleteAdventureSave = useCallback(() => {
     handleModalClose();
-    if (functionsService === undefined) {
+    if (api === undefined) {
       return;
     }
-    functionsService.deleteAdventure(adventureId)
+    api.deleteAdventure(adventureId)
       .then(() => {
         console.debug("Adventure " + adventureId + " successfully deleted");
         navigate("/app", { replace: true });
       })
       .catch(e => logError("Error deleting adventure " + adventureId, e));
-  }, [functionsService, adventureId, navigate, handleModalClose]);
+  }, [api, adventureId, navigate, handleModalClose]);
 
   const handleLeaveAdventureSave = useCallback(() => {
     handleModalClose();
-    leaveAdventure(dataService, user?.uid, adventureId)
+    if (api === undefined) {
+      return;
+    }
+    api.leaveAdventure(adventureId)
       .then(() => {
         console.debug("Successfully left adventure " + adventureId);
         navigate("/app", { replace: true });
       })
       .catch(e => logError("Error leaving adventure " + adventureId, e));
-  }, [dataService, user, adventureId, handleModalClose, navigate]);
+  }, [api, adventureId, handleModalClose, navigate]);
 
   // Support for the character list
   const myPlayer = useMemo(() => players.filter(p => p.playerId === user?.uid), [players, user]);
@@ -362,36 +335,37 @@ function Adventure({ adventureId }: IAdventureProps) {
 
   const handleCharacterSave = useCallback((character: ICharacter) => {
     handleModalClose();
-    editCharacter(dataService, adventureId, user?.uid, character)
+    if (api === undefined || user?.uid === undefined) return;
+    api.editCharacter(adventureId, user.uid, character)
       .then(() => {
         console.debug("Successfully edited character " + character.id);
       })
       .catch(e => logError("Error editing character " + character.id, e));
-  }, [dataService, user, adventureId, handleModalClose]);
+  }, [api, user, adventureId, handleModalClose]);
 
   const handleCharacterDeletion = useCallback(() => {
     handleModalClose();
-    if (characterToEdit === undefined) {
+    if (characterToEdit === undefined || api === undefined || user?.uid === undefined) {
       return;
     }
 
-    deleteCharacter(dataService, adventureId, user?.uid, characterToEdit.id)
+    api.deleteCharacter(adventureId, user.uid, characterToEdit.id)
       .then(() => {
         console.debug("Successfully deleted character " + characterToEdit.id);
       })
       .catch(e => logError("Error deleting character " + characterToEdit.id, e));
-  }, [dataService, user, adventureId, characterToEdit, handleModalClose]);
+  }, [api, user, adventureId, characterToEdit, handleModalClose]);
 
   // Maps
   const maps = useMemo(() => adventure?.record.maps ?? [], [adventure]);
   const mapDelete = useCallback((id: string) => {
-    if (functionsService === undefined) {
+    if (api === undefined) {
       return;
     }
-    functionsService.deleteMap(adventureId, id)
+    api.deleteMap(adventureId, id)
       .then(() => console.debug("Map " + id + " successfully deleted"))
       .catch(e => logError("Error deleting map " + id, e));
-  }, [functionsService, adventureId]);
+  }, [api, adventureId]);
 
   const mapsTitle = useMemo(
     () => `Maps (${maps.length}/${userPolicy?.maps})`,

@@ -1,6 +1,6 @@
-import { IPlayer, ICharacter, ITokenProperties, getSpritePathFromId, ISprite, ISpritesheet, IDataAndReference, IDataService, ISpriteManager, ISpritesheetEntry } from '@wallandshadow/shared';
+import { IPlayer, ICharacter, ITokenProperties, getSpritePathFromId, IIdentified, ILiveData, ISprite, ISpritesheet, ISpriteManager, ISpritesheetEntry } from '@wallandshadow/shared';
 
-import { combineLatest, from, Observable } from 'rxjs';
+import { combineLatest, from, Observable, of } from 'rxjs';
 import { concatMap, map, shareReplay, switchMap } from 'rxjs/operators';
 
 function findCharacterAndSprites(token: ITokenProperties, players: IPlayer[]) {
@@ -31,7 +31,7 @@ export class SpriteManager implements ISpriteManager {
   private _isDisposed = false;
 
   constructor(
-    dataService: IDataService,
+    live: ILiveData,
     resolveImageUrl: (path: string) => Promise<string>,
     adventureId: string,
     players: Observable<IPlayer[]> // must be a hot observable that will replay the latest
@@ -39,19 +39,19 @@ export class SpriteManager implements ISpriteManager {
     console.debug(`subscribing to spritesheets of ${adventureId}`);
     this._adventureId = adventureId;
     this._players = players;
-    const ssFeed = new Observable<IDataAndReference<ISpritesheet>[]>(sub => {
-      this._unsub = dataService.watchSpritesheets(
+    const ssFeed = new Observable<IIdentified<ISpritesheet>[]>(sub => {
+      this._unsub = live.watchSpritesheets(
         adventureId, ss => {
-          sub.next(ss.filter(s => s.data.supersededBy === ""));
-        }, e => sub.error(e), () => sub.complete()
+          sub.next(ss.filter(s => s.record.supersededBy === ""));
+        }, e => sub.error(e)
       );
     });
 
     // We assume we'll want all download URLs at some point, and resolve them as
     // they come in:
-    async function createEntry(s: IDataAndReference<ISpritesheet>) {
+    async function createEntry(s: IIdentified<ISpritesheet>) {
       const url = await resolveImageUrl(getSpritePathFromId(s.id));
-      return { sheet: s.data, url: url };
+      return { sheet: s.record, url: url };
     }
 
     this._published = ssFeed.pipe(switchMap(
@@ -83,18 +83,18 @@ export class SpriteManager implements ISpriteManager {
     ));
   }
 
-  lookupToken(token: ITokenProperties): Observable<ISpritesheetEntry & { character: ICharacter | undefined }> {
+  lookupToken(token: ITokenProperties): Observable<(ISpritesheetEntry & { character: ICharacter | undefined }) | undefined> {
     return combineLatest([this._published, this._players]).pipe(concatMap(
       ([entries, players]) => {
         const { character, sprites } = findCharacterAndSprites(token, players);
         if (sprites.length === 0) {
-          return from([]);
+          return of(undefined);
         }
 
-        return from(
-          entries.filter(e => e.sheet.sprites.indexOf(sprites[0].source) >= 0)
-          .map(e => ({ ...e, character: character, position: e.sheet.sprites.indexOf(sprites[0].source) }))
-        );
+        const matched = entries
+          .filter(e => e.sheet.sprites.indexOf(sprites[0].source) >= 0)
+          .map(e => ({ ...e, character, position: e.sheet.sprites.indexOf(sprites[0].source) }));
+        return matched.length === 0 ? of(undefined) : from(matched);
       }
     ));
   }

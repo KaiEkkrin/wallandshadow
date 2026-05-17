@@ -1,0 +1,1 @@
+CREATE INDEX "map_changes_user_id_idx" ON "map_changes" USING btree ("user_id") WHERE user_id IS NOT NULL;

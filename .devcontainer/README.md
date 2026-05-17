@@ -220,7 +220,7 @@ groups   # should include video and render
 | **Vite dev**      | http://localhost:5000          | start manually: `cd was-web && yarn dev:vite`        |
 | **PostgreSQL**    | localhost:5432                 | user: `was`, pass: `wasdev`, db: `wallandshadow`     |
 | **MinIO Console** | http://localhost:9001          | `wasdev` / `wasdevpass`                              |
-| **MinIO API**     | http://127.0.0.1:9000          | —                                                    |
+| **MinIO API**     | http://localhost:9000          | —                                                    |
 
 The `DATABASE_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY`
 environment variables are pre-set in the container.

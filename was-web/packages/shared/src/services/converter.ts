@@ -531,15 +531,10 @@ export const profileConverter = new RecursingConverter<IProfile>({
   name: "",
   email: "",
   level: UserLevel.Standard,
-  adventures: [],
-  latestMaps: []
+  adventures: []
 }, {
   "adventures": (conv, raw) => {
     conv.adventures = Array.isArray(raw) ? raw.map(r => adventureSummaryConverter.convert(r)) : [];
-    return conv;
-  },
-  "latestMaps": (conv, raw) => {
-    conv.latestMaps = Array.isArray(raw) ? raw.map(r => mapSummaryConverter.convert(r)) : [];
     return conv;
   }
 });

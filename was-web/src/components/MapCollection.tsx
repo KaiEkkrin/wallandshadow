@@ -27,7 +27,7 @@ interface IMapCollectionProps {
 
 function MapCollection({ adventures, maps, showNewMap, deleteMap, pickImage }: IMapCollectionProps) {
   const { toasts } = useContext(StatusContext);
-  const { functionsService, user } = useContext(UserContext);
+  const { api, user } = useContext(UserContext);
   const navigate = useNavigate();
 
   const [showCloneMap, setShowCloneMap] = useState(false);
@@ -70,14 +70,18 @@ function MapCollection({ adventures, maps, showNewMap, deleteMap, pickImage }: I
   }, [setEditId, setShowCloneMap, setShowDeleteMap, setShowEditMap]);
 
   const handleNewMapSave = useCallback(async (adventureId: string, map: IMap) => {
-    if (functionsService === undefined) {
+    if (api === undefined) {
       return;
     }
 
     try {
-      const id = await functionsService.createMap(
-        adventureId, map.name, map.description, map.ty, map.ffa, map.enableGroupVision,
-      );
+      const id = await api.createMap(adventureId, {
+        name: map.name,
+        description: map.description,
+        ty: map.ty,
+        ffa: map.ffa,
+        enableGroupVision: map.enableGroupVision,
+      });
       navigate('/adventure/' + adventureId + '/map/' + id, { replace: true });
     } catch (e: unknown) {
       handleModalClose();
@@ -89,7 +93,7 @@ function MapCollection({ adventures, maps, showNewMap, deleteMap, pickImage }: I
         }});
       }
     }
-  }, [handleModalClose, navigate, toasts, functionsService]);
+  }, [handleModalClose, navigate, toasts, api]);
 
   const handleDeleteMapSave = useCallback(() => {
     if (editId !== undefined) {

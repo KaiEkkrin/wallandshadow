@@ -1,1 +1,1 @@
-../../src/data/tokenTexts.ts
+export * from '../../src/data/tokenTexts';

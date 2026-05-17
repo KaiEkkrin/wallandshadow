@@ -8,6 +8,7 @@ import {
   IStorageReference,
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
+import { StorageObjectNotFoundError } from './storage.js';
 import { Db } from '../db/connection.js';
 import { notifyAdventureSpritesheets, notifySafe } from '../ws/notify.js';
 import { adventures, adventurePlayers, spritesheets } from '../db/schema.js';
@@ -18,24 +19,80 @@ import * as os from 'os';
 import * as path from 'path';
 import sharp from 'sharp';
 
+// Download retry budget for transient storage errors. The AWS SDK already
+// retries throttling/5xx at the request level; this additionally covers
+// mid-stream socket errors and brief storage hiccups (e.g. shared object
+// storage busy with other tenants) without resorting to a background job.
+const DOWNLOAD_BACKOFF_MS = [250, 500]; // delay before each retry
+const DOWNLOAD_MAX_ATTEMPTS = DOWNLOAD_BACKOFF_MS.length + 1;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Downloads one sprite source to `tmpPath`, returning it on success.
+//
+// A genuine 404 (`StorageObjectNotFoundError`) returns `null`: the uploader was
+// likely deleted and their image cleaned up before the spritesheet was
+// repaired, so the slot is left empty and the gap self-heals into the new
+// sheet. A transient error that outlasts the retry budget is thrown instead —
+// aborting the montage, because dropping the slot would lose a valid sprite.
+async function downloadWithRetry(
+  storage: IStorage,
+  logger: ILogger,
+  source: string,
+  slot: number,
+  tmpPath: string,
+): Promise<string | null> {
+  for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; ++attempt) {
+    try {
+      await storage.ref(source).download(tmpPath);
+      return tmpPath;
+    } catch (e) {
+      if (e instanceof StorageObjectNotFoundError) {
+        logger.logWarning(`Dropping missing sprite source at slot ${slot}: ${source}`, e);
+        return null;
+      }
+      if (attempt === DOWNLOAD_MAX_ATTEMPTS) {
+        logger.logError(
+          `Aborting montage: storage error persisted downloading sprite source at slot ` +
+            `${slot} after ${DOWNLOAD_MAX_ATTEMPTS} attempts: ${source}`,
+          e,
+        );
+        throw e;
+      }
+      logger.logWarning(
+        `Transient storage error downloading sprite source at slot ${slot} ` +
+          `(attempt ${attempt}/${DOWNLOAD_MAX_ATTEMPTS}): ${source}`,
+        e,
+      );
+      await sleep(DOWNLOAD_BACKOFF_MS[attempt - 1]);
+    }
+  }
+  // Unreachable: the final attempt always returns or throws.
+  throw new Error('downloadWithRetry: exhausted loop without resolving');
+}
+
 async function createMontage(
   storage: IStorage,
   logger: ILogger,
   sources: string[],
   geometry: string,
   newSheetId: string,
-): Promise<IStorageReference> {
+): Promise<{ ref: IStorageReference; effectiveSources: string[] }> {
   const tmp = os.tmpdir();
   const tmpPaths: string[] = [];
   try {
     logger.logInfo('downloading: ' + sources);
-    const downloaded = await Promise.all(sources.map(async s => {
+    const downloaded = await Promise.all(sources.map(async (s, i) => {
       if (s === '') return null;
       const tmpPath = path.join(tmp, uuidv7());
-      await storage.ref(s).download(tmpPath);
+      // Registered before the attempt so a partially-written file from a
+      // failed download is still cleaned up by the `finally` block.
       tmpPaths.push(tmpPath);
-      return tmpPath;
+      return downloadWithRetry(storage, logger, s, i, tmpPath);
     }));
+    const effectiveSources = sources.map((s, i) => downloaded[i] === null ? '' : s);
 
     const { columns, rows } = fromSpriteGeometryString(geometry);
     const tileWidth = Math.floor(1024 / columns);
@@ -67,7 +124,7 @@ async function createMontage(
     logger.logInfo(`uploading: ${spritePath}`);
     const sheetRef = storage.ref(spritePath);
     await sheetRef.upload(tmpSheetPath, { contentType: 'image/png' });
-    return sheetRef;
+    return { ref: sheetRef, effectiveSources };
   } finally {
     await Promise.all(
       tmpPaths.map(p => fs.unlink(p).catch(() => {})),
@@ -183,19 +240,41 @@ async function writeNewSpritesheets(
   allocated: AllocatedSprites[],
   geometry: string,
   adventureId: string,
-): Promise<void> {
+): Promise<AllocatedSprites[]> {
   try {
-    await Promise.all(allocated.map(a => createMontage(storage, logger, a.sources, geometry, a.newSheetId)));
+    // allSettled (not all) so that if one montage aborts we can still see
+    // which others completed — each completed montage has already uploaded its
+    // assembled PNG to S3, and those must be cleaned up before we throw.
+    const results = await Promise.allSettled(allocated.map(async (a): Promise<AllocatedSprites> => {
+      const m = await createMontage(storage, logger, a.sources, geometry, a.newSheetId);
+      return { ...a, sources: m.effectiveSources };
+    }));
+
+    const firstRejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (firstRejected) {
+      const uploaded = results.flatMap(r => r.status === 'fulfilled' ? [r.value] : []);
+      await Promise.all(uploaded.map(a =>
+        storage.ref(getSpritePathFromId(a.newSheetId)).delete().catch(cleanupErr =>
+          logger.logWarning(
+            `Failed to clean up orphaned spritesheet PNG ${a.newSheetId} after montage abort`,
+            cleanupErr,
+          ),
+        ),
+      ));
+      throw firstRejected.reason;
+    }
+    const montaged = results.map(r => (r as PromiseFulfilledResult<AllocatedSprites>).value);
 
     const toDelete: string[] = [];
     await db.transaction(async (tx) => {
       const sg = fromSpriteGeometryString(geometry);
 
-      for (const a of allocated) {
+      for (const a of montaged) {
+        const usedSlots = a.sources.filter(s => s !== '').length;
         const newSheet: ISpritesheet = {
           sprites: a.sources,
           geometry,
-          freeSpaces: sg.columns * sg.rows - a.sources.length,
+          freeSpaces: sg.columns * sg.rows - usedSlots,
           date: Date.now(),
           supersededBy: '',
           refs: 0,
@@ -229,17 +308,23 @@ async function writeNewSpritesheets(
     });
 
     await Promise.all(toDelete.map(i => storage.ref(getSpritePathFromId(i)).delete()));
+    return montaged;
   } catch (e) {
-    // Roll back refs increment on failure
-    await db.transaction(async (tx) => {
-      for (const a of allocated) {
-        if (a.oldSheetId) {
-          await tx.update(spritesheets)
-            .set({ refs: sql`${spritesheets.refs} - 1` })
-            .where(eq(spritesheets.id, a.oldSheetId));
+    // Roll back refs increment on failure. Guard the rollback so its own
+    // failure is logged rather than masking the original error `e`.
+    try {
+      await db.transaction(async (tx) => {
+        for (const a of allocated) {
+          if (a.oldSheetId) {
+            await tx.update(spritesheets)
+              .set({ refs: sql`${spritesheets.refs} - 1` })
+              .where(eq(spritesheets.id, a.oldSheetId));
+          }
         }
-      }
-    });
+      });
+    } catch (rollbackErr) {
+      logger.logError('Failed to roll back spritesheet refs after write failure', rollbackErr);
+    }
     throw e;
   }
 }
@@ -281,15 +366,15 @@ export async function addSprites(
 
   logger.logInfo(`found ${found.length}, missing ${missing.length}`);
   const allocated = await allocateNewSpritesToSheets(db, logger, adventureId, geometry, missing);
-  await writeNewSpritesheets(db, storage, logger, allocated, geometry, adventureId);
+  const written = await writeNewSpritesheets(db, storage, logger, allocated, geometry, adventureId);
 
-  for (const a of allocated) {
-    found.push(...a.sources.map((s, i) => ({
+  for (const a of written) {
+    found.push(...a.sources.flatMap((s, i) => s === '' ? [] : [{
       source: s,
       geometry,
       id: a.newSheetId,
       position: i,
-    })));
+    }]));
   }
 
   await notifySafe(notifyAdventureSpritesheets(adventureId));

@@ -16,7 +16,7 @@ import Container from 'react-bootstrap/Container';
 import Row from 'react-bootstrap/Row';
 
 function All() {
-  const { dataService, user } = useContext(UserContext);
+  const { live, user } = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
 
   useDocumentTitle('My Adventures');
@@ -35,17 +35,15 @@ function All() {
 
   // Watch all adventures
   useEffect(() => {
-    const uid = user?.uid;
-    if (uid === undefined) {
+    if (user?.uid === undefined || live === undefined) {
       return () => {};
     }
 
-    return dataService?.watchAdventures(
-      uid,
+    return live.watchAdventures(
       a => setAdventures(a),
       e => logError("Error watching adventures: ", e)
     );
-  }, [dataService, user]);
+  }, [live, user]);
 
   // I can create a new adventure if I'm not at cap
   const showNewAdventure = useMemo(

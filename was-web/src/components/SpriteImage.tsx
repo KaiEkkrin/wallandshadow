@@ -40,7 +40,7 @@ function SpriteImage(
       const sub = spriteManager.lookupToken(token).subscribe(
         e => {
           setEntry(e);
-          setEntryAltText(e.character?.name ?? token.text);
+          setEntryAltText(e?.character?.name ?? token.text);
         },
         e => logError(`Failed to lookup token sprite for ${token.id}`, e)
       );

@@ -1,4 +1,4 @@
-import { IAdventureIdentified, IMap, MapType, getUserPolicy, IProfile, getTokenGeometry, IDataService, IFunctionsService, ISpriteManager } from '@wallandshadow/shared';
+import { IAdventureIdentified, IMap, ILiveData, MapType, getUserPolicy, IProfile, getTokenGeometry, ISpriteManager } from '@wallandshadow/shared';
 
 import { standardColours } from "./featureColour";
 import { HexGridGeometry } from "./hexGridGeometry";
@@ -17,8 +17,7 @@ const squareTokenGeometry = getTokenGeometry(MapType.Square);
 // Helps us avoid re-creating expensive resources (WebGL etc) as we navigate
 // around maps, switch users etc.
 export class MapLifecycleManager {
-  private readonly _dataService: IDataService;
-  private readonly _functionsService: IFunctionsService;
+  private readonly _live: ILiveData;
   private readonly _logError: (message: string, e: unknown) => void;
   private readonly _resolveImageUrl: (path: string) => Promise<string>;
   private readonly _uid: string;
@@ -27,21 +26,17 @@ export class MapLifecycleManager {
   private readonly _stateMachines = new Map<MapType, MapStateMachine>();
 
   constructor(
-    dataService: IDataService,
-    functionsService: IFunctionsService,
+    live: ILiveData,
     logError: (message: string, e: unknown) => void,
     resolveImageUrl: (path: string) => Promise<string>,
     uid: string
   ) {
-    this._dataService = dataService;
-    this._functionsService = functionsService;
+    this._live = live;
     this._logError = logError;
     this._resolveImageUrl = resolveImageUrl;
     this._uid = uid;
   }
 
-  get dataService() { return this._dataService; }
-  get functionsService() { return this._functionsService; }
   get resolveImageUrl() { return this._resolveImageUrl; }
   get uid() { return this._uid; }
 
@@ -58,8 +53,9 @@ export class MapLifecycleManager {
       return already;
     }
 
+    const live = this._live;
     const newStateMachine = new MapStateMachine(
-      this._dataService,
+      (adventureId, mapId, changes) => live.sendMapChange(adventureId, mapId, changes),
       map,
       this._uid,
       map.record.ty === MapType.Hex ? hexGridGeometry : squareGridGeometry,

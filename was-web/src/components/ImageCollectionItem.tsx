@@ -15,20 +15,20 @@ interface IImageCollectionItemProps {
 }
 
 function ImageCollectionItem({ image, style }: IImageCollectionItemProps) {
-  const { storageService } = useContext(UserContext);
+  const { resolveImageUrl } = useContext(UserContext);
   const [url, setUrl] = useState("");
 
   useEffect(() => {
-    if (!storageService) {
+    if (!resolveImageUrl) {
       return;
     }
 
-    const sub = from(storageService.ref(image.path).getDownloadURL()).subscribe(
+    const sub = from(resolveImageUrl(image.path)).subscribe(
       u => setUrl(String(u)),
       e => logError("Failed to get download URL for image " + image.path, e)
     );
     return () => sub.unsubscribe();
-  }, [storageService, image, setUrl]);
+  }, [resolveImageUrl, image, setUrl]);
 
   return (
     <div style={style}>

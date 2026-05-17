@@ -1,1 +1,1 @@
-../../src/models/mapStateMachine.ts
+export * from '../../src/models/mapStateMachine';

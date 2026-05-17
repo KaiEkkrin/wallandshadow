@@ -1,5 +1,5 @@
 import { IAuth, IAuthProvider, IUser } from '@wallandshadow/shared';
-import { HonoApiClient } from './honoApi';
+import { HonoApiClient } from './honoApiClient';
 import { isOidcEnabled, startOidcLogin, getOidcUser, getOidcBearerToken, oidcSignOut, subscribeToTokenRenewal } from './oidcAuth';
 import md5 from 'blueimp-md5';
 
@@ -22,18 +22,6 @@ export class HonoUser implements IUser {
     this.emailMd5 = email ? md5(email.trim().toLowerCase()) : null;
     this.emailVerified = emailVerified;
     this.providerId = providerId;
-  }
-
-  async changePassword(_oldPassword: string, _newPassword: string): Promise<void> {
-    throw new Error('changePassword not implemented');
-  }
-
-  async sendEmailVerification(): Promise<void> {
-    // No-op: handled by auth provider
-  }
-
-  async updateProfile(_p: { displayName?: string | null; photoURL?: string | null }): Promise<void> {
-    // No-op: profile updates go through PATCH /api/auth/me
   }
 }
 
@@ -156,14 +144,6 @@ export class HonoAuth implements IAuth {
     const user = new HonoUser(uid, email, displayName, false, 'password');
     this.fireListeners(user);
     return user;
-  }
-
-  async fetchSignInMethodsForEmail(_email: string): Promise<string[]> {
-    return ['password'];
-  }
-
-  async sendPasswordResetEmail(_email: string): Promise<void> {
-    // Not implemented — Zitadel handles password reset for OIDC users
   }
 
   async signInWithEmailAndPassword(email: string, password: string): Promise<IUser | null> {

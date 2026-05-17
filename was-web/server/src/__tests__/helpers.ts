@@ -12,7 +12,7 @@ import {
 import { db } from '../db/connection.js';
 import { mapChanges } from '../db/schema.js';
 import { and, eq } from 'drizzle-orm';
-import { HeadObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { testS3, testBucket } from './setup.js';
 
 // ─── Test fixtures ─────────────────────────────────────────────────────────────
@@ -32,6 +32,12 @@ export async function s3ObjectExists(key: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// Removes a test object from S3. Idempotent (S3 DELETE succeeds for missing
+// keys); for cleaning up objects a test deliberately left orphaned.
+export async function deleteS3Object(key: string): Promise<void> {
+  await testS3.send(new DeleteObjectCommand({ Bucket: testBucket, Key: key }));
 }
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
@@ -106,6 +112,22 @@ export async function apiPatch(
   });
 }
 
+export async function apiPut(
+  app: Hono,
+  path: string,
+  body: unknown,
+  token: string,
+): Promise<Response> {
+  return app.request(path, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function apiDelete(
   app: Hono,
   path: string,
@@ -160,6 +182,14 @@ export async function getBaseChange(mapId: string): Promise<Changes | undefined>
     .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, true)))
     .limit(1);
   return rows[0]?.changes as Changes | undefined;
+}
+
+export async function getIncrementalChanges(mapId: string): Promise<Changes[]> {
+  const rows = await db.select({ changes: mapChanges.changes })
+    .from(mapChanges)
+    .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false)))
+    .orderBy(mapChanges.seq);
+  return rows.map(r => r.changes as Changes);
 }
 
 export async function countMapChanges(mapId: string): Promise<number> {

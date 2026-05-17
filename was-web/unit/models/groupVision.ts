@@ -1,1 +1,1 @@
-../../src/models/groupVision.ts
+export * from '../../src/models/groupVision';

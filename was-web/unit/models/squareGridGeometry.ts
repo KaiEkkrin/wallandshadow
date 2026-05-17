@@ -1,1 +1,1 @@
-../../src/models/squareGridGeometry.ts
+export * from '../../src/models/squareGridGeometry';

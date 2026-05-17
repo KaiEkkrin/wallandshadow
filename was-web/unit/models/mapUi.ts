@@ -1,1 +1,1 @@
-../../src/models/mapUi.ts
+export * from '../../src/models/mapUi';

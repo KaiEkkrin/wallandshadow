@@ -23,7 +23,6 @@ import Modal from 'react-bootstrap/Modal';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronLeft, faChevronRight, faTimes } from '@fortawesome/free-solid-svg-icons';
 import { from } from 'rxjs';
-import { v7 as uuidv7 } from 'uuid';
 
 interface IImageStatusProps {
   message: string;
@@ -45,7 +44,7 @@ interface IImagePickerFormProps {
 }
 
 export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDelete }: IImagePickerFormProps) {
-  const { dataService, storageService, user } = useContext(UserContext);
+  const { api, user } = useContext(UserContext);
 
   const [status, setStatus] = useState<IImageStatusProps>({ message: "" });
 
@@ -56,14 +55,15 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
     }
   }, [show, setStatus]);
 
+  const [images, setImages] = useState<IImage[]>([]);
+
   // File uploads
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!storageService || !user) {
+    if (!api || !user) {
       return;
     }
 
-    const path = "/images/" + user.uid + "/" + uuidv7();
     const file = e.target.files?.[0];
     if (!file) {
       return;
@@ -72,12 +72,12 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
     setStatus({ message: `Uploading ${file.name}...` });
     const doUpload = async () => {
       try {
-        await storageService.ref(path).put(file, {
-          customMetadata: {
-            originalName: file.name
-          }
-        });
-        setStatus({ message: `Processing ${file.name}...` }); // will be replaced when the onUpload function finishes
+        const uploaded = await api.uploadImage(file, file.name);
+        // Prepend: the listImages endpoint orders newest-first, and the
+        // effect that watches `images` resets the carousel to index 0 to
+        // surface the latest upload.
+        setImages(prev => [uploaded, ...prev]);
+        setStatus({ message: "" });
       }
       catch (e: unknown) {
         setStatus({ message: `Upload failed: ${e instanceof Error ? e.message : String(e)}`, isError: true });
@@ -87,28 +87,30 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
 
     const sub = from(doUpload()).subscribe();
     return () => sub.unsubscribe();
-  }, [setStatus, storageService, user]);
+  }, [setStatus, setImages, api, user]);
 
-  const [images, setImages] = useState<IImage[]>([]);
   useEffect(() => {
-    if (!dataService || !user) {
+    // Refetch the image list each time the modal opens; images change
+    // infrequently and we don't have a live update channel for them.
+    // Within an open session, upload/delete update `images` locally.
+    if (!api || !user || !show) {
       return undefined;
     }
 
-    const imagesRef = dataService.getImagesRef(user.uid);
-    console.debug("watching images");
-    return dataService.watch(
-      imagesRef,
-      r => {
-        setImages(r?.images ?? []);
-        setImageCount(r?.images?.length ?? 0);
-        if (r !== undefined) {
-          setStatus({ message: r.lastError, isError: r.lastError.length > 0 });
-        }
-      },
-      e => logError("Error watching images", e)
-    );
-  }, [setImageCount, setImages, setStatus, dataService, user]);
+    console.debug("fetching images");
+    let cancelled = false;
+    api.listImages()
+      .then(list => {
+        if (cancelled) return;
+        setImages(list);
+      })
+      .catch(e => logError("Error listing images", e));
+    return () => { cancelled = true; };
+  }, [setImages, api, user, show]);
+
+  useEffect(() => {
+    setImageCount(images.length);
+  }, [images, setImageCount]);
 
   const [index, setIndex] = useReducer(
     (state: number, action: number) => action === 0 ? 0 : state + action,
@@ -148,6 +150,15 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
 
   const saveDisabled = useMemo(() => shownIndex === undefined, [shownIndex]);
 
+  const doHandleDelete = useCallback(() => {
+    // Optimistically drop the active image from the local list so the picker
+    // updates immediately. The parent triggers the actual server delete via
+    // handleDelete (typically behind a confirmation modal). If the user
+    // cancels, they can close and reopen the picker to refetch.
+    setImages(prev => shownIndex === undefined ? prev : prev.filter((_, i) => i !== shownIndex));
+    handleDelete();
+  }, [handleDelete, setImages, shownIndex]);
+
   return (
     <Fragment>
       <Form>
@@ -173,7 +184,7 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
         >
           <FontAwesomeIcon icon={faChevronRight} color="white" />
         </Button>
-        <Button variant="danger" disabled={saveDisabled} onClick={handleDelete}
+        <Button variant="danger" disabled={saveDisabled} onClick={doHandleDelete}
           style={{ gridRow: '3', gridColumn: '3', width: '2.5rem' }}
         >
           <FontAwesomeIcon icon={faTimes} color="white" />

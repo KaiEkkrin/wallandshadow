@@ -3,14 +3,12 @@ import { combineLatest, debounceTime, delay, filter, merge, take, timer } from '
 
 import { AuthContext } from './AuthContext';
 import { UserContext } from './UserContext';
-import { SignInMethodsContext } from './SignInMethodsContext';
 import { IContextProviderProps, IUserContext } from './interfaces';
 
-import { HonoApiClient } from '../services/honoApi';
+import { HonoApiClient } from '../services/honoApiClient';
+import { HonoApi } from '../services/honoApi';
 import { HonoAuth } from '../services/honoAuth';
-import { HonoDataService } from '../services/honoDataService';
-import { HonoFunctionsService } from '../services/honoFunctions';
-import { HonoStorage } from '../services/honoStorage';
+import { HonoLiveData } from '../services/honoLiveData';
 import { createResolveImageUrl } from '../services/resolveImageUrl';
 import { networkStatusTracker } from '../models/networkStatusTracker';
 import { PENDING_EXIT_FALLBACK_MS, RTT_DANGER_MS } from '../models/networkQualityConstants';
@@ -22,12 +20,12 @@ function HonoContextProvider(props: IContextProviderProps) {
   }, []);
 
   const auth = useMemo(() => new HonoAuth(apiClient), [apiClient]);
+  const api = useMemo(() => new HonoApi(apiClient), [apiClient]);
+  const resolveImageUrl = useMemo(() => createResolveImageUrl(api), [api]);
   const [userContext, setUserContext] = useState<IUserContext>({ user: undefined });
 
   useEffect(() => {
-    const storageService = new HonoStorage(apiClient);
-    const resolveImageUrl = createResolveImageUrl(storageService);
-    let currentDataService: HonoDataService | undefined;
+    let currentLive: HonoLiveData | undefined;
 
     // Guard prevents multiple in-flight redirects if OIDC expiry and WS 4001
     // both fire in the same session.
@@ -45,15 +43,16 @@ function HonoContextProvider(props: IContextProviderProps) {
       qualityUnsub?.();
       qualityUnsub = null;
       // Tear down the previous session's WebSocket before replacing context.
-      currentDataService?.dispose();
+      currentLive?.dispose();
       if (user) {
-        currentDataService = new HonoDataService(apiClient, user.uid, onAuthFailure);
+        currentLive = new HonoLiveData(apiClient, onAuthFailure);
+        const live = currentLive;
         // Feed WebSocket quality data into networkStatusTracker so both the
         // map view and adventure view can read it from the tracker singleton.
         const qualitySub = combineLatest([
-          currentDataService.isConnected$,
-          currentDataService.rtt$,
-          currentDataService.reconnectCount$,
+          live.isConnected$,
+          live.rtt$,
+          live.reconnectCount$,
         ]).pipe(debounceTime(0)).subscribe(([connected, rtt, reconnects]) => {
           networkStatusTracker.setConnectionQuality(connected, rtt, reconnects);
         });
@@ -62,7 +61,7 @@ function HonoContextProvider(props: IContextProviderProps) {
         //   — RTT_DANGER_MS after first connection (covers "pong still in flight")
         //   — PENDING_EXIT_FALLBACK_MS overall (covers "WebSocket never connects")
         const pendingExitSub = merge(
-          currentDataService.isConnected$.pipe(filter((v): v is true => v), take(1), delay(RTT_DANGER_MS)),
+          live.isConnected$.pipe(filter((v): v is true => v), take(1), delay(RTT_DANGER_MS)),
           timer(PENDING_EXIT_FALLBACK_MS),
         ).pipe(take(1)).subscribe(() => networkStatusTracker.exitPending());
 
@@ -72,14 +71,13 @@ function HonoContextProvider(props: IContextProviderProps) {
         };
         setUserContext({
           user,
-          dataService: currentDataService,
-          functionsService: new HonoFunctionsService(apiClient),
-          storageService,
+          api,
+          live,
           resolveImageUrl,
-          forceReconnect: () => currentDataService?.forceReconnect(),
+          forceReconnect: () => live.forceReconnect(),
         });
       } else {
-        currentDataService = undefined;
+        currentLive = undefined;
         setUserContext({ user: null });
       }
     }, e => console.error('Authentication state error:', e));
@@ -87,16 +85,14 @@ function HonoContextProvider(props: IContextProviderProps) {
     return () => {
       qualityUnsub?.();
       unsub();
-      currentDataService?.dispose();
+      currentLive?.dispose();
     };
-  }, [auth, apiClient]);
+  }, [api, auth, apiClient, resolveImageUrl]);
 
   return (
     <AuthContext.Provider value={{ auth }}>
       <UserContext.Provider value={userContext}>
-        <SignInMethodsContext.Provider value={{ signInMethods: auth.oidcEnabled ? ['password', 'oidc'] : ['password'] }}>
-          {props.children}
-        </SignInMethodsContext.Provider>
+        {props.children}
       </UserContext.Provider>
     </AuthContext.Provider>
   );

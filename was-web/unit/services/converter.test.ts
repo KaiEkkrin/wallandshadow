@@ -275,15 +275,11 @@ test('The maps in an adventure get converted', () => {
   expect(a.maps[1].description).toBe('An unnamed map');
 });
 
-test('The adventures and maps in a profile get converted', () => {
+test('The adventures in a profile get converted', () => {
   const raw = {
     name: 'A User',
     adventures: [
       { id: 'a', description: 'An unnamed adventure' }
-    ],
-    latestMaps: [
-      { id: 'm', name: 'Map One' },
-      { id: 'b', description: 'An unnamed map' }
     ]
   };
 
@@ -292,18 +288,9 @@ test('The adventures and maps in a profile get converted', () => {
   expect(a.level).toBe(UserLevel.Standard);
 
   expect(a.adventures).toHaveLength(1);
-  expect(a.latestMaps).toHaveLength(2);
 
   expect(a.adventures?.[0].id).toBe('a');
   expect(a.adventures?.[0].name).toBe('');
   expect(a.adventures?.[0].description).toBe('An unnamed adventure');
   expect(a.adventures?.[0].imagePath).toBe('');
-
-  expect(a.latestMaps?.[0].id).toBe('m');
-  expect(a.latestMaps?.[0].name).toBe('Map One');
-  expect(a.latestMaps?.[0].description).toBe('');
-
-  expect(a.latestMaps?.[1].id).toBe('b');
-  expect(a.latestMaps?.[1].name).toBe('');
-  expect(a.latestMaps?.[1].description).toBe('An unnamed map');
 });

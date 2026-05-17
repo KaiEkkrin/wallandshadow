@@ -4,46 +4,60 @@
     "dockerfile": "../Dockerfile",
     "context": ".."
   },
-
   "workspaceFolder": "/workspaces/wallandshadow",
+  // The ,Z suffix relabels the bind mount for SELinux (required on Fedora/RHEL with Podman)
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/wallandshadow,type=bind,Z",
-
+  // Podman rootless compatibility:
+  // --shm-size: 2GB shared memory for WebGL rendering in Playwright tests.
+  //   Replaces the old docker-compose `ipc: host` approach.
+  // --userns=keep-id: maps host user UID to same UID inside container (fixes bind mount permissions)
+  // --tmpfs=/tmp:rw,exec,mode=1777: works around a crun >= 1.11 regression (podman#20754) where
+  //   devcontainer feature installation (git:1, github-cli:1) runs as root via buildah and writes
+  //   a new overlay layer in which /tmp gets mode 0755 instead of the correct 1777.  The result is
+  //   that the node user cannot create files in /tmp (e.g. /tmp/.X11-unix).  Mounting a fresh tmpfs
+  //   at container start bypasses the corrupted image layer entirely.
+  //
   // --device=nvidia.com/gpu=all uses Podman's CDI (Container Device Interface) interface.
   // Requires on host:
   //   1. nvidia-container-toolkit installed
   //   2. CDI configured: nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
-  // --tmpfs=/tmp: workaround for crun >= 1.11 regression (podman#20754) that corrupts /tmp
-  // permissions during devcontainer feature builds. See .devcontainer/X11_PERMISSION_RESEARCH.md.
   "runArgs": [
     "--shm-size=2g",
     "--userns=keep-id",
     "--tmpfs=/tmp:rw,exec,mode=1777",
+    "--env-file=${localWorkspaceFolder}/.devcontainer/.env",
     "--device=nvidia.com/gpu=all",
-    // Publish browser-facing ports explicitly — the devcontainer CLI does not honour
-    // forwardPorts (github.com/devcontainers/cli/issues/22).
-    "-p=3000:3000",
-    "-p=5000:5000",
-    "-p=9001:9001",
-    "-p=9323:9323"
+    // Publish browser-facing ports so they're accessible from the host regardless of
+    // whether the devcontainer CLI or VS Code is used. The devcontainer CLI does not
+    // honour forwardPorts (github.com/devcontainers/cli/issues/22), so explicit -p
+    // flags are the only reliable mechanism. VS Code's own forwarding is redundant
+    // but harmless when these are also published.
+    "-p=[::]:3000:3000",
+    "-p=[::]:5000:5000",
+    "-p=[::]:9000:9000",
+    "-p=[::]:9001:9001",
+    "-p=[::]:9323:9323"
   ],
-
+  // With --userns=keep-id the host UID is already mapped to the same UID inside the
+  // container, so VS Code must NOT also try to remap it via usermod (updateRemoteUserUID).
   "updateRemoteUserUID": false,
-
   "containerEnv": {
     "IS_LOCAL_DEV": "true",
     "FORCE_COLOR": "true",
+    "LANG": "C.UTF-8",
     "EDITOR": "nvim",
     "VISUAL": "nvim",
     "NVIDIA_VISIBLE_DEVICES": "all",
     "NVIDIA_DRIVER_CAPABILITIES": "all",
+    // PostgreSQL: data directory (pg_ctl and psql pick this up automatically)
     "PGDATA": "/workspaces/wallandshadow/.devcontainer/.pgdata",
     "DATABASE_URL": "postgresql://was:wasdev@localhost:5432/wallandshadow",
-    "S3_ENDPOINT": "http://127.0.0.1:9000",
+    // MinIO / S3-compatible storage
+    "S3_ENDPOINT": "http://localhost:9000",
     "S3_BUCKET": "wallandshadow",
     "S3_ACCESS_KEY": "wasdev",
     "S3_SECRET_KEY": "wasdevpass"
   },
-
   "customizations": {
     "vscode": {
       "extensions": [
@@ -59,9 +73,10 @@
       "settings": {
         "editor.tabSize": 2,
         "editor.formatOnSave": true,
-        "editor.defaultFormatter": "esbenp.prettier-vscode",
         "typescript.tsdk": "was-web/node_modules/typescript/lib",
-        "eslint.workingDirectories": ["was-web"],
+        "eslint.workingDirectories": [
+          "was-web"
+        ],
         "files.exclude": {
           "**/.git": true,
           "**/.DS_Store": true,
@@ -72,9 +87,15 @@
       }
     }
   },
-
-  "forwardPorts": [3000, 5000, 9229, 9323, 5432, 9000, 9001],
-
+  "forwardPorts": [
+    3000,
+    5000,
+    9229,
+    9323,
+    5432,
+    9000,
+    9001
+  ],
   "portsAttributes": {
     "3000": {
       "label": "Hono API Server",
@@ -82,7 +103,7 @@
     },
     "5000": {
       "label": "React Dev Server",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "notify"
     },
     "9229": {
       "label": "Node Debug",
@@ -102,15 +123,12 @@
     },
     "9001": {
       "label": "MinIO Console",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "notify"
     }
   },
-
   "postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
   "postStartCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && bash .devcontainer/scripts/post-start.sh",
-
   "remoteUser": "node",
-
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}

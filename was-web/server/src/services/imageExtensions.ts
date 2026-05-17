@@ -1,10 +1,16 @@
-import { IStorage, ILogger, getUserPolicy, UserLevel } from '@wallandshadow/shared';
+import { ICharacter, IStorage, ILogger, getUserPolicy, UserLevel } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
-import { adventures, adventurePlayers, maps, mapImages, images, spritesheets, users } from '../db/schema.js';
-import { eq, sql, count } from 'drizzle-orm';
+import { adventures, adventurePlayers, mapChanges, maps, mapImages, images, spritesheets, users } from '../db/schema.js';
+import { eq, and, sql, count } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import { assertAdventureMember } from './extensions.js';
+import { assertAdventureMember, scrubMapSpriteReferences } from './extensions.js';
+import {
+  notifyAdventurePlayers,
+  notifyAdventureSpritesheets,
+  notifyMapChange,
+  notifySafe,
+} from '../ws/notify.js';
 
 export async function addImage(
   db: Db,
@@ -144,20 +150,27 @@ export async function deleteImage(
     throwApiError('permission-denied', 'This image path corresponds to a different user id');
   }
 
-  await db.transaction(async (tx) => {
-    // Remove from images table
-    await tx.delete(images).where(eq(images.path, path));
+  const spritesheetAdventureIds = new Set<string>();  // → notifyAdventureSpritesheets
+  const playerAdventureIds = new Set<string>();        // → notifyAdventurePlayers
+  const mapChangeNotifies: { mapId: string; id: string; seq: string }[] = [];
 
-    // Clear image_path on adventures and maps that reference it
+  await db.transaction(async (tx) => {
+    await tx.delete(images).where(eq(images.path, path));
     await tx.update(adventures).set({ imagePath: '' }).where(eq(adventures.imagePath, path));
     await tx.update(maps).set({ imagePath: '' }).where(eq(maps.imagePath, path));
-
-    // Drop any placed-image access grants for this path
     await tx.delete(mapImages).where(eq(mapImages.path, path));
 
-    // Clear path from spritesheets sprites JSONB arrays:
-    // Replace matching source string with "" in the sprites JSON array, increment free_spaces
-    const spritesheetRows = await tx.select({ id: spritesheets.id, sprites: spritesheets.sprites, freeSpaces: spritesheets.freeSpaces })
+    // The freed spritesheet slot is recycled when a new sprite of matching
+    // geometry is added (see spriteExtensions.allocateNewSpritesToSheets) —
+    // that regeneration is what physically removes the deleted image's pixels
+    // from object storage. Leaving the stale pixels in place until then is OK
+    // because the token/character cleanup below clears every live reference.
+    const spritesheetRows = await tx.select({
+      id: spritesheets.id,
+      adventureId: spritesheets.adventureId,
+      sprites: spritesheets.sprites,
+      freeSpaces: spritesheets.freeSpaces,
+    })
       .from(spritesheets)
       .where(sql`${spritesheets.sprites}::jsonb @> ${JSON.stringify([path])}::jsonb`);
 
@@ -168,6 +181,44 @@ export async function deleteImage(
       await tx.update(spritesheets)
         .set({ sprites: newSprites as unknown as object, freeSpaces: row.freeSpaces + freed })
         .where(eq(spritesheets.id, row.id));
+      spritesheetAdventureIds.add(row.adventureId);
+    }
+
+    // Driven by its own containment query, not the spritesheet set: a token
+    // can reference an image whose spritesheet slot was already recycled.
+    const mapRows = await tx.selectDistinct({ mapId: mapChanges.mapId })
+      .from(mapChanges)
+      .where(sql`${mapChanges.changes}::jsonb @> ${JSON.stringify({ chs: [{ feature: { sprites: [{ source: path }] } }] })}::jsonb`);
+
+    for (const m of mapRows) {
+      const result = await scrubMapSpriteReferences(tx, m.mapId, path);
+      if (result) {
+        mapChangeNotifies.push({ mapId: m.mapId, id: result.id, seq: result.seq });
+      }
+    }
+
+    // Likewise independent of the spritesheet set: a character can reference an
+    // image with no spritesheet at all.
+    const playerRows = await tx.select({
+      adventureId: adventurePlayers.adventureId,
+      userId: adventurePlayers.userId,
+      characters: adventurePlayers.characters,
+    })
+      .from(adventurePlayers)
+      .where(sql`${adventurePlayers.characters}::jsonb @> ${JSON.stringify([{ sprites: [{ source: path }] }])}::jsonb`);
+
+    for (const p of playerRows) {
+      const updated = (p.characters as ICharacter[]).map(c => ({
+        ...c,
+        sprites: c.sprites.filter(s => s.source !== path),
+      }));
+      await tx.update(adventurePlayers)
+        .set({ characters: updated as unknown as object })
+        .where(and(
+          eq(adventurePlayers.adventureId, p.adventureId),
+          eq(adventurePlayers.userId, p.userId),
+        ));
+      playerAdventureIds.add(p.adventureId);
     }
   });
 
@@ -176,4 +227,16 @@ export async function deleteImage(
   } catch (e) {
     logger.logWarning(`Failed to delete storage object at ${path}`, e);
   }
+
+  const notifyPromises: Promise<void>[] = [];
+  for (const adventureId of spritesheetAdventureIds) {
+    notifyPromises.push(notifyAdventureSpritesheets(adventureId));
+  }
+  for (const adventureId of playerAdventureIds) {
+    notifyPromises.push(notifyAdventurePlayers(adventureId));
+  }
+  for (const m of mapChangeNotifies) {
+    notifyPromises.push(notifyMapChange(m.mapId, m.id, m.seq));
+  }
+  await notifySafe(...notifyPromises);
 }

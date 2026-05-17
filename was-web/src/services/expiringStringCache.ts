@@ -17,6 +17,9 @@ export class ExpiringStringCache {
 
     const newEntry = fetch(id);
     this._cache.set(id, newEntry);
+    // On success, evict after the expiry delay. On failure, evict immediately
+    // (the `.catch`) so a rejected fetch is never pinned for the full expiry —
+    // the next caller re-fetches rather than inheriting a stale rejection.
     newEntry.then(() => this._waitExpire()).then(() => this._cache.delete(id))
       .catch(() => this._cache.delete(id));
     return newEntry;

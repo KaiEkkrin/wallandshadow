@@ -1,1 +1,1 @@
-../../src/models/drawn.ts
+export * from '../../src/models/drawn';

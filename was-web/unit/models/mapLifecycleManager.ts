@@ -1,1 +1,1 @@
-../../src/models/mapLifecycleManager.ts
+export * from '../../src/models/mapLifecycleManager';

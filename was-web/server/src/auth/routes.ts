@@ -10,6 +10,9 @@ import { signJwt } from './jwt.js';
 import { authMiddleware, type AuthVariables } from './middleware.js';
 import { fetchMeRow } from '../ws/subscriptions.js';
 import { notifyUserProfile, notifySafe } from '../ws/notify.js';
+import { deleteUser } from '../services/extensions.js';
+import { storage } from '../services/storage.js';
+import { logger } from '../services/logger.js';
 
 export const authRoutes = new Hono<{ Variables: AuthVariables }>();
 
@@ -51,6 +54,14 @@ authRoutes.patch('/me', authMiddleware, async (c) => {
 
   await notifySafe(notifyUserProfile(uid));
   return c.json({ uid, name });
+});
+
+// ── Delete current user ─────────────────────────────────────────────────────
+
+authRoutes.delete('/me', authMiddleware, async (c) => {
+  const uid = c.get('uid');
+  await deleteUser(db, storage, logger, uid);
+  return c.json({ ok: true });
 });
 
 // ── Local auth (disabled when AUTH_MODE=oidc) ───────────────────────────────

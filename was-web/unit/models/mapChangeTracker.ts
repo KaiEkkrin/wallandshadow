@@ -1,1 +1,1 @@
-../../src/models/mapChangeTracker.ts
+export * from '../../src/models/mapChangeTracker';

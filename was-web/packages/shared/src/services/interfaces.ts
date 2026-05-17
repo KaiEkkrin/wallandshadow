@@ -1,30 +1,12 @@
-import { IAdventure, IPlayer } from '../data/adventure';
-import { Change, Changes } from '../data/change';
 import { ICharacter } from '../data/character';
 import { ITokenProperties } from '../data/feature';
-import { IIdentified } from '../data/identified';
-import { IImages } from '../data/image';
-import { IInvite } from '../data/invite';
-import { IMap, MapType } from '../data/map';
-import { IInviteExpiryPolicy } from '../data/policy';
-import { PresenceSubscription, PresenceUserState } from '../data/presence';
-import { IProfile } from '../data/profile';
 import { ISprite, ISpritesheet } from '../data/sprite';
-import { IConverter } from './converter';
 
 import { Observable } from 'rxjs';
-
-// App version information used to detect when a new version has been deployed.
-export interface IAppVersion {
-  commit: string;
-  version?: string;
-}
 
 // Authentication abstraction implemented by HonoAuth.
 export interface IAuth {
   createUserWithEmailAndPassword(email: string, password: string, displayName: string): Promise<IUser | null>;
-  fetchSignInMethodsForEmail(email: string): Promise<Array<string>>;
-  sendPasswordResetEmail(email: string): Promise<void>;
   signInWithEmailAndPassword(email: string, password: string): Promise<IUser | null>;
   signInWithPopup(provider: IAuthProvider | undefined): Promise<IUser | null>;
   signOut(): Promise<void>;
@@ -45,184 +27,6 @@ export interface IUser {
   emailVerified: boolean;
   providerId: string;
   uid: string;
-
-  changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
-  sendEmailVerification: () => Promise<void>;
-  updateProfile: (p: { displayName?: string | null; photoURL?: string | null }) => Promise<void>;
-}
-
-// A reference to stored data.
-export interface IDataReference<T> {
-  id: string;
-  convert(rawData: Record<string, unknown>): T;
-  isEqual(other: IDataReference<T>): boolean;
-}
-
-export interface IChildDataReference<T, U> extends IDataReference<T> {
-  getParent(): IDataReference<U> | undefined;
-}
-
-// A reference to stored data, *and* the data fetched.
-export interface IDataAndReference<T> extends IDataReference<T> {
-  data: T;
-}
-
-// This service is for datastore-related operations.
-export interface IDataService extends IDataView {
-  // Adds incremental changes to a map.
-  addChanges(adventureId: string, uid: string, mapId: string, changes: Change[]): Promise<void>;
-
-  // Gets all the maps in one adventure.
-  getAdventureMapRefs(adventureId: string): Promise<IDataAndReference<IMap>[]>;
-
-  // Gets an adventure.
-  getAdventureRef(id: string): IDataReference<IAdventure>;
-
-  // Gets a reference to a user's images record.
-  getImagesRef(uid: string): IDataReference<IImages>;
-
-  // Gets an invite reference.
-  getInviteRef(id: string): IDataReference<IInvite>;
-
-  // Gets a map.
-  getMapRef(adventureId: string, id: string): IChildDataReference<IMap, IAdventure>;
-  getMapBaseChangeRef(adventureId: string, id: string, converter: IConverter<Changes>): IDataReference<Changes>;
-  getMapIncrementalChangesRefs(adventureId: string, id: string, limit: number, converter: IConverter<Changes>): Promise<IDataAndReference<Changes>[] | undefined>;
-
-  // Gets all my adventures, invites, and player records.
-  getMyAdventures(uid: string): Promise<IDataAndReference<IAdventure>[]>;
-  getMyPlayerRecords(uid: string): Promise<IDataAndReference<IPlayer>[]>;
-
-  // Gets a reference to a player record for an adventure.
-  getPlayerRef(adventureId: string, uid: string): IDataReference<IPlayer>;
-
-  // Gets refs to all players currently in an adventure.
-  getPlayerRefs(adventureId: string): Promise<IDataAndReference<IPlayer>[]>;
-
-  // Gets the user's profile.
-  getProfileRef(uid: string): IDataReference<IProfile>;
-
-  // Gets the app version document reference (for version checking).
-  getVersionRef(): IDataReference<IAppVersion>;
-
-  // Gets all spritesheets containing one of the supplied images.
-  // No more than 10 sources in one go!
-  getSpritesheetsBySource(adventureId: string, geometry: string, sources: string[]): Promise<IDataAndReference<ISpritesheet>[]>;
-
-  // Runs a transaction. The `dataView` parameter accepted by the
-  // transaction function does things in the transaction's context.
-  runTransaction<T>(fn: (dataView: IDataView) => Promise<T>): Promise<T>;
-
-  // Waits until all currently pending writes have been acknowledged by the backend.
-  // Returns a Promise that resolves when all pending writes are committed.
-  waitForPendingWrites(): Promise<void>;
-
-  // Watches a single object.  Call the returned function to stop.
-  watch<T>(
-    d: IDataReference<T>,
-    onNext: (r: T | undefined) => void,
-    onError?: ((error: Error) => void) | undefined,
-    onCompletion?: (() => void) | undefined
-  ): () => void;
-
-  // Watches all the user's adventures.  Call the returned function to stop.
-  watchAdventures(
-    uid: string,
-    onNext: (adventures: IIdentified<IAdventure>[]) => void,
-    onError?: ((error: Error) => void) | undefined,
-    onCompletion?: (() => void) | undefined
-  ): () => void;
-
-  // Watches changes to a map.
-  watchChanges(
-    adventureId: string,
-    mapId: string,
-    onNext: (changes: Changes) => void,
-    onError?: ((error: Error) => void) | undefined,
-    onCompletion?: (() => void) | undefined,
-    onSubscribed?: (() => void) | undefined  // called when a full-reload snapshot arrives
-  ): () => void;
-
-  // Watches the players in a particular adventure.
-  watchPlayers(
-    adventureId: string,
-    onNext: (players: IPlayer[]) => void,
-    onError?: ((error: Error) => void) | undefined,
-    onCompletion?: (() => void) | undefined
-  ): () => void;
-
-  // Watches the live presence roster for an adventure (ephemeral, server
-  // in-memory only). Receives the full user state on every change. The
-  // returned handle can be used to push the viewer's current page to the
-  // server so peers can see who is on the same map / on the overview.
-  watchPresence(
-    adventureId: string,
-    initialCurrentMapId: string | undefined,
-    onNext: (presence: PresenceUserState[]) => void,
-    onError?: ((error: Error) => void) | undefined,
-    onCompletion?: (() => void) | undefined
-  ): PresenceSubscription;
-
-  // Watches all adventures shared with this user.
-  watchSharedAdventures(
-    uid: string,
-    onNext: (adventures: IPlayer[]) => void,
-    onError?: ((error: Error) => void) | undefined,
-    onCompletion?: (() => void) | undefined
-  ): () => void;
-
-  // Watches all (current) spritesheets in this adventure.
-  watchSpritesheets(
-    adventureId: string,
-    onNext: (spritesheets: IDataAndReference<ISpritesheet>[]) => void,
-    onError?: ((error: Error) => void) | undefined,
-    onCompletion?: (() => void) | undefined
-  ): () => void;
-}
-
-// A view of data, either the generalised data service or a transaction.
-export interface IDataView {
-  delete<T>(r: IDataReference<T>): Promise<void>;
-  get<T>(r: IDataReference<T>): Promise<T | undefined>;
-  set<T>(r: IDataReference<T>, value: T): Promise<void>; // call this with an explicit type so TypeScript
-                                                         // can check you included all the right fields
-  update<T>(r: IDataReference<T>, changes: Partial<T>): Promise<void>;
-}
-
-// Provides access to server verbs (implemented by the Hono REST API client).
-export interface IFunctionsService {
-  // Adds images to spritesheets.
-  addSprites(adventureId: string, geometry: string, sources: string[]): Promise<ISprite[]>;
-
-  // Creates a new adventure, returning its ID.
-  createAdventure(name: string, description: string): Promise<string>;
-
-  // Creates a new map, returning its ID.
-  createMap(
-    adventureId: string, name: string, description: string, ty: MapType,
-    ffa: boolean, enableGroupVision: boolean,
-  ): Promise<string>;
-
-  // Clones a map in the same adventure, returning the new map ID.
-  cloneMap(adventureId: string, mapId: string, name: string, description: string): Promise<string>;
-
-  // Consolidates changes in the given map.
-  consolidateMapChanges(adventureId: string, mapId: string, resync: boolean): Promise<void>;
-
-  // Deletes a map and all its sub-resources (changes subcollection).
-  deleteMap(adventureId: string, mapId: string): Promise<void>;
-
-  // Deletes an adventure and all its sub-resources (maps, changes, players, spritesheets).
-  deleteAdventure(adventureId: string): Promise<void>;
-
-  // Deletes an image.
-  deleteImage(path: string): Promise<void>;
-
-  // Creates and returns an adventure invite.
-  inviteToAdventure(adventureId: string, policy?: IInviteExpiryPolicy | undefined): Promise<string>;
-
-  // Joins an adventure, returning the adventure id.
-  joinAdventure(inviteId: string, policy?: IInviteExpiryPolicy | undefined): Promise<string>;
 }
 
 // Provides logging for the extensions.
@@ -257,25 +61,36 @@ export interface ISpriteManager {
   lookupSprite(sprite: ISprite): Observable<ISpritesheetEntry>;
 
   // Looks up a token's character and sprite, which could either be the token's character, or
-  // (if none) embedded in the token itself.
-  lookupToken(token: ITokenProperties): Observable<ISpritesheetEntry & { character: ICharacter | undefined }>;
+  // (if none) embedded in the token itself. Emits `undefined` when the token has no sprite
+  // (or its sprite reference is not present in any current spritesheet) so that subscribers
+  // can clear stale renderings — without an explicit signal, an observable that switched to
+  // "no sprite" would silently retain its last emitted value.
+  lookupToken(token: ITokenProperties): Observable<(ISpritesheetEntry & { character: ICharacter | undefined }) | undefined>;
 
   // Cleans up this manager, stopping subscriptions.
   dispose(): void;
 }
 
-// Object-storage abstraction implemented by HonoStorage (backed by MinIO in dev,
-// Hetzner Object Storage in production).
+// Object-storage abstraction (currently used only by the server-side S3 client).
+// The web client talks to the server through IApi instead.
 export interface IStorage {
   // Gets a reference to this path.
   ref(path: string): IStorageReference;
+
+  // Best-effort batch delete. Idempotent: keys that don't exist are treated as
+  // success, so re-running with the same list after a partial failure
+  // completes the cleanup. Per-key S3 errors are returned in `failed`; only
+  // transport-level errors throw.
+  deleteMany(paths: string[]): Promise<{ failed: { path: string; message: string }[] }>;
 }
 
 export interface IStorageReference {
   // Deletes the object.
   delete(): Promise<void>;
 
-  // Downloads the object from storage.
+  // Downloads the object from storage. The server implementation throws a
+  // typed not-found error when the object genuinely does not exist, distinct
+  // from transient storage failures, so callers can react accordingly.
   download(destination: string): Promise<void>;
 
   // Gets the download URL for this object.

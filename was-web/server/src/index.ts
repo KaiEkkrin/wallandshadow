@@ -13,8 +13,12 @@ validateAuthEnv();
 const app = createApp();
 const port = parseInt(process.env.PORT ?? '3000', 10);
 
-const server = serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, () => {
-  console.log(`Server running on http://0.0.0.0:${port}`);
+// Bind dual-stack: '::' accepts both IPv6 and (with bindv6only=0, the Linux
+// default) IPv4-mapped connections. A bare 0.0.0.0 bind leaves [::1]:PORT
+// unreachable, which Chromium's WebSocket client surfaces as an unrecoverable
+// connection failure when the page resolves 'localhost' to ::1 first.
+const server = serve({ fetch: app.fetch, port, hostname: '::' }, () => {
+  console.log(`Server running on http://[::]:${port}`);
 });
 
 // ── WebSocket setup ───────────────────────────────────────────────────────────

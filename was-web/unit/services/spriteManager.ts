@@ -1,1 +1,1 @@
-../../src/services/spriteManager.ts
+export * from '../../src/services/spriteManager';

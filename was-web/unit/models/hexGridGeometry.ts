@@ -1,1 +1,1 @@
-../../src/models/hexGridGeometry.ts
+export * from '../../src/models/hexGridGeometry';

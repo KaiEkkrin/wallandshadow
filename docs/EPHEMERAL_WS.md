@@ -6,9 +6,10 @@ cues. Those messages were never implemented and nothing currently depends on the
 document captures the motivation and the shape of the work so we can decide later whether
 to build it.
 
-**Status**: unfunded. Server currently registers no `'message'` handler on the map
-WebSocket; clients do not send anything over the socket. All writes go through the REST
-API (`POST /api/adventures/:id/maps/:id/changes`) and the server broadcasts the persisted
+**Status**: unfunded. The WebSocket handler dispatches `subscribe` and `mapChange`
+frames (see @docs/REPLATFORM.md "WebSocket Room Model"), but no *ephemeral* message
+types (`ping`, `measurement`) are implemented — nothing in this document is built. Map
+changes are persisted via the `mapChange` frame and the server broadcasts the persisted
 result back via PostgreSQL LISTEN/NOTIFY.
 
 ---

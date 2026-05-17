@@ -43,7 +43,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 // The map component is rather large because of all the state that got pulled into it...
 function Map() {
-  const { dataService, functionsService, user, forceReconnect } = useContext(UserContext);
+  const { api, user, forceReconnect } = useContext(UserContext);
   const { adventure, players, presence, viewerCurrentMapId } = useContext(AdventureContext);
   const { map, mapState, stateMachine } = useContext(MapContext);
   const { profile } = useContext(ProfileContext);
@@ -242,12 +242,11 @@ function Map() {
     }
 
     await ui.mapEditorSave(
-      dataService,
-      functionsService,
+      api,
       map, updated,
       (message, e) => logError(message, e)
     );
-  }, [map, ui, dataService, functionsService]);
+  }, [map, ui, api]);
 
   const handleModalClose = useCallback(() => ui?.modalClose(), [ui]);
   const handleTokenEditorCanSave = useCallback(
@@ -268,14 +267,14 @@ function Map() {
   const handleImageDeletionSave = useCallback(() => {
     ui?.imageDeletionClose();
     const imageToDelete = uiState.imageToDelete;
-    if (imageToDelete === undefined || functionsService === undefined) {
+    if (imageToDelete === undefined || api === undefined) {
       return;
     }
 
-    functionsService.deleteImage(imageToDelete.path)
+    api.deleteImage(imageToDelete.path)
       .then(() => console.debug(`deleted image ${imageToDelete.path}`))
       .catch(e => logError(`failed to delete image ${imageToDelete}`, e));
-  }, [functionsService, ui, uiState]);
+  }, [api, ui, uiState]);
 
   const handleNoteEditorDelete = useCallback(() => ui?.noteEditorDelete(), [ui]);
   const handleNoteEditorSave = useCallback((id: string, colour: number, text: string, visibleToPlayers: boolean) => {

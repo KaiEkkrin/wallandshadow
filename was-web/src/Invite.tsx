@@ -7,6 +7,7 @@ import { ProfileContext } from './components/ProfileContext';
 import { RequireLoggedIn } from './components/RequireLoggedIn';
 import { StatusContext } from './components/StatusContext';
 import { UserContext } from './components/UserContext';
+import { UserName } from './components/UserName';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 
 import { IInvite } from '@wallandshadow/shared';
@@ -38,16 +39,17 @@ function Invite({ inviteId }: IInvitePageProps) {
 
   const [invite, setInvite] = useState(undefined as IInvite | undefined);
   useEffect(() => {
-    if (userContext.dataService !== undefined) {
-      const inviteRef = userContext.dataService.getInviteRef(inviteId);
-      userContext.dataService.get(inviteRef)
+    if (userContext.api !== undefined) {
+      userContext.api.getInvite(inviteId)
         .then(i => setInvite(i))
         .catch(e => logError("Failed to fetch invite " + inviteId, e));
     }
-  }, [userContext.dataService, inviteId]);
+  }, [userContext.api, inviteId]);
 
   const inviteDescription = useMemo(() =>
-    invite === undefined ? "(no such invite)" : invite.adventureName + " by " + invite.ownerName,
+    invite === undefined
+      ? <>(no such invite)</>
+      : <>{invite.adventureName} by <UserName name={invite.ownerName} /></>,
     [invite]);
 
   const documentTitle = useMemo(() =>
@@ -58,7 +60,7 @@ function Invite({ inviteId }: IInvitePageProps) {
 
   const handleJoin = useCallback(() => {
     setButtonDisabled(true);
-    userContext.functionsService?.joinAdventure(inviteId)
+    userContext.api?.joinInvite(inviteId)
       .then(adventureId => {
         navigate("/adventure/" + adventureId, { replace: true });
       })

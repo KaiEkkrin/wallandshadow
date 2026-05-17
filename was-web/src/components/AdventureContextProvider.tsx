@@ -6,7 +6,6 @@ import { IAdventureContext, IContextProviderProps } from './interfaces';
 import { StatusContext } from './StatusContext';
 
 import { IAdventure, IPlayer, IIdentified, ISpriteManager, PresenceSubscription, PresenceUserState } from '@wallandshadow/shared';
-import { registerAdventureAsRecent, removeAdventureFromRecent } from '../services/extensions';
 import { SpriteManager } from '../services/spriteManager';
 import { logError } from '../services/consoleLogger';
 
@@ -16,7 +15,7 @@ import { shareReplay } from 'rxjs/operators';
 import { v7 as uuidv7 } from 'uuid';
 
 function AdventureContextProvider(props: IContextProviderProps) {
-  const { dataService, resolveImageUrl, user } = useContext(UserContext);
+  const { api, live, resolveImageUrl, user } = useContext(UserContext);
   const { toasts } = useContext(StatusContext);
 
   const navigate = useNavigate();
@@ -35,23 +34,12 @@ function AdventureContextProvider(props: IContextProviderProps) {
   const [adventure, setAdventure] = useState<IIdentified<IAdventure> | undefined>(undefined);
   useEffect(() => {
     const uid = user?.uid;
-    if (uid === undefined || adventureId === undefined) {
+    if (uid === undefined || adventureId === undefined || api === undefined || live === undefined) {
       setAdventure(undefined);
       return undefined;
     }
 
-    const d = dataService?.getAdventureRef(adventureId);
-    const playerRef = dataService?.getPlayerRef(adventureId, uid);
-    if (d === undefined || playerRef === undefined) {
-      return undefined;
-    }
-
     function couldNotLoad(message: string) {
-      if (uid && d) {
-        removeAdventureFromRecent(dataService, uid, d.id)
-          .catch(e => logError("Error removing adventure from recent", e));
-      }
-
       toasts.next({
         id: uuidv7(),
         record: { title: 'Error loading adventure', message: message }
@@ -65,7 +53,7 @@ function AdventureContextProvider(props: IContextProviderProps) {
     // we're blocked; being blocked necessarily doesn't stop us from getting the adventure
     // from the db (only the maps), but showing it to the user in that state would *not*
     // be a helpful thing to do
-    dataService?.get(playerRef)
+    api.getPlayer(adventureId, uid)
       .then(r => {
         // Deliberately try not to show the player the difference between the adventure being
         // deleted and the player being blocked!  Might avoid a confrontation...
@@ -78,10 +66,10 @@ function AdventureContextProvider(props: IContextProviderProps) {
         couldNotLoad(e.message);
       });
 
-    return dataService?.watch(d,
+    return live.watchAdventureDetail(adventureId,
       a => setAdventure(a === undefined ? undefined : { id: adventureId, record: a }),
       e => logError("Error watching adventure " + adventureId + ": ", e));
-  }, [adventureId, dataService, navigate, toasts, user]);
+  }, [adventureId, api, live, navigate, toasts, user]);
   
   const [players, setPlayers] = useState<IPlayer[]>([]);
 
@@ -98,7 +86,7 @@ function AdventureContextProvider(props: IContextProviderProps) {
   useEffect(() => {
     const uid = user?.uid;
     if (
-      dataService === undefined ||
+      live === undefined ||
       resolveImageUrl === undefined ||
       adventure === undefined ||
       uid === undefined
@@ -107,22 +95,17 @@ function AdventureContextProvider(props: IContextProviderProps) {
       return undefined;
     }
 
-    registerAdventureAsRecent(dataService, uid, adventure.id, adventure.record)
-      .then(() => console.debug("registered adventure " + adventure.id + " as recent"))
-      .catch(e => logError("Failed to register adventure " + adventure.id + " as recent", e));
-
     // We need the feed of players both so that we can expose it in the adventure context
     // and so that the sprite manager can use it, so we publish it thus:
     let unsub: (() => void) | undefined = undefined;
     const playerObs = new Observable<IPlayer[]>(sub => {
-      unsub = dataService.watchPlayers(
+      unsub = live.watchPlayers(
         adventure.id,
         ps => sub.next(ps),
         e => {
           logError("Failed to watch players of adventure " + adventure.id, e);
           sub.error(e);
         },
-        () => sub.complete()
       );
       return unsub;
     }).pipe(shareReplay(1));
@@ -130,12 +113,12 @@ function AdventureContextProvider(props: IContextProviderProps) {
     const playerSub = playerObs.subscribe(setPlayers);
 
     console.debug('creating sprite manager');
-    setSpriteManager(new SpriteManager(dataService, resolveImageUrl, adventure.id, playerObs));
+    setSpriteManager(new SpriteManager(live, resolveImageUrl, adventure.id, playerObs));
     return () => {
       playerSub.unsubscribe();
       unsub?.();
     }
-  }, [adventure, dataService, setPlayers, setSpriteManager, resolveImageUrl, user]);
+  }, [adventure, live, setPlayers, setSpriteManager, resolveImageUrl, user]);
 
   const [presence, setPresence] = useState<ReadonlyMap<string, PresenceUserState> | undefined>(undefined);
   // Held in a ref so the second effect can push currentMapId changes without
@@ -147,11 +130,11 @@ function AdventureContextProvider(props: IContextProviderProps) {
   const viewerCurrentMapIdRef = useRef(viewerCurrentMapId);
   viewerCurrentMapIdRef.current = viewerCurrentMapId;
   useEffect(() => {
-    if (dataService === undefined || adventure === undefined) {
+    if (live === undefined || adventure === undefined) {
       setPresence(undefined);
       return undefined;
     }
-    const sub = dataService.watchPresence(
+    const sub = live.watchPresence(
       adventure.id,
       viewerCurrentMapIdRef.current,
       states => {
@@ -167,7 +150,7 @@ function AdventureContextProvider(props: IContextProviderProps) {
       presenceSubRef.current = undefined;
       setPresence(undefined);
     };
-  }, [adventure, dataService]);
+  }, [adventure, live]);
 
   useEffect(() => {
     presenceSubRef.current?.setCurrentMapId(viewerCurrentMapId);

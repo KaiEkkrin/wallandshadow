@@ -29,7 +29,7 @@ function TokenImageEditor({
   adventureId, altText, busySettingImage, colour, show, sprites,
   setBusySettingImage, setImageTabTitle, setSprites, handleImageDelete
 }: ITokenImageEditorProperties) {
-  const { functionsService } = useContext(UserContext);
+  const { api } = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
   const maxImages = useMemo(
     () => profile === undefined ? undefined : getUserPolicy(profile.level).images,
@@ -79,12 +79,12 @@ function TokenImageEditor({
       return;
     }
 
-    if (functionsService === undefined) {
+    if (api === undefined) {
       return;
     }
 
     setBusySettingImage(true);
-    functionsService.addSprites(
+    api.addSprites(
       adventureId, toSpriteGeometryString(defaultSpriteGeometry), [image.path]
     ).then(s => {
       console.debug(`setting sprite to ${image.path}`);
@@ -94,7 +94,7 @@ function TokenImageEditor({
       logError(`Failed to set sprite to ${image.path}`, e);
       setBusySettingImage(false);
     })
-  }, [adventureId, functionsService, setBusySettingImage, setSprites]);
+  }, [adventureId, api, setBusySettingImage, setSprites]);
 
   const handleUseNoImage = useCallback(() => handleSetImage(undefined), [handleSetImage]);
   const handleUseImage = useCallback(() => handleSetImage(activeImage), [activeImage, handleSetImage]);

@@ -25,8 +25,14 @@ import {
   Tokens,
   SimpleTokenDrawing,
   createChangesConverter,
+  createTokenAdd,
+  createTokenRemove,
+  IUserPolicy,
   UserLevel,
   ICharacter,
+  IStorage,
+  ILogger,
+  getSpritePathFromId,
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
@@ -36,6 +42,7 @@ import {
   notifyAdventuresUsers,
   notifyAdventurePlayers,
   notifyAdventureDetail,
+  notifyAdventureSpritesheets,
   notifySafe,
 } from '../ws/notify.js';
 import {
@@ -44,14 +51,52 @@ import {
   maps,
   mapChanges,
   mapImages,
+  images,
   invites,
+  spritesheets,
   users,
 } from '../db/schema.js';
-import { eq, and, count, sql, inArray, gt } from 'drizzle-orm';
+import { eq, and, count, sql, inArray, gt, or, isNull } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import dayjs from 'dayjs';
 
 // ─── Shared query helpers ────────────────────────────────────────────────────
+
+function buildMapChangeTracker(m: IMap, ownerPolicy: IUserPolicy | undefined) {
+  const tokens = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
+  const outlineTokens = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
+  const tracker = new SimpleChangeTracker(
+    new FeatureDictionary<GridCoord, StripedArea>(coordString),
+    new FeatureDictionary<GridCoord, StripedArea>(coordString),
+    tokens,
+    outlineTokens,
+    new FeatureDictionary<GridEdge, IFeature<GridEdge>>(edgeString),
+    new FeatureDictionary<GridCoord, IAnnotation>(coordString),
+    new IdDictionary<IMapImage>(),
+    ownerPolicy,
+  );
+  return { tracker, tokens };
+}
+
+async function reconcileTokenSprites(
+  tx: Pick<Db, 'select'>,
+  mapId: string,
+  consolidated: Change[],
+): Promise<Change[]> {
+  const sheetRows = await tx.select({ sprites: spritesheets.sprites })
+    .from(spritesheets)
+    .innerJoin(maps, eq(maps.adventureId, spritesheets.adventureId))
+    .where(and(eq(maps.id, mapId), isNull(spritesheets.supersededBy)));
+  const validSpritePaths = new Set(
+    sheetRows.flatMap(r => (r.sprites as string[]).filter(p => p !== '')),
+  );
+  return consolidated.map(ch => {
+    if (ch.cat !== ChangeCategory.Token || ch.ty !== ChangeType.Add) return ch;
+    const filteredSprites = ch.feature.sprites.filter(s => validSpritePaths.has(s.source));
+    if (filteredSprites.length === ch.feature.sprites.length) return ch;
+    return { ...ch, feature: { ...ch.feature, sprites: filteredSprites } };
+  });
+}
 
 /** Fetch base and incremental map changes in parallel. */
 export async function fetchMapChanges(db: Db, mapId: string) {
@@ -87,6 +132,7 @@ function extractImagePaths(chs: Change[]): string[] {
 
 // Accept both the top-level Db and a transaction scope.
 type DbOrTx = Pick<Db, 'insert' | 'delete'>;
+type MapChangesTx = Pick<Db, 'insert' | 'delete' | 'select' | 'execute'>;
 
 async function syncMapImagesFromChanges(
   tx: DbOrTx,
@@ -167,6 +213,70 @@ export async function assertAdventureOwner(db: Db, uid: string, adventureId: str
   throwApiError('not-found', 'Adventure not found');
 }
 
+// ─── S3 cleanup helpers ──────────────────────────────────────────────────────
+
+// Best-effort batch delete of S3 objects after a successful DB delete. Failures
+// are logged at warning level and never thrown — an orphaned S3 object is
+// preferable to rolling back a committed DB delete. Note that the DB rows that
+// named these paths are already gone by this point, so a failure here is not
+// automatically recoverable: the warning log is the only surviving record of
+// the leak. For the GDPR-critical account-deletion path use auditedDeleteS3
+// instead, which logs orphans at Error level with re-runnable markers.
+async function bestEffortDeleteS3(
+  storage: IStorage,
+  logger: ILogger,
+  paths: string[],
+  context: string,
+): Promise<void> {
+  try {
+    const { failed } = await storage.deleteMany(paths);
+    for (const f of failed) {
+      logger.logWarning(`Failed to delete S3 object ${f.path} during ${context}: ${f.message}`);
+    }
+  } catch (e) {
+    logger.logWarning(`S3 batch delete threw during ${context} (paths: ${paths.length})`, e);
+  }
+}
+
+// S3 cleanup for account deletion. Unlike bestEffortDeleteS3, failures here are
+// logged at Error level: orphaned uploads left behind by a GDPR erasure are a
+// data-protection event, not a tolerable inconsistency. Each leaked path is
+// logged on its own line with a stable `ORPHANED_S3_OBJECT` marker so an
+// operator can grep the error log to recover the full path list and re-run the
+// delete manually — S3 DELETE is idempotent for missing keys, so a re-run is
+// safe. Like bestEffortDeleteS3 this never throws: the user's DB rows are
+// already gone, so the erasure itself has succeeded regardless.
+async function auditedDeleteS3(
+  storage: IStorage,
+  logger: ILogger,
+  paths: string[],
+  uid: string,
+): Promise<void> {
+  if (paths.length === 0) {
+    return;
+  }
+  try {
+    const { failed } = await storage.deleteMany(paths);
+    for (const f of failed) {
+      logger.logError(
+        `ORPHANED_S3_OBJECT context=user-delete uid=${uid} path=${f.path} — ${f.message}`,
+      );
+    }
+  } catch (e) {
+    // A whole-batch throw can leave any path orphaned (deleteMany processes in
+    // chunks, and we cannot tell which chunks committed). Report every path:
+    // over-reporting is harmless because the re-run is idempotent.
+    for (const path of paths) {
+      logger.logError(`ORPHANED_S3_OBJECT context=user-delete uid=${uid} path=${path}`);
+    }
+    logger.logError(
+      `S3 batch delete threw during account deletion for uid ${uid} ` +
+      `(${paths.length} path(s) potentially orphaned)`,
+      e,
+    );
+  }
+}
+
 // ─── Adventure ───────────────────────────────────────────────────────────────
 
 export async function createAdventure(
@@ -208,7 +318,13 @@ export async function createAdventure(
   return id;
 }
 
-export async function deleteAdventure(db: Db, uid: string, adventureId: string): Promise<void> {
+export async function deleteAdventure(
+  db: Db,
+  storage: IStorage,
+  logger: ILogger,
+  uid: string,
+  adventureId: string,
+): Promise<void> {
   const [adventure] = await db.select({ ownerId: adventures.ownerId })
     .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
 
@@ -219,15 +335,121 @@ export async function deleteAdventure(db: Db, uid: string, adventureId: string):
     throwApiError('not-found', 'Adventure not found');
   }
 
-  // Capture members now so we can notify them after CASCADE wipes the rows.
-  const memberRows = await db.select({ userId: adventurePlayers.userId })
-    .from(adventurePlayers)
-    .where(eq(adventurePlayers.adventureId, adventureId));
+  // Capture members + spritesheet ids now: CASCADE wipes the rows, so we need
+  // their identities before the delete to notify members and clean up the
+  // spritesheet PNGs in S3.
+  const [memberRows, sheetRows] = await Promise.all([
+    db.select({ userId: adventurePlayers.userId })
+      .from(adventurePlayers)
+      .where(eq(adventurePlayers.adventureId, adventureId)),
+    db.select({ id: spritesheets.id })
+      .from(spritesheets)
+      .where(eq(spritesheets.adventureId, adventureId)),
+  ]);
 
   // CASCADE handles maps, map_changes, adventure_players, spritesheets, invites
   await db.delete(adventures).where(eq(adventures.id, adventureId));
 
+  await bestEffortDeleteS3(
+    storage,
+    logger,
+    sheetRows.map(r => getSpritePathFromId(r.id)),
+    'adventure delete',
+  );
+
   await notifySafe(notifyAdventuresUsers(memberRows.map(r => r.userId)));
+}
+
+// ─── User account deletion ───────────────────────────────────────────────────
+
+export async function deleteUser(
+  db: Db,
+  storage: IStorage,
+  logger: ILogger,
+  uid: string,
+): Promise<void> {
+  // Pre-transaction snapshots: we need recipient ids and S3 paths after the
+  // rows are gone, so capture them before the DELETE runs. Spritesheets are
+  // captured so we can clean up their PNGs after CASCADE wipes the rows when
+  // the user's adventures are deleted.
+  const [imageRows, sheetRows, coMemberRows, otherAdventureRows] = await Promise.all([
+    db.select({ path: images.path })
+      .from(images).where(eq(images.userId, uid)),
+    db.select({ id: spritesheets.id })
+      .from(spritesheets)
+      .innerJoin(adventures, eq(adventures.id, spritesheets.adventureId))
+      .where(eq(adventures.ownerId, uid)),
+    db.select({ userId: adventurePlayers.userId })
+      .from(adventurePlayers)
+      .innerJoin(adventures, eq(adventures.id, adventurePlayers.adventureId))
+      .where(eq(adventures.ownerId, uid)),
+    db.select({ adventureId: adventurePlayers.adventureId })
+      .from(adventurePlayers).where(eq(adventurePlayers.userId, uid)),
+  ]);
+  const imagePaths = imageRows.map(r => r.path);
+  const sheetPaths = sheetRows.map(r => getSpritePathFromId(r.id));
+  const coMemberIds = Array.from(new Set(coMemberRows.map(r => r.userId)));
+  const otherAdventureIds = otherAdventureRows.map(r => r.adventureId);
+
+  const affectedSheetAdventureIds = new Set<string>();
+  await db.transaction(async (tx) => {
+    await tx.delete(adventures).where(eq(adventures.ownerId, uid));
+    await tx.delete(adventurePlayers).where(eq(adventurePlayers.userId, uid));
+    await tx.delete(invites).where(eq(invites.ownerId, uid));
+    // Scrub stale references to this user's images from other adventures the
+    // user was a member of. Without this, spritesheets, map_images, and map
+    // backgrounds in those adventures keep pointing at paths whose S3 objects
+    // and images rows are about to vanish — extending a spritesheet that holds
+    // such a reference then 500s when createMontage tries to download it.
+    if (imagePaths.length > 0) {
+      await tx.update(adventures).set({ imagePath: '' })
+        .where(inArray(adventures.imagePath, imagePaths));
+      await tx.update(maps).set({ imagePath: '' })
+        .where(inArray(maps.imagePath, imagePaths));
+      await tx.delete(mapImages).where(inArray(mapImages.path, imagePaths));
+
+      // One indexed lookup for every sheet referencing any of the user's
+      // images, rather than a containment query per path. Each `@>` clause is
+      // served by the GIN index on `spritesheets.sprites`; the planner
+      // BitmapOr's them.
+      const pathSet = new Set(imagePaths);
+      const sheetRowsToScrub = await tx.select({
+        id: spritesheets.id,
+        adventureId: spritesheets.adventureId,
+        sprites: spritesheets.sprites,
+        freeSpaces: spritesheets.freeSpaces,
+      })
+        .from(spritesheets)
+        .where(or(...imagePaths.map(p =>
+          sql`${spritesheets.sprites} @> ${JSON.stringify([p])}::jsonb`)));
+
+      for (const row of sheetRowsToScrub) {
+        const sprites = row.sprites as string[];
+        let freed = 0;
+        const newSprites = sprites.map(s => {
+          if (pathSet.has(s)) { freed += 1; return ''; }
+          return s;
+        });
+        if (freed === 0) continue; // defensive — every returned row should match
+        await tx.update(spritesheets)
+          .set({ sprites: newSprites as unknown as object, freeSpaces: row.freeSpaces + freed })
+          .where(eq(spritesheets.id, row.id));
+        affectedSheetAdventureIds.add(row.adventureId);
+      }
+    }
+    // NULL preserves the change row + history while releasing the FK so the
+    // user can be deleted.
+    await tx.update(mapChanges).set({ userId: null }).where(eq(mapChanges.userId, uid));
+    await tx.delete(users).where(eq(users.id, uid));
+  });
+
+  await auditedDeleteS3(storage, logger, [...imagePaths, ...sheetPaths], uid);
+
+  await notifySafe(
+    notifyAdventuresUsers(coMemberIds),
+    ...otherAdventureIds.map(id => notifyAdventurePlayers(id)),
+    ...Array.from(affectedSheetAdventureIds).map(id => notifyAdventureSpritesheets(id)),
+  );
 }
 
 // ─── Maps ────────────────────────────────────────────────────────────────────
@@ -416,24 +638,11 @@ async function tryConsolidateMapChanges(
       return { baseChange, isNew: false };
     }
 
-    // Look up owner policy for object cap
     const [user] = await tx.select({ level: users.level })
       .from(users).where(eq(users.id, m.owner)).limit(1);
     const ownerPolicy = getUserPolicy((user?.level ?? 'standard') as UserLevel);
 
-    // Replay all changes through SimpleChangeTracker
-    const tokenDict = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
-    const outlineTokenDict = new Tokens(getTokenGeometry(m.ty), new SimpleTokenDrawing());
-    const tracker = new SimpleChangeTracker(
-      new FeatureDictionary<GridCoord, StripedArea>(coordString),
-      new FeatureDictionary<GridCoord, StripedArea>(coordString),
-      tokenDict,
-      outlineTokenDict,
-      new FeatureDictionary<GridEdge, IFeature<GridEdge>>(edgeString),
-      new FeatureDictionary<GridCoord, IAnnotation>(coordString),
-      new IdDictionary<IMapImage>(),
-      ownerPolicy,
-    );
+    const { tracker, tokens: tokenDict } = buildMapChangeTracker(m, ownerPolicy);
 
     if (baseChange !== undefined) {
       trackChanges(m, tracker, baseChange.chs, baseChange.user);
@@ -451,13 +660,24 @@ async function tryConsolidateMapChanges(
     syncChanges?.(tokenDict);
     const consolidated: Change[] = tracker.getConsolidated();
 
+    // Belt-and-braces against the `scrubMapSpriteReferences` race: a concurrent
+    // TokenMove between the scrub's read and write can leave a token still
+    // referencing a sprite path that's been removed from every spritesheet.
+    // Skip the work entirely when no consolidated token carries any sprites.
+    const hasTokenSprites = consolidated.some(
+      ch => ch.cat === ChangeCategory.Token && ch.ty === ChangeType.Add && ch.feature.sprites.length > 0,
+    );
+    const reconciled: Change[] = hasTokenSprites
+      ? await reconcileTokenSprites(tx, mapId, consolidated)
+      : consolidated;
+
     // Use the adventure owner as the consolidated-state author — the base change
     // contains all users' changes merged together, and trackChanges enforces
     // ownership (e.g. only the owner can edit areas). Using the consolidator's UID
     // would cause trackChange to reject owner-only operations when a player triggers
     // consolidation.
     const newBaseChange: Changes = {
-      chs: consolidated,
+      chs: reconciled,
       incremental: false,
       user: m.owner,
       resync: isResync,
@@ -533,7 +753,10 @@ export async function deleteMap(db: Db, uid: string, adventureId: string, mapId:
     throwApiError('not-found', 'Adventure not found');
   }
 
-  // CASCADE handles map_changes
+  // CASCADE handles map_changes and map_images. No S3 cleanup here: every
+  // image referenced by a map (background, placed images, token sprites) is a
+  // user-owned object in the images table that survives the map and is only
+  // collected when the user is deleted.
   await db.delete(maps).where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)));
 
   await notifySafe(notifyAdventureDetail(adventureId));
@@ -654,6 +877,105 @@ export async function updatePlayer(
   );
 }
 
+// FOR UPDATE on the adventurePlayers row serialises concurrent edits on
+// the same player; without it, two concurrent character upserts both read
+// the pre-change array and the second write loses one of the characters.
+export async function upsertCharacter(
+  db: Db,
+  uid: string,
+  adventureId: string,
+  playerId: string,
+  character: ICharacter,
+): Promise<void> {
+  // Players can edit their own characters; the owner can edit anyone's.
+  if (uid === playerId) {
+    await assertAdventureMember(db, uid, adventureId);
+  } else {
+    await assertAdventureOwner(db, uid, adventureId);
+  }
+
+  await db.transaction(async (tx) => {
+    const [row] = await tx.select({ characters: adventurePlayers.characters })
+      .from(adventurePlayers)
+      .where(and(
+        eq(adventurePlayers.adventureId, adventureId),
+        eq(adventurePlayers.userId, playerId),
+      ))
+      .for('update')
+      .limit(1);
+    if (!row) {
+      throwApiError('not-found', 'Player not found');
+    }
+
+    const existing = (row.characters as ICharacter[]) ?? [];
+    const idx = existing.findIndex(c => c.id === character.id);
+    const next = idx >= 0
+      ? existing.map((c, i) => i === idx ? { ...c, ...character } : c)
+      : [...existing, character];
+
+    await tx.update(adventurePlayers)
+      .set({ characters: next as unknown as object })
+      .where(and(
+        eq(adventurePlayers.adventureId, adventureId),
+        eq(adventurePlayers.userId, playerId),
+      ));
+  });
+
+  await notifySafe(
+    notifyAdventurePlayers(adventureId),
+    notifyAdventuresUser(playerId),
+  );
+}
+
+// Same FOR-UPDATE pattern as upsertCharacter. No-op (still 204) when the
+// character isn't present so DELETE is idempotent.
+export async function removeCharacter(
+  db: Db,
+  uid: string,
+  adventureId: string,
+  playerId: string,
+  characterId: string,
+): Promise<void> {
+  if (uid === playerId) {
+    await assertAdventureMember(db, uid, adventureId);
+  } else {
+    await assertAdventureOwner(db, uid, adventureId);
+  }
+
+  const changed = await db.transaction(async (tx) => {
+    const [row] = await tx.select({ characters: adventurePlayers.characters })
+      .from(adventurePlayers)
+      .where(and(
+        eq(adventurePlayers.adventureId, adventureId),
+        eq(adventurePlayers.userId, playerId),
+      ))
+      .for('update')
+      .limit(1);
+    if (!row) {
+      throwApiError('not-found', 'Player not found');
+    }
+
+    const existing = (row.characters as ICharacter[]) ?? [];
+    const next = existing.filter(c => c.id !== characterId);
+    if (next.length === existing.length) return false;
+
+    await tx.update(adventurePlayers)
+      .set({ characters: next as unknown as object })
+      .where(and(
+        eq(adventurePlayers.adventureId, adventureId),
+        eq(adventurePlayers.userId, playerId),
+      ));
+    return true;
+  });
+
+  if (!changed) return;
+
+  await notifySafe(
+    notifyAdventurePlayers(adventureId),
+    notifyAdventuresUser(playerId),
+  );
+}
+
 export async function leaveAdventure(db: Db, uid: string, adventureId: string): Promise<void> {
   const [row] = await db.select({ ownerId: adventures.ownerId })
     .from(adventures)
@@ -679,6 +1001,64 @@ export async function leaveAdventure(db: Db, uid: string, adventureId: string): 
 
 // ─── Map changes ─────────────────────────────────────────────────────────────
 
+/**
+ * Inserts one incremental map-change row inside an existing transaction.
+ * Callers — `addMapChanges` (the live WebSocket submission path) and
+ * `scrubMapSpriteReferences` (image-deletion cleanup) — are responsible for
+ * auth/map-existence checks and for firing notifyMapChange after commit (the
+ * lock is shared so its ordering relative to consolidation's exclusive lock
+ * is preserved, but commit must finish before clients are notified).
+ */
+export async function insertMapChangesInTx(
+  tx: MapChangesTx,
+  uid: string,
+  mapId: string,
+  chs: Change[],
+  idempotencyKey?: string,
+): Promise<{ id: string; seq: string }> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(hashtext(${mapId}))`);
+
+  const changesDoc: Changes = {
+    chs,
+    incremental: true,
+    user: uid,
+    resync: false,
+  };
+
+  const id = uuidv7();
+  const values = {
+    id,
+    mapId,
+    changes: changesDoc as unknown as object,
+    isBase: false as const,
+    resync: false as const,
+    userId: uid,
+    ...(idempotencyKey ? { idempotencyKey } : {}),
+  };
+
+  let returning: { id: string; seq: bigint }[] = await tx.insert(mapChanges)
+    .values(values)
+    .onConflictDoNothing()
+    .returning({ id: mapChanges.id, seq: mapChanges.seq });
+
+  if (returning.length === 0 && idempotencyKey) {
+    // Duplicate submission: fetch the existing row by idempotency key.
+    returning = await tx.select({ id: mapChanges.id, seq: mapChanges.seq })
+      .from(mapChanges)
+      .where(eq(mapChanges.idempotencyKey, idempotencyKey))
+      .limit(1);
+  }
+
+  const row = returning[0];
+  if (!row) throwApiError('internal', 'Failed to insert map change');
+
+  // Record any new placed-image paths so other adventure members can
+  // download them. Orphans are reconciled at consolidation time.
+  await syncMapImagesFromChanges(tx, mapId, chs);
+
+  return { id: row.id, seq: row.seq.toString() };
+}
+
 export async function addMapChanges(
   db: Db,
   uid: string,
@@ -697,55 +1077,88 @@ export async function addMapChanges(
     throwApiError('not-found', 'Map not found');
   }
 
-  const changesDoc: Changes = {
-    chs,
-    incremental: true,
-    user: uid,
-    resync: false,
-  };
-
-  const result = await db.transaction(async (tx) => {
-    // Shared advisory lock: compatible with other writes, but blocks if an
-    // exclusive consolidation lock is held. Ensures all incrementals get a
-    // seq higher than the base row written at the end of consolidation.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(hashtext(${mapId}))`);
-
-    const id = uuidv7();
-    const values = {
-      id,
-      mapId,
-      changes: changesDoc as unknown as object,
-      isBase: false as const,
-      resync: false as const,
-      userId: uid,
-      ...(idempotencyKey ? { idempotencyKey } : {}),
-    };
-
-    let returning: { id: string; seq: bigint }[] = await tx.insert(mapChanges)
-      .values(values)
-      .onConflictDoNothing()
-      .returning({ id: mapChanges.id, seq: mapChanges.seq });
-
-    if (returning.length === 0 && idempotencyKey) {
-      // Duplicate submission: fetch the existing row by idempotency key.
-      returning = await tx.select({ id: mapChanges.id, seq: mapChanges.seq })
-        .from(mapChanges)
-        .where(eq(mapChanges.idempotencyKey, idempotencyKey))
-        .limit(1);
-    }
-
-    const row = returning[0];
-    if (!row) throwApiError('internal', 'Failed to insert map change');
-
-    // Record any new placed-image paths so other adventure members can
-    // download them. Orphans are reconciled at consolidation time.
-    await syncMapImagesFromChanges(tx, mapId, chs);
-
-    return { id: row.id, seq: row.seq.toString() };
-  });
+  const result = await db.transaction(async (tx) =>
+    insertMapChangesInTx(tx, uid, mapId, chs, idempotencyKey),
+  );
 
   await notifySafe(notifyMapChange(mapId, result.id, result.seq));
   return result;
+}
+
+/**
+ * The cleanup batch is attributed to the adventure owner so the change
+ * tracker's permission checks accept it (a player not on this map may
+ * have authored the original TokenAdd). Uses only the shared advisory
+ * lock: a concurrent TokenMove between read and write may make the
+ * cleanup batch fail to apply during the next consolidation — an accepted
+ * race for what is otherwise an interactive operation.
+ */
+export async function scrubMapSpriteReferences(
+  tx: MapChangesTx,
+  mapId: string,
+  spritePath: string,
+): Promise<{ id: string; seq: string } | undefined> {
+  const [row] = await tx.select({
+    name: maps.name,
+    description: maps.description,
+    ty: maps.ty,
+    ffa: maps.ffa,
+    enableGroupVision: maps.enableGroupVision,
+    imagePath: maps.imagePath,
+    adventureName: adventures.name,
+    ownerId: adventures.ownerId,
+  })
+    .from(maps)
+    .innerJoin(adventures, eq(adventures.id, maps.adventureId))
+    .where(eq(maps.id, mapId))
+    .limit(1);
+  if (!row) return undefined;
+
+  const m: IMap = {
+    adventureName: row.adventureName,
+    name: row.name,
+    description: row.description,
+    owner: row.ownerId,
+    ty: row.ty as MapType,
+    ffa: row.ffa,
+    enableGroupVision: row.enableGroupVision,
+    imagePath: row.imagePath,
+  };
+
+  const [baseRow] = await tx.select({ changes: mapChanges.changes })
+    .from(mapChanges)
+    .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, true)))
+    .limit(1);
+  const incRows = await tx.select({ changes: mapChanges.changes })
+    .from(mapChanges)
+    .where(and(eq(mapChanges.mapId, mapId), eq(mapChanges.isBase, false)))
+    .orderBy(mapChanges.seq);
+
+  const { tracker } = buildMapChangeTracker(m, undefined);
+  const converter = createChangesConverter();
+  if (baseRow) {
+    const baseChange = converter.convert(baseRow.changes as Record<string, unknown>);
+    trackChanges(m, tracker, baseChange.chs, baseChange.user);
+  }
+  for (const r of incRows) {
+    const ch = converter.convert(r.changes as Record<string, unknown>);
+    trackChanges(m, tracker, ch.chs, ch.user);
+  }
+
+  const cleanupChs: Change[] = [];
+  for (const ch of tracker.getConsolidated()) {
+    if (ch.cat !== ChangeCategory.Token || ch.ty !== ChangeType.Add) continue;
+    const token = ch.feature;
+    if (!token.sprites.some(s => s.source === spritePath)) continue;
+    cleanupChs.push(createTokenRemove(token.position, token.id));
+    cleanupChs.push(createTokenAdd({
+      ...token,
+      sprites: token.sprites.filter(s => s.source !== spritePath),
+    }));
+  }
+
+  if (cleanupChs.length === 0) return undefined;
+  return insertMapChangesInTx(tx, row.ownerId, mapId, cleanupChs);
 }
 
 // ─── Invites ─────────────────────────────────────────────────────────────────
@@ -768,9 +1181,10 @@ export async function joinAdventure(
   const adventureId = invite.adventureId;
 
   const joinedAdventureId = await db.transaction(async (tx) => {
-    // Get adventure owner's policy for player cap
+    // FOR UPDATE serialises concurrent joins to this adventure: without it,
+    // two joiners can both pass the cap check at READ COMMITTED and both insert.
     const [adventure] = await tx.select({ ownerId: adventures.ownerId, name: adventures.name })
-      .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
+      .from(adventures).where(eq(adventures.id, adventureId)).for('update').limit(1);
     if (!adventure) {
       throwApiError('not-found', 'No such adventure');
     }

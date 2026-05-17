@@ -44,7 +44,7 @@ here. See `docs/LEGACY_FIREBASE_DEPLOY.md` for its deployment guide.
 ┌─────────────────▼───────────────────────────────┐
 │  Node.js + Hono container                        │
 │  • REST API  (/api/*)                            │
-│  • WebSocket (/ws/maps/:id)                      │
+│  • WebSocket (/ws — multiplexed)                 │
 │  • OIDC JWT validation middleware                │
 │  • Business logic in server/src/services/        │
 └────────┬────────────────────┬────────────────────┘
@@ -81,9 +81,11 @@ database.
 | `POST /api/adventures/:id/maps/:id/clone`       | Clone map                                    |
 | `POST /api/adventures/:id/maps/:id/consolidate` | Consolidate map changes                      |
 | `DELETE /api/adventures/:id/maps/:id`           | Delete map                                   |
-| `POST /api/adventures/:id/maps/:id/changes`     | Write incremental map change                 |
+| `POST /api/adventures/:id/maps/:id/changes`     | Write incremental map change (test-only — production clients use the WebSocket `mapChange` frame) |
 | `GET /api/adventures/:id/players`               | List players                                 |
 | `PATCH /api/adventures/:id/players/:uid`        | Update player (allowed, characters)          |
+| `PUT /api/adventures/:id/players/:uid/characters/:characterId`    | Upsert a single character          |
+| `DELETE /api/adventures/:id/players/:uid/characters/:characterId` | Delete a single character          |
 | `DELETE /api/adventures/:id/players/me`         | Leave adventure                              |
 | `POST /api/adventures/:id/invites`              | Create invite                                |
 | `POST /api/invites/:id/join`                    | Join adventure via invite                    |
@@ -95,25 +97,34 @@ database.
 
 ## WebSocket Room Model
 
-Each map session is a WebSocket room (`/ws/maps/:mapId`). The room is a one-way broadcast
-channel: the server pushes persisted map changes; clients do not send messages back over
-the socket. All writes go through the REST API.
+Each map session is a WebSocket room. The transport is the single multiplexed
+`/ws` socket — clients `subscribe` to a `mapChanges` scope keyed by `mapId` and
+send `mapChange` frames over the same socket. The boundary "all writes go
+through the server" still holds: REST handles one-shot operations (create /
+patch / delete adventure, map, image, etc.) and the WebSocket frame handles
+map change submission. Direct database writes from the client are not
+possible.
 
 ```
-Client POST /api/adventures/:id/maps/:id/changes
+Client WS frame {type: 'mapChange', adventureId, mapId, chs, idempotencyKey}
     │
     ▼
-service.addChanges()  →  PostgreSQL (INSERT)  →  NOTIFY map_changes
-                                                      │
-                                                      ▼
-                                  LISTEN handler  →  room.broadcast(mapId)
-                                                      │
-                                                      ▼
-                                         every WebSocket in the room
+ws handler → insertMapChangesInTx()  →  PostgreSQL (INSERT)  →  NOTIFY map_changes
+                                                                    │
+                                                                    ▼
+                                                LISTEN handler  →  notifyMapChange(mapId)
+                                                                    │
+                                                                    ▼
+                                                   every WebSocket subscribed to that mapChanges scope
 ```
 
 PostgreSQL LISTEN/NOTIFY means that if the server is ever scaled to multiple instances,
 each instance's rooms stay in sync via the database notification channel.
+
+The REST endpoint `POST /api/adventures/:id/maps/:id/changes` still exists, but
+only as a convenience for the server-side integration test helpers
+(`server/src/__tests__/helpers.ts:postMapChanges`). Production clients submit
+exclusively via the WebSocket frame.
 
 Bidirectional ephemeral messages (`ping`, `measurement`) are not currently implemented.
 See @docs/EPHEMERAL_WS.md.

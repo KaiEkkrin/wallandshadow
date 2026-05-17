@@ -1,26 +1,35 @@
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
 import { createApp } from '../app.js';
 
-// These tests need the rate limiters to be active, which the global test
-// config disables via DISABLE_RATE_LIMIT=true. We temporarily clear that
-// flag for this file and restore it afterward.
+// These tests need the rate limiters to be active. They are disabled by
+// DISABLE_RATE_LIMIT=true (set in vitest.config) and by IS_LOCAL_DEV=true
+// (inherited from the dev container env). We temporarily clear both flags
+// for this file and restore them afterward.
 //
 // The skip() callback in each limiter is evaluated per-request, so toggling
-// the env var here is sufficient.
+// the env vars here is sufficient.
 
 describe('rate limiting', () => {
-  let savedEnv: string | undefined;
+  let savedDisable: string | undefined;
+  let savedDev: string | undefined;
 
   beforeAll(() => {
-    savedEnv = process.env.DISABLE_RATE_LIMIT;
+    savedDisable = process.env.DISABLE_RATE_LIMIT;
+    savedDev = process.env.IS_LOCAL_DEV;
     delete process.env.DISABLE_RATE_LIMIT;
+    delete process.env.IS_LOCAL_DEV;
   });
 
   afterAll(() => {
-    if (savedEnv !== undefined) {
-      process.env.DISABLE_RATE_LIMIT = savedEnv;
+    if (savedDisable !== undefined) {
+      process.env.DISABLE_RATE_LIMIT = savedDisable;
     } else {
       delete process.env.DISABLE_RATE_LIMIT;
+    }
+    if (savedDev !== undefined) {
+      process.env.IS_LOCAL_DEV = savedDev;
+    } else {
+      delete process.env.IS_LOCAL_DEV;
     }
   });
 

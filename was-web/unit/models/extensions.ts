@@ -1,1 +1,1 @@
-../../src/models/extensions.ts
+export * from '../../src/models/extensions';

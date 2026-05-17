@@ -97,6 +97,9 @@ export const mapChanges = pgTable('map_changes', {
     .where(sql`is_base = true`),
   uniqueIndex('map_changes_idempotency_key_idx').on(t.idempotencyKey)
     .where(sql`idempotency_key IS NOT NULL`),
+  // Account deletion anonymises userId on every row this user authored;
+  // without this partial index that's a sequential scan of map_changes.
+  index('map_changes_user_id_idx').on(t.userId).where(sql`user_id IS NOT NULL`),
   check('map_changes_resync_check', sql`resync = false OR is_base = true`),
 ]);
 

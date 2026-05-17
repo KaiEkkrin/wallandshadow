@@ -1,4 +1,4 @@
-import { IAdventure, IPlayer, IAdventureIdentified, IIdentified, IMap, IDataService, IUser, IAuth, IFunctionsService, IStorage, ISpriteManager, IProfile, PresenceUserState } from '@wallandshadow/shared';
+import { IAdventure, IApi, ILiveData, IPlayer, IAdventureIdentified, IIdentified, IMap, IUser, IAuth, ISpriteManager, IProfile, PresenceUserState } from '@wallandshadow/shared';
 import { MapState, MapStateMachine } from '../models/mapStateMachine';
 
 import { Subject } from 'rxjs';
@@ -15,9 +15,8 @@ export interface IUserContext {
   user: IUser | null | undefined; // This is the field to query for "is a user logged in?"
                                   // undefined means "I don't know yet, wait"
                                   // null means "Not logged in"
-  dataService?: IDataService | undefined;
-  functionsService?: IFunctionsService | undefined;
-  storageService?: IStorage | undefined;
+  api?: IApi | undefined;
+  live?: ILiveData | undefined;
 
   // Resolves an image download URL, with expiry caching
   resolveImageUrl?: ((path: string) => Promise<string>) | undefined;
@@ -28,15 +27,6 @@ export interface IUserContext {
 
 export interface IProfileContext {
   profile?: IProfile | undefined;
-
-  // The login component must call this *before* registering any new user with a
-  // specified display name.  The profile context, which is responsible for ensuring
-  // the user's profile, will pop the new email and set the display name accordingly.
-  expectNewUser?: (email: string, displayName: string) => void;
-}
-
-export interface ISignInMethodsContext {
-  signInMethods: string[];
 }
 
 export interface IToast {

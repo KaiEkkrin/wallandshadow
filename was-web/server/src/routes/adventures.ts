@@ -8,6 +8,8 @@ import {
   leaveAdventure,
   assertAdventureMember,
 } from '../services/extensions.js';
+import { storage } from '../services/storage.js';
+import { logger } from '../services/logger.js';
 import { snapshotAdventures, snapshotAdventureDetail } from '../ws/subscriptions.js';
 
 export const adventureRoutes = new Hono<{ Variables: AuthVariables }>();
@@ -69,7 +71,7 @@ adventureRoutes.patch('/adventures/:id', async (c) => {
 adventureRoutes.delete('/adventures/:id', async (c) => {
   const uid = c.get('uid');
   const adventureId = c.req.param('id');
-  await deleteAdventure(db, uid, adventureId);
+  await deleteAdventure(db, storage, logger, uid, adventureId);
   return c.body(null, 204);
 });
 

@@ -1,1 +1,1 @@
-../../src/services/expiringStringCache.ts
+export * from '../../src/services/expiringStringCache';

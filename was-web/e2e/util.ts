@@ -49,27 +49,35 @@ export function isPhone(deviceName: string) {
 
 export async function ensureNavbarExpanded(page: Page, deviceName: string) {
   // On phones we'll get the collapsed hamburger thingy
-  if (isPhone(deviceName)) {
-    // Click the navbar toggle
-    await page.click('[aria-controls="basic-navbar-nav"]');
-    // Wait for the navbar to actually expand by checking for a link inside it
-    await expect(page.locator('#basic-navbar-nav .nav-link').first()).toBeVisible({ timeout: 5000 });
-  }
+  if (!isPhone(deviceName)) return;
+
+  // If the nav links are already visible the navbar is open — clicking the
+  // toggle would collapse it. Only click when it's actually collapsed.
+  const firstLink = page.locator('#basic-navbar-nav .nav-link').first();
+  if (await firstLink.isVisible()) return;
+
+  await page.click('[aria-controls="basic-navbar-nav"]');
+  await expect(firstLink).toBeVisible({ timeout: 5000 });
 }
 
 export async function whileNavbarExpanded(page: Page, deviceName: string, fn: () => Promise<void>) {
-  // Likewise
-  if (isPhone(deviceName)) {
-    // Click the navbar toggle
+  if (!isPhone(deviceName)) {
+    await fn();
+    return;
+  }
+
+  const firstLink = page.locator('#basic-navbar-nav .nav-link').first();
+  const wasExpanded = await firstLink.isVisible();
+  if (!wasExpanded) {
     await page.click('[aria-controls="basic-navbar-nav"]');
-    // Wait for the navbar to actually expand by checking for a link inside it
-    await expect(page.locator('#basic-navbar-nav .nav-link').first()).toBeVisible({ timeout: 5000 });
+    await expect(firstLink).toBeVisible({ timeout: 5000 });
+  }
 
-    await fn();
+  await fn();
 
-    await page.click('[aria-controls="basic-navbar-nav"]'); // collapse it back down again
-  } else {
-    await fn();
+  // Only collapse back if we were the ones who expanded it.
+  if (!wasExpanded) {
+    await page.click('[aria-controls="basic-navbar-nav"]');
   }
 }
 
@@ -151,10 +159,11 @@ export async function createNewMap(
   page: Page,
   name: string, description: string, type: string, adventureId?: string | undefined, ffa?: boolean | undefined
 ) {
-  // Use a locator (not waitForSelector) to avoid stale ElementHandle after React re-renders
-  const newMap = page.locator('text="New map"');
-  await newMap.scrollIntoViewIfNeeded();
-  await newMap.click();
+  // `click()` auto-scrolls and retries on detach. Calling
+  // `scrollIntoViewIfNeeded()` separately doesn't retry, so when player-presence
+  // WebSocket updates re-render the adventure page mid-action it fails with
+  // "Element is not attached to the DOM".
+  await page.locator('text="New map"').click();
 
   await page.fill('[id=mapNameInput]', name);
   await page.fill('[id=mapDescriptionInput]', description);
@@ -187,7 +196,8 @@ export async function verifyMap(
   // 2. WebGL fails: "Error loading map" toast appears, map stays on page with controls
 
   const throbberGone = expect(page.locator('.Throbber-container')).not.toBeVisible({ timeout: 30000 });
-  const errorToast = page.locator('.toast-header:has-text("Error loading map")');
+  // Multiple WebGL error toasts can stack; first() avoids strict-mode violation.
+  const errorToast = page.locator('.toast-header:has-text("Error loading map")').first();
   const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
 
   const which = await Promise.race([
@@ -252,7 +262,8 @@ export async function dismissAllToasts(page: Page) {
  */
 export async function handleWebGLOrError(page: Page): Promise<'map' | 'error'> {
   const throbberGone = expect(page.locator('.Throbber-container')).not.toBeVisible({ timeout: 30000 });
-  const errorToast = page.locator('.toast-header:has-text("Error loading map")');
+  // Multiple WebGL error toasts can stack; first() avoids strict-mode violation.
+  const errorToast = page.locator('.toast-header:has-text("Error loading map")').first();
   const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
 
   const which = await Promise.race([

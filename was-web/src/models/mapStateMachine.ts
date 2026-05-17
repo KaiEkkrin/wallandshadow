@@ -9,7 +9,7 @@ import { MapChangeTracker } from './mapChangeTracker';
 import { RedrawFlag } from './redrawFlag';
 import { WallHighlighter, WallRectangleHighlighter, RoomHighlighter } from './wallHighlighter';
 
-import { IAnnotation, IPositionedAnnotation, Change, createTokenRemove, createTokenAdd, createNoteRemove, createNoteAdd, createTokenMove, createImageAdd, createImageRemove, netObjectCount, trackChanges, GridCoord, coordString, coordsEqual, coordSub, coordAdd, GridVertex, vertexAdd, FeatureDictionary, flipToken, IToken, ITokenDictionary, ITokenProperties, TokenSize, defaultToken, IAdventureIdentified, Anchor, anchorsEqual, anchorString, IMapImage, IMapImageProperties, LoSPosition, IMap, IUserPolicy, getTokenLoSPosition, ITokenGeometry, Tokens, IDataService, ISpriteManager, IGridGeometry } from '@wallandshadow/shared';
+import { IAnnotation, IPositionedAnnotation, Change, createTokenRemove, createTokenAdd, createNoteRemove, createNoteAdd, createTokenMove, createImageAdd, createImageRemove, netObjectCount, trackChanges, GridCoord, coordString, coordsEqual, coordSub, coordAdd, GridVertex, vertexAdd, FeatureDictionary, flipToken, IToken, ITokenDictionary, ITokenProperties, TokenSize, defaultToken, IAdventureIdentified, Anchor, anchorsEqual, anchorString, IMapImage, IMapImageProperties, LoSPosition, IMap, IUserPolicy, getTokenLoSPosition, ITokenGeometry, Tokens, ISpriteManager, IGridGeometry } from '@wallandshadow/shared';
 import { TokensWithObservableText } from '../data/tokenTexts';
 import { chooseLoSSourceTokens } from './groupVision';
 import { MapColourVisualisationMode } from './displayMode';
@@ -77,7 +77,7 @@ export function createDefaultState(): MapState {
 // Any other mutable fields in here are state that the owning component should
 // never find out about.
 export class MapStateMachine {
-  private readonly _dataService: IDataService;
+  private readonly _sendChanges: (adventureId: string, mapId: string, changes: Change[]) => Promise<void>;
   private readonly _uid: string;
 
   private readonly _drawing: IDrawing;
@@ -154,7 +154,7 @@ export class MapStateMachine {
   private _myCharacterIds: ReadonlySet<string> = new Set();
 
   constructor(
-    dataService: IDataService,
+    sendChanges: (adventureId: string, mapId: string, changes: Change[]) => Promise<void>,
     map: IAdventureIdentified<IMap>,
     uid: string,
     gridGeometry: IGridGeometry,
@@ -165,7 +165,7 @@ export class MapStateMachine {
     spriteManager: ISpriteManager,
     resolveImageUrl: (path: string) => Promise<string>
   ) {
-    this._dataService = dataService;
+    this._sendChanges = sendChanges;
     this._map = map;
     this._uid = uid;
     this._userPolicy = userPolicy;
@@ -1028,7 +1028,7 @@ export class MapStateMachine {
       }
     }
 
-    await this._dataService.addChanges(this._map.adventureId, this._uid, this._map.id, changes);
+    await this._sendChanges(this._map.adventureId, this._map.id, changes);
   }
 
   canSetToken(cp: THREE.Vector3, properties: ITokenProperties | undefined) {

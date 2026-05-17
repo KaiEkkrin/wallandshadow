@@ -1,7 +1,7 @@
 import { ITokenProperties, IImage, ICacheLease, ISpriteManager, ISpritesheetEntry } from '@wallandshadow/shared';
 import { ICacheItem, ObjectCache } from '../../services/objectCache';
 
-import { from, Observable } from 'rxjs';
+import { from, Observable, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 import * as THREE from 'three';
 
@@ -45,11 +45,13 @@ export class TextureCache {
     return this._textureCache.get(url);
   }
 
-  resolve(token: ITokenProperties): Observable<ISpritesheetEntry & { texture: ICacheLease<THREE.Texture> }> {
+  resolve(token: ITokenProperties): Observable<(ISpritesheetEntry & { texture: ICacheLease<THREE.Texture> }) | undefined> {
     return this._spriteManager.lookupToken(token).pipe(switchMap(
-      e => from(this._textureCache.resolve(e.url, this.resolveTexture)).pipe(
-        map(t => ({ ...e, texture: t }))
-      )
+      e => e === undefined
+        ? of(undefined)
+        : from(this._textureCache.resolve(e.url, this.resolveTexture)).pipe(
+          map(t => ({ ...e, texture: t }))
+        ),
     ));
   }
 

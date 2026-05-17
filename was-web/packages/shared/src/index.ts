@@ -25,8 +25,9 @@ export * from './models/gridGeometry';
 export * from './models/occlusion';
 
 // Services
+export * from './services/api';
 export * from './services/converter';
-export * from './services/helpers';
 export * from './services/interfaces';
+export * from './services/liveData';
 export * from './services/request';
 export * from './services/wsProtocol';
