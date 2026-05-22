@@ -7,6 +7,7 @@ import HonoContextProvider from './components/HonoContextProvider';
 import Home from './Home';
 import MapContextProvider from './components/MapContextProvider';
 import ProfileContextProvider from './components/ProfileContextProvider';
+import RequireAdmin from './components/RequireAdmin';
 import RootRedirect from './RootRedirect';
 import Routing from './components/Routing';
 import { IRoutingProps } from './components/interfaces';
@@ -22,6 +23,8 @@ import { Route, Routes } from 'react-router-dom';
 
 // Lazy-loaded route components for code splitting
 const About = lazy(() => import('./About'));
+const AdminPage = lazy(() => import('./Admin'));
+const AdminUserPage = lazy(() => import('./AdminUser'));
 const AdventurePage = lazy(() => import('./Adventure'));
 const All = lazy(() => import('./All'));
 const InvitePage = lazy(() => import('./Invite'));
@@ -61,6 +64,8 @@ function App(props: IRoutingProps) {
                       <Route path="/auth/callback" element={<OidcCallback />} />
                       <Route path="/login" element={<Login />} />
                       <Route path="/shared" element={<Shared />} />
+                      <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
+                      <Route path="/admin/users/:id" element={<RequireAdmin><AdminUserPage /></RequireAdmin>} />
                     </Routes>
                   </Suspense>
                 </MapContextProvider>

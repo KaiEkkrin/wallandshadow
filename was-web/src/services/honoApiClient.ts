@@ -1,4 +1,6 @@
-import type { ICharacter, IInviteExpiryPolicy, IMe, MapType } from '@wallandshadow/shared';
+import type {
+  IAdminUserDetail, IAdminUserSummary, ICharacter, IInviteExpiryPolicy, IMe, MapType,
+} from '@wallandshadow/shared';
 
 // ── Wire-format response types (server JSON shape) ───────────────────────────
 
@@ -295,5 +297,18 @@ export class HonoApiClient {
 
   addSprites(adventureId: string, geometry: string, sources: string[]): Promise<{ sprites: unknown[] }> {
     return this.request('POST', `/api/adventures/${adventureId}/spritesheets`, { geometry, sources });
+  }
+
+  // ── Admin ─────────────────────────────────────────────────────────────────
+
+  adminSearchUser(query: { email: string } | { id: string }): Promise<IAdminUserSummary> {
+    const qs = 'email' in query
+      ? `email=${encodeURIComponent(query.email)}`
+      : `id=${encodeURIComponent(query.id)}`;
+    return this.request('GET', `/api/admin/users?${qs}`);
+  }
+
+  adminGetUser(id: string): Promise<IAdminUserDetail> {
+    return this.request('GET', `/api/admin/users/${encodeURIComponent(id)}`);
   }
 }

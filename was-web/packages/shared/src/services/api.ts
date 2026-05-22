@@ -1,4 +1,5 @@
 import { IAdventure, IPlayer } from '../data/adventure';
+import { IAdminUserDetail, IAdminUserSummary } from '../data/admin';
 import { ICharacter } from '../data/character';
 import { IIdentified } from '../data/identified';
 import { IImage } from '../data/image';
@@ -96,4 +97,10 @@ export interface IApi {
   // ── Spritesheets ─────────────────────────────────────────────────────────
   listSpritesheets(adventureId: string): Promise<IIdentified<ISpritesheet>[]>;
   addSprites(adventureId: string, geometry: string, sources: string[]): Promise<ISprite[]>;
+
+  // ── Admin ────────────────────────────────────────────────────────────────
+  adminSearchUser(
+    query: { email: string } | { id: string },
+  ): Promise<IAdminUserSummary | undefined>;
+  adminGetUser(id: string): Promise<IAdminUserDetail>;
 }

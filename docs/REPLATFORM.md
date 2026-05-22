@@ -92,6 +92,9 @@ database.
 | `POST /api/images`                              | Upload image (MIME validation, S3 + DB)      |
 | `DELETE /api/images/:path`                      | Delete image                                 |
 | `POST /api/adventures/:id/spritesheets`         | Upload spritesheet                           |
+| `GET /api/admin/users?email=<exact>`            | Admin: exact-email account search            |
+| `GET /api/admin/users?id=<uuid>`                | Admin: exact-id account search               |
+| `GET /api/admin/users/:id`                      | Admin: full account info (summary + tables)  |
 
 ---
 

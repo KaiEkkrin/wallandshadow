@@ -88,6 +88,20 @@ export async function registerHigherUser(
   return u;
 }
 
+// Registers a user and immediately promotes them to the Admin tier — for tests
+// exercising the /api/admin/* routes. Runtime tier changes via an admin API
+// arrive in a later session; tests reach past it, like registerHigherUser.
+export async function registerAdminUser(
+  app: Hono,
+  name?: string,
+  email?: string,
+  password?: string,
+): Promise<{ token: string; uid: string }> {
+  const u = await registerUser(app, name, email, password);
+  await promoteUser(u.uid, UserLevel.Admin);
+  return u;
+}
+
 // ─── Request helpers ──────────────────────────────────────────────────────────
 
 export async function apiGet(

@@ -34,6 +34,9 @@ export class HonoAuth implements IAuth {
   private readonly listeners = new Set<AuthListener>();
   private currentUser: IUser | null = null;
   private initialized = false;
+  // True once the initial restoreSession() has settled. Until then currentUser
+  // is the pre-restore default and must not be reported as a settled state.
+  private sessionResolved = false;
   readonly oidcEnabled: boolean;
 
   constructor(api: HonoApiClient) {
@@ -183,17 +186,28 @@ export class HonoAuth implements IAuth {
   ): () => void {
     this.listeners.add(onNext);
 
-    if (this.initialized) {
-      onNext(this.currentUser);
-    } else {
+    if (!this.initialized) {
       this.initialized = true;
       this.restoreSession()
-        .then(user => this.fireListeners(user))
+        .then(user => {
+          this.sessionResolved = true;
+          this.fireListeners(user);
+        })
         .catch(e => {
+          this.sessionResolved = true;
           this.fireListeners(null);
           onError?.(e instanceof Error ? e : new Error(String(e)));
         });
+    } else if (this.sessionResolved) {
+      // The initial restore has settled — a late subscriber gets the current
+      // value immediately.
+      onNext(this.currentUser);
     }
+    // Otherwise restoreSession() is still in flight: do NOT emit currentUser.
+    // It is still the pre-restore default (null); a subscriber arriving in this
+    // window — e.g. React StrictMode re-running the effect — would mistake it
+    // for "logged out" and redirect away from a protected route. The listener
+    // is registered and will be notified when the restore resolves.
 
     return () => {
       this.listeners.delete(onNext);

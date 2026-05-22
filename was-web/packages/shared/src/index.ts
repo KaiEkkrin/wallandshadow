@@ -1,6 +1,7 @@
 // Data
 export * from './data/types';
 export * from './data/adventure';
+export * from './data/admin';
 export * from './data/annotation';
 export * from './data/change';
 export * from './data/changeTracking';

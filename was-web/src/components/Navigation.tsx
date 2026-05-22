@@ -22,8 +22,11 @@ import { LinkContainer } from 'react-router-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCheck } from '@fortawesome/free-solid-svg-icons';
 
+import { UserLevel } from '@wallandshadow/shared';
+
 function NavPageLinks() {
   const userContext = useContext(UserContext);
+  const { profile } = useContext(ProfileContext);
   const loggedInItemsHidden = useMemo(
     () => userContext.user === null || userContext.user === undefined,
     [userContext.user]
@@ -45,6 +48,11 @@ function NavPageLinks() {
       {!loggedInItemsHidden && (
         <LinkContainer to="/shared">
           <Nav.Link>Shared with me</Nav.Link>
+        </LinkContainer>
+      )}
+      {!loggedInItemsHidden && profile?.level === UserLevel.Admin && (
+        <LinkContainer to="/admin">
+          <Nav.Link>Admin</Nav.Link>
         </LinkContainer>
       )}
     </Nav>

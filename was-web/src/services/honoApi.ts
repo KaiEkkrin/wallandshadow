@@ -1,4 +1,6 @@
 import type {
+  IAdminUserDetail,
+  IAdminUserSummary,
   IAdventure,
   IAdventureSummary,
   IApi,
@@ -269,5 +271,24 @@ export class HonoApi implements IApi {
       }
     }
     return sprites;
+  }
+
+  // ── Admin ──────────────────────────────────────────────────────────────────
+
+  async adminSearchUser(
+    query: { email: string } | { id: string },
+  ): Promise<IAdminUserSummary | undefined> {
+    try {
+      return await this.client.adminSearchUser(query);
+    } catch (e) {
+      // A 404 means "no such account" — a normal search miss, not an error.
+      if (isNotFound(e)) return undefined;
+      throw e;
+    }
+  }
+
+  async adminGetUser(id: string): Promise<IAdminUserDetail> {
+    // A 404 here bubbles as an error: the caller navigated to a real id.
+    return await this.client.adminGetUser(id);
   }
 }

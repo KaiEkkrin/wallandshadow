@@ -7,6 +7,7 @@ import { playerRoutes } from './routes/players.js';
 import { inviteRoutes } from './routes/invites.js';
 import { imageRoutes } from './routes/images.js';
 import { spritesheetRoutes } from './routes/spritesheets.js';
+import { adminRoutes } from './routes/admin.js';
 import { configureStaticServing } from './static.js';
 import { logger } from './services/logger.js';
 
@@ -30,6 +31,7 @@ export function createApp(): Hono {
   app.route('/api', inviteRoutes);
   app.route('/api', imageRoutes);
   app.route('/api', spritesheetRoutes);
+  app.route('/api', adminRoutes);
 
   // Static file serving (production only — no-op when build/ doesn't exist)
   configureStaticServing(app);
