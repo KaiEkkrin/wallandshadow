@@ -7,6 +7,7 @@ import { users, adventures, adventurePlayers, images, mapChanges } from '../db/s
 import { eq } from 'drizzle-orm';
 import {
   registerUser,
+  registerHigherUser,
   apiGet,
   apiPost,
   apiPatch,
@@ -367,14 +368,14 @@ describe('server integration tests', () => {
     });
 
     test('player cap is enforced under concurrent joins', async () => {
-      // Standard-user policy caps a single adventure at 8 allowed players
+      // Basic-tier policy caps a single adventure at 6 allowed players
       // (see packages/shared/src/data/policy.ts). The owner occupies one slot,
-      // so at most 7 joiners should succeed. With READ COMMITTED isolation and
+      // so at most 5 joiners should succeed. With READ COMMITTED isolation and
       // no row lock on the parent adventure, concurrent count-then-insert
       // transactions can both pass the cap check and both insert — overshooting
       // the cap. The fix takes a FOR UPDATE lock on the adventures row inside
       // joinAdventure() so concurrent joiners serialise per adventure.
-      const cap = 8;
+      const cap = 6;
       const owner = await registerUser(app, 'Owner');
       const a1Id = await createAdventure(owner.token);
 
@@ -395,7 +396,7 @@ describe('server integration tests', () => {
       );
       const statuses = results.map(r => r.status);
 
-      // Owner takes one of the 8 slots, so cap - 1 joiners may succeed and
+      // Owner takes one of the 6 slots, so cap - 1 joiners may succeed and
       // the remainder must be denied with the cap error.
       const successes = statuses.filter(s => s === 200).length;
       const denials = statuses.filter(s => s === 403).length;
@@ -741,7 +742,7 @@ describe('server integration tests', () => {
       expect(body.uid).toBeTruthy();
       expect(body.email).toBe('alice@example.com');
       expect(body.name).toBe('Alice');
-      expect(body.level).toBe('standard');
+      expect(body.level).toBe('basic');
     });
 
     test('returns user info after login', async () => {
@@ -774,7 +775,7 @@ describe('server integration tests', () => {
     });
 
     test('deletes user, owned adventures, player memberships, and uploaded images', async () => {
-      const owner = await registerUser(app, 'Owner');
+      const owner = await registerHigherUser(app, 'Owner');
       const coMember = await registerUser(app, 'CoMember');
       const otherOwner = await registerUser(app, 'OtherOwner');
 
@@ -924,7 +925,7 @@ describe('server integration tests', () => {
     });
 
     test('returns presigned URL for a valid path', async () => {
-      const { token } = await registerUser(app);
+      const { token } = await registerHigherUser(app);
       // Upload an image first
       const uploadRes = await apiUploadImage(app, token, TINY_PNG, 'test.png', 'image/png', 'Test Image');
       expect(uploadRes.status).toBe(201);
@@ -939,7 +940,7 @@ describe('server integration tests', () => {
     });
 
     test('denies download of another user\'s image without shared adventure', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const stranger = await registerUser(app);
 
       // Owner uploads an image
@@ -953,7 +954,7 @@ describe('server integration tests', () => {
     });
 
     test('adventure member can download adventure cover image', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const player = await registerUser(app);
 
       // Owner uploads image and creates adventure with it as cover
@@ -975,7 +976,7 @@ describe('server integration tests', () => {
     });
 
     test('adventure member can download map background image', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const player = await registerUser(app);
 
       // Owner uploads image and creates adventure + map with it
@@ -998,7 +999,7 @@ describe('server integration tests', () => {
     });
 
     test('non-member denied for adventure cover image', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const stranger = await registerUser(app);
 
       // Owner uploads image and creates adventure with it
@@ -1021,7 +1022,7 @@ describe('server integration tests', () => {
     });
 
     test('blocked player denied download', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const player = await registerUser(app);
 
       // Owner uploads image and creates adventure with it
@@ -1044,7 +1045,7 @@ describe('server integration tests', () => {
     });
 
     test('adventure member can download spritesheet image', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const player = await registerUser(app);
 
       // Owner uploads source images for the spritesheet
@@ -1075,7 +1076,7 @@ describe('server integration tests', () => {
     });
 
     test('non-member denied for spritesheet download', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const stranger = await registerUser(app);
 
       // Owner uploads source image and creates adventure + spritesheet
@@ -1105,7 +1106,7 @@ describe('server integration tests', () => {
     });
 
     test('adventure member can download image placed on shared map via imageAdd change', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const player = await registerUser(app);
 
       // Owner uploads an image (with no other references — not a background)
@@ -1134,7 +1135,7 @@ describe('server integration tests', () => {
     });
 
     test('non-member cannot download image placed on a map', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const stranger = await registerUser(app);
 
       const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'placed.png', 'image/png');
@@ -1151,7 +1152,7 @@ describe('server integration tests', () => {
     });
 
     test('deleting an image revokes placed-image access', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const player = await registerUser(app);
 
       const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'placed.png', 'image/png');
@@ -1180,7 +1181,7 @@ describe('server integration tests', () => {
     });
 
     test('consolidation revokes access for an image that was placed and then removed', async () => {
-      const owner = await registerUser(app);
+      const owner = await registerHigherUser(app);
       const player = await registerUser(app);
 
       const uploadRes = await apiUploadImage(app, owner.token, TINY_PNG, 'transient.png', 'image/png');

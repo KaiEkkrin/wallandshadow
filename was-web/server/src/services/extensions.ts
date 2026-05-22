@@ -640,7 +640,7 @@ async function tryConsolidateMapChanges(
 
     const [user] = await tx.select({ level: users.level })
       .from(users).where(eq(users.id, m.owner)).limit(1);
-    const ownerPolicy = getUserPolicy((user?.level ?? 'standard') as UserLevel);
+    const ownerPolicy = getUserPolicy((user?.level ?? 'basic') as UserLevel);
 
     const { tracker, tokens: tokenDict } = buildMapChangeTracker(m, ownerPolicy);
 
@@ -1200,7 +1200,7 @@ export async function joinAdventure(
     ]);
 
     const [ownerUser] = ownerResult;
-    const ownerPolicy = getUserPolicy((ownerUser?.level ?? 'standard') as UserLevel);
+    const ownerPolicy = getUserPolicy((ownerUser?.level ?? 'basic') as UserLevel);
     const [{ playerCount }] = countResult;
     if (Number(playerCount) >= ownerPolicy.players) {
       throwApiError('permission-denied', 'This adventure already has the maximum number of players');

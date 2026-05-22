@@ -111,6 +111,31 @@ everything it needs.
 See [ZITADEL_OIDC_SETUP.md](ZITADEL_OIDC_SETUP.md) for configuring the OIDC
 provider.
 
+## Account tiers
+
+Every account has a tier (`users.level`): `basic`, `higher`, or `admin`.
+
+- **Basic** — the default for all new accounts. Lowest entity/object limits;
+  **cannot upload images**.
+- **Higher** — normal limits, can upload images.
+- **Admin** — highest limits, plus access to the admin pages.
+
+Limits live in `getUserPolicy()` (`packages/shared/src/data/policy.ts`).
+
+### Bootstrapping an admin account
+
+The migration that introduces the tiers sets *every* account to `basic`, so a
+freshly migrated deployment has no admin. Promote one account once, by hand,
+after deploying that migration:
+
+```bash
+psql "$DATABASE_URL" -c "UPDATE users SET level = 'admin' WHERE email = '<owner-email>';"
+```
+
+Use the account's cached `email` (local accounts, and OIDC accounts whose email
+Zitadel supplied). Once one admin exists, further tier changes are made through
+the admin UI (a later piece of work).
+
 ## Running tests
 
 ```bash

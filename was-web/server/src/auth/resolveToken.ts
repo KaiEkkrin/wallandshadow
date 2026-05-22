@@ -92,7 +92,6 @@ async function upsertOidcUser(
       email: email ?? null,
       emailVerified,
       name: displayName,
-      level: 'standard',
     });
     return id;
   });

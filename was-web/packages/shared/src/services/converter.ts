@@ -530,7 +530,7 @@ export const playerConverter = new RecursingConverter<IPlayer>({
 export const profileConverter = new RecursingConverter<IProfile>({
   name: "",
   email: "",
-  level: UserLevel.Standard,
+  level: UserLevel.Basic,
   adventures: []
 }, {
   "adventures": (conv, raw) => {

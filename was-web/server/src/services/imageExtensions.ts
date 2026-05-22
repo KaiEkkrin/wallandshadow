@@ -34,9 +34,13 @@ export async function addImage(
       throwApiError('permission-denied', 'No profile available');
     }
 
+    const policy = getUserPolicy(user.level as UserLevel);
+    if (policy.images === 0) {
+      throwApiError('permission-denied', 'Your account tier does not permit image uploads.');
+    }
+
     const [{ imageCount }] = await tx.select({ imageCount: count() })
       .from(images).where(eq(images.userId, uid));
-    const policy = getUserPolicy(user.level as UserLevel);
     if (imageCount >= policy.images) {
       throwApiError('resource-exhausted', 'You have too many images; delete one to upload another.');
     }

@@ -13,7 +13,7 @@ import ImageCollectionItem from './ImageCollectionItem';
 import { ProfileContext } from './ProfileContext';
 import { UserContext } from './UserContext';
 
-import { IImage, getUserPolicy } from '@wallandshadow/shared';
+import { IImage, canUploadImages, getUserPolicy } from '@wallandshadow/shared';
 import { logError } from '../services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
@@ -45,6 +45,14 @@ interface IImagePickerFormProps {
 
 export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDelete }: IImagePickerFormProps) {
   const { api, user } = useContext(UserContext);
+  const { profile } = useContext(ProfileContext);
+
+  // The Basic tier cannot upload images at all; the server rejects the upload,
+  // so the file input is disabled to make the restriction visible up front.
+  const canUpload = useMemo(
+    () => profile !== undefined && canUploadImages(profile.level),
+    [profile]
+  );
 
   const [status, setStatus] = useState<IImageStatusProps>({ message: "" });
 
@@ -60,7 +68,7 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
   // File uploads
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!api || !user) {
+    if (!api || !user || !canUpload) {
       return;
     }
 
@@ -87,7 +95,7 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
 
     const sub = from(doUpload()).subscribe();
     return () => sub.unsubscribe();
-  }, [setStatus, setImages, api, user]);
+  }, [setStatus, setImages, api, user, canUpload]);
 
   useEffect(() => {
     // Refetch the image list each time the modal opens; images change
@@ -164,8 +172,13 @@ export function ImagePickerForm({ show, setActiveImage, setImageCount, handleDel
       <Form>
         <Form.Group>
           <Form.Label htmlFor="uploadButton">Upload a new image</Form.Label>
-          <Form.Control id="uploadButton" as="input" type="file" accept="image/*" onChange={handleFileChange} />
-          <Form.Text className="text-muted">The maximum image size is 5MB.</Form.Text>
+          <Form.Control id="uploadButton" as="input" type="file" accept="image/*"
+            disabled={!canUpload} onChange={handleFileChange} />
+          <Form.Text className="text-muted">
+            {canUpload
+              ? 'The maximum image size is 5MB.'
+              : 'Image upload is not available on the Basic tier.'}
+          </Form.Text>
         </Form.Group>
       </Form>
       <ImageStatus {...status} />

@@ -74,7 +74,7 @@ describe('OIDC authentication', () => {
     expect(body.email).toBe('alice@example.com');
     expect(body.emailVerified).toBe(true);
     expect(body.name).toBe('Alice');
-    expect(body.level).toBe('standard');
+    expect(body.level).toBe('basic');
     expect(body.uid).toBeTruthy();
   });
 

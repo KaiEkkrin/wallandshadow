@@ -2,6 +2,7 @@ import type { Hono } from 'hono';
 import {
   ChangeType,
   ChangeCategory,
+  UserLevel,
   type Changes,
   type Change,
   type ImageAdd,
@@ -10,7 +11,7 @@ import {
   type WallAdd,
 } from '@wallandshadow/shared';
 import { db } from '../db/connection.js';
-import { mapChanges } from '../db/schema.js';
+import { mapChanges, users } from '../db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { testS3, testBucket } from './setup.js';
@@ -65,6 +66,26 @@ export async function registerUser(
     throw new Error(`registerUser failed: ${res.status} ${await res.text()}`);
   }
   return res.json();
+}
+
+// Directly sets a user's account tier. New accounts default to Basic; tests
+// that need higher caps (e.g. image upload) promote past it. Runtime tier
+// changes via the admin API arrive in a later session — tests reach past it.
+export async function promoteUser(uid: string, level: UserLevel): Promise<void> {
+  await db.update(users).set({ level }).where(eq(users.id, uid));
+}
+
+// Registers a user and immediately promotes them to the Higher tier — the
+// common case for tests that upload images or exceed Basic-tier caps.
+export async function registerHigherUser(
+  app: Hono,
+  name?: string,
+  email?: string,
+  password?: string,
+): Promise<{ token: string; uid: string }> {
+  const u = await registerUser(app, name, email, password);
+  await promoteUser(u.uid, UserLevel.Higher);
+  return u;
 }
 
 // ─── Request helpers ──────────────────────────────────────────────────────────
