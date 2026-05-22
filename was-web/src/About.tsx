@@ -24,9 +24,10 @@ interface IAboutDocument {
 }
 
 // react-markdown renders raw HTML — including comments — as visible text rather
-// than dropping it. Strip HTML comments so build-step markers (e.g. the
-// THIRD-PARTY-NOTICES delimiters in acknowledgements.md) stay in the source
-// files for later tooling but never show on the page.
+// than dropping it. Strip HTML comments so editorial notes in the source
+// markdown never show on the page. (The acknowledgements page's
+// THIRD-PARTY-NOTICES delimiters are removed separately, by
+// injectThirdPartyNotices.)
 function stripHtmlComments(markdown: string): string {
   let previous: string;
   let sanitized = markdown;
