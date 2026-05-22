@@ -110,8 +110,7 @@ additional transfer safeguards are required.
   Where you have contributed changes to a shared map, those changes may remain
   as part of that map's history, but the link to your account is removed, so
   they are no longer associated with you.
-- **Server logs** — access logs are kept for **[PLACEHOLDER — recommended: 30
-  days]** and then deleted.
+- **Server logs** — access logs are kept for **30 days** and then deleted.
 - **Invitations** — expire automatically.
 
 ## 9. Your rights

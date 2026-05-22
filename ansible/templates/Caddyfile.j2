@@ -50,7 +50,9 @@ object-src 'none'
     log {
         output file /var/log/caddy/access.log {
             roll_size 50mb
-            roll_keep 8
+            # roll_keep caps file count as a disk-safety ceiling; roll_keep_for
+            # is the real 30-day retention limit (see the Privacy Notice).
+            roll_keep 100
             roll_keep_for 720h
         }
         format json
