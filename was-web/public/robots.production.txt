@@ -17,4 +17,4 @@ Disallow: /invite/
 Disallow: /profile/
 
 # Sitemap (add when available)
-# Sitemap: https://wallandshadow.io/sitemap.xml
+# Sitemap: https://wallandshadow.com/sitemap.xml
