@@ -26,9 +26,7 @@ we may link to.
 ## 3. What personal data we collect
 
 - **Account information** — your email address, your display name, whether your
-  email address is verified, and your account tier. For local development and
-  test accounts only, we also store a hashed password; production accounts sign
-  in through our identity provider, and we do not hold their passwords.
+  email address is verified, and your account tier.
 - **Identity-provider information** — when you sign in through Zitadel (our
   identity provider), we receive and store an identifier (a "subject") that
   links your Wall & Shadow account to your Zitadel login.
@@ -75,11 +73,12 @@ data brokers.
 
 We use the following service providers ("processors") to run Wall & Shadow:
 
-- **Hetzner Online GmbH** (Germany) — provides our hosting and our S3-compatible
-  object storage. Your account data, content, and uploaded images are stored on
-  Hetzner infrastructure.
+- **Hetzner Online GmbH** — a company based in Germany that provides our hosting
+  and our S3-compatible object storage. Your account data, content, and uploaded
+  images are stored on Hetzner infrastructure in Finland (see section 7).
 - **Zitadel** — provides our identity (sign-in) service. Zitadel handles your
-  login and holds your sign-in credentials.
+  login and holds your sign-in credentials, and is operated by a company based in
+  Switzerland (see section 7).
 
 Other users of Wall & Shadow can see the content you deliberately share with
 them — for example, the players you invite to an adventure can see that
@@ -91,12 +90,17 @@ illegal content.
 
 ## 7. Where your data is stored
 
-Our hosting and image storage are located in the European Union (Germany).
+Our hosting and image storage are provided by Hetzner and are located in
+Finland, within the European Union.
 
-Our identity provider, Zitadel, processes your sign-in data. **[PLACEHOLDER —
-confirm the region of the Zitadel instance. If it is within the UK or EU, say
-so. If it is outside, describe the safeguard relied on for that transfer, such
-as the UK International Data Transfer Agreement or an adequacy decision.]**
+Our identity provider, Zitadel, handles your sign-in data. Our Zitadel instance
+stores its data in Zitadel's European Union region, and Zitadel is operated by a
+company headquartered in Switzerland.
+
+Both the European Union and Switzerland are recognised by the United Kingdom as
+providing an adequate level of data protection. Your personal data is therefore
+not transferred outside jurisdictions that UK law treats as adequate, and no
+additional transfer safeguards are required.
 
 ## 8. How long we keep your data
 

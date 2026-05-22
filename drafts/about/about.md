@@ -24,7 +24,7 @@ players decide to do.
 Wall & Shadow is a small project run by a single individual, Alex Holloway,
 based in the United Kingdom. It is a hobby project, not a company.
 
-The service is hosted within the European Union (in Germany), using Hetzner for
+The service is hosted within the European Union (in Finland), using Hetzner for
 hosting and storage.
 
 Because Wall & Shadow is small and solo-run, please be patient with response
