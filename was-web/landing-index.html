@@ -20,6 +20,17 @@
 
   <!-- Inline critical CSS for immediate rendering -->
   <style>
+    /* Self-hosted brand display font (SIL OFL 1.1 — see /fonts/princess-sofia-OFL.txt).
+       Self-hosted rather than loaded from Google Fonts: no third-party request,
+       and the licence travels with the font file. */
+    @font-face {
+      font-family: 'Princess Sofia';
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url('/fonts/princess-sofia-latin-400.woff2') format('woff2');
+    }
+
     :root {
       /* Environment-specific background color (set by script above) */
       --env-background: #282c34;
@@ -208,9 +219,6 @@
       }
     }
   </style>
-
-  <!-- Load Google Font for logo -->
-  <link href="https://fonts.googleapis.com/css?family=Princess+Sofia" rel="stylesheet">
 </head>
 <body>
   <div class="container">

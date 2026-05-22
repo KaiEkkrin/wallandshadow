@@ -5,11 +5,16 @@ import './About.css';
 
 import Navigation from './components/Navigation';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
+import { injectThirdPartyNotices } from './utils/thirdPartyNotices';
 
 import aboutMd from './content/about/about.md?raw';
 import acknowledgementsMd from './content/about/acknowledgements.md?raw';
 import privacyMd from './content/about/privacy.md?raw';
 import termsMd from './content/about/terms.md?raw';
+
+// Generated at build time by the thirdPartyNotices Vite plugin — the licence
+// notices for every npm package whose code is shipped to the browser.
+import thirdPartyNoticesMd from 'virtual:third-party-notices';
 
 export type AboutPageName = 'about' | 'privacy' | 'terms' | 'acknowledgements';
 
@@ -32,7 +37,11 @@ const aboutDocuments: Record<AboutPageName, IAboutDocument> = {
   terms: { title: 'Terms of Service', markdown: stripHtmlComments(termsMd) },
   acknowledgements: {
     title: 'Open-source acknowledgements',
-    markdown: stripHtmlComments(acknowledgementsMd),
+    // injectThirdPartyNotices removes the THIRD-PARTY-NOTICES delimiter comments
+    // itself; stripHtmlComments is deliberately NOT applied to the result. The
+    // generated notices reproduce licence text verbatim, and a licence that
+    // happened to contain an HTML-comment sequence would otherwise be corrupted.
+    markdown: injectThirdPartyNotices(acknowledgementsMd, thirdPartyNoticesMd),
   },
 };
 

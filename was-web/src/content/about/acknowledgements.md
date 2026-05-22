@@ -36,12 +36,18 @@ works._
 
 ## Fonts and other assets
 
-Wall & Shadow also includes fonts and images that are not npm packages:
+Wall & Shadow also bundles fonts that are handled outside the generated notices
+above:
 
-- **[PLACEHOLDER — list the bundled fonts in `was-web/public/fonts/` and their
-  licences.]**
-- The landing page uses the **"Princess Sofia"** font, served by Google Fonts,
-  which is licensed under the SIL Open Font License. **[Confirm; consider
-  self-hosting it so it is covered by the build-time notice generation.]**
-- **[PLACEHOLDER — confirm and list any other bundled image assets that need
-  attribution, e.g. icons or artwork in `was-web/public/`.]**
+- **Princess Sofia** — the display font used for the Wall & Shadow logo,
+  licensed under the **SIL Open Font License 1.1** (© 2012 Font Diner, Inc.).
+  The application loads it from the `@fontsource/princess-sofia` package, so it
+  is also listed in the third-party notices above. The static landing page loads
+  a self-hosted copy of the same font; its licence text is in
+  `public/fonts/princess-sofia-OFL.txt` in the repository.
+- **Helvetiker** — the typeface used for the 3-D text rendered on maps
+  (`public/fonts/helvetiker_bold.typeface.json`). It is distributed under the
+  MgOpen font licence (© 2004 MAGENTA Ltd.), reproduced in `public/fonts/LICENSE`.
+
+All icons, logos, and other images in Wall & Shadow are original work created
+for the project and need no third-party attribution.
