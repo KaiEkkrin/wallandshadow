@@ -1,12 +1,8 @@
-> **⚠️ DRAFT — NOT YET PUBLISHED.** This is a working draft for review. It has
-> not been reviewed by a legal professional and is not legal advice. Do not
-> treat it as live, published text.
-
 # Terms of Service
 
 _The rules for using Wall & Shadow._
 
-**Last updated: [DATE — fill in at publish]**
+**Last updated: 22 May 2026**
 
 ## Summary
 
@@ -110,9 +106,6 @@ service, at any time. Where it is practical to do so, we will give reasonable
 notice of a major change, or of the service closing.
 
 ## 8. Disclaimers and liability
-
-> **[FLAG FOR LEGAL REVIEW]** — this section limits our liability and should be
-> checked by a legal professional before publication.
 
 To the fullest extent permitted by law, Wall & Shadow is provided without
 warranties of any kind, and we are not liable for loss or damage arising from

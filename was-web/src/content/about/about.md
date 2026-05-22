@@ -1,7 +1,3 @@
-> **⚠️ DRAFT — NOT YET PUBLISHED.** This is a working draft for review. It has
-> not been reviewed by a legal professional and is not legal advice. Do not
-> treat it as live, published text.
-
 # About Wall & Shadow
 
 _Wall & Shadow is a lightweight virtual tabletop for tabletop role-playing games._

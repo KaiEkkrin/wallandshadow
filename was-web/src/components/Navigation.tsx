@@ -34,6 +34,9 @@ function NavPageLinks() {
       <LinkContainer to="/app">
         <Nav.Link>Home</Nav.Link>
       </LinkContainer>
+      <LinkContainer to="/about">
+        <Nav.Link>About</Nav.Link>
+      </LinkContainer>
       {!loggedInItemsHidden && (
         <LinkContainer to="/all">
           <Nav.Link>My adventures</Nav.Link>

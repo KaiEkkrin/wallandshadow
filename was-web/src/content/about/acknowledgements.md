@@ -1,7 +1,3 @@
-> **⚠️ DRAFT — NOT YET PUBLISHED.** This is a working draft for review. It has
-> not been reviewed by a legal professional and is not legal advice. Do not
-> treat it as live, published text.
-
 # Open-source acknowledgements
 
 _The open-source software Wall & Shadow is built with._

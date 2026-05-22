@@ -1,12 +1,8 @@
-> **⚠️ DRAFT — NOT YET PUBLISHED.** This is a working draft for review. It has
-> not been reviewed by a legal professional and is not legal advice. Do not
-> treat it as live, published text.
-
 # Privacy Notice
 
 _What personal data Wall & Shadow collects, why, and your rights over it._
 
-**Last updated: [DATE — fill in at publish]**
+**Last updated: 22 May 2026**
 
 ## 1. Who is responsible for your data
 

@@ -21,6 +21,7 @@ import { getEnvironmentColors } from './utils/environment';
 import { Route, Routes } from 'react-router-dom';
 
 // Lazy-loaded route components for code splitting
+const About = lazy(() => import('./About'));
 const AdventurePage = lazy(() => import('./Adventure'));
 const All = lazy(() => import('./All'));
 const InvitePage = lazy(() => import('./Invite'));
@@ -49,6 +50,10 @@ function App(props: IRoutingProps) {
                     <Routes>
                       <Route path="/" element={<RootRedirect />} />
                       <Route path="/app" element={<Home />} />
+                      <Route path="/about" element={<About page="about" />} />
+                      <Route path="/about/privacy" element={<About page="privacy" />} />
+                      <Route path="/about/terms" element={<About page="terms" />} />
+                      <Route path="/about/acknowledgements" element={<About page="acknowledgements" />} />
                       <Route path="/all" element={<All />} />
                       <Route path="/adventure/:adventureId" element={<AdventurePage />} />
                       <Route path="/adventure/:adventureId/map/:mapId" element={<MapPage />} />
