@@ -301,11 +301,8 @@ export class HonoApiClient {
 
   // ── Admin ─────────────────────────────────────────────────────────────────
 
-  adminSearchUser(query: { email: string } | { id: string }): Promise<IAdminUserSummary> {
-    const qs = 'email' in query
-      ? `email=${encodeURIComponent(query.email)}`
-      : `id=${encodeURIComponent(query.id)}`;
-    return this.request('GET', `/api/admin/users?${qs}`);
+  adminSearchUser(term: string): Promise<IAdminUserSummary> {
+    return this.request('GET', `/api/admin/users?q=${encodeURIComponent(term)}`);
   }
 
   adminGetUser(id: string): Promise<IAdminUserDetail> {

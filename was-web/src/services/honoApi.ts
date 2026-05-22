@@ -275,11 +275,9 @@ export class HonoApi implements IApi {
 
   // ── Admin ──────────────────────────────────────────────────────────────────
 
-  async adminSearchUser(
-    query: { email: string } | { id: string },
-  ): Promise<IAdminUserSummary | undefined> {
+  async adminSearchUser(term: string): Promise<IAdminUserSummary | undefined> {
     try {
-      return await this.client.adminSearchUser(query);
+      return await this.client.adminSearchUser(term);
     } catch (e) {
       // A 404 means "no such account" — a normal search miss, not an error.
       if (isNotFound(e)) return undefined;

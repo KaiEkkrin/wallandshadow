@@ -6,6 +6,7 @@ import {
   registerUser,
   registerHigherUser,
   registerAdminUser,
+  createOidcUser,
   apiGet,
   apiPost,
   apiUploadImage,
@@ -17,7 +18,7 @@ const app = createApp();
 describe('admin routes: access gate', () => {
   test('a non-admin gets 403 from the user search', async () => {
     const { token } = await registerUser(app);
-    const res = await apiGet(app, '/api/admin/users?email=nobody@example.com', token);
+    const res = await apiGet(app, '/api/admin/users?q=nobody@example.com', token);
     expect(res.status).toBe(403);
   });
 
@@ -29,7 +30,7 @@ describe('admin routes: access gate', () => {
 
   test('an admin passes the gate (search reaches a 404, not a 403)', async () => {
     const { token } = await registerAdminUser(app);
-    const res = await apiGet(app, '/api/admin/users?email=nobody@example.com', token);
+    const res = await apiGet(app, '/api/admin/users?q=nobody@example.com', token);
     expect(res.status).toBe(404);
   });
 });
@@ -39,51 +40,101 @@ describe('admin routes: user search', () => {
     const { token } = await registerAdminUser(app);
     const email = `target-${uuidv7()}@example.com`;
     const target = await registerUser(app, 'Search Target', email);
-    const res = await apiGet(app, `/api/admin/users?email=${encodeURIComponent(email)}`, token);
+    const res = await apiGet(app, `/api/admin/users?q=${encodeURIComponent(email)}`, token);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.id).toBe(target.uid);
     expect(body.email).toBe(email);
     expect(body.level).toBe('basic');
-    expect(body.isOidc).toBe(false);
+    expect(body.externalId).toBe(null);
   });
 
   test('search by email returns 404 on a miss', async () => {
     const { token } = await registerAdminUser(app);
-    const res = await apiGet(app, `/api/admin/users?email=missing-${uuidv7()}@example.com`, token);
+    const res = await apiGet(app, `/api/admin/users?q=missing-${uuidv7()}@example.com`, token);
     expect(res.status).toBe(404);
   });
 
-  test('search by id returns the summary on a hit', async () => {
+  test('search by account id returns the summary on a hit', async () => {
     const { token } = await registerAdminUser(app);
     const target = await registerUser(app);
-    const res = await apiGet(app, `/api/admin/users?id=${target.uid}`, token);
+    const res = await apiGet(app, `/api/admin/users?q=${target.uid}`, token);
     expect(res.status).toBe(200);
     expect((await res.json()).id).toBe(target.uid);
   });
 
-  test('search by id returns 404 on a miss', async () => {
+  test('search by account id returns 404 on a miss', async () => {
     const { token } = await registerAdminUser(app);
     const res = await apiGet(
-      app, '/api/admin/users?id=00000000-0000-0000-0000-000000000000', token,
+      app, '/api/admin/users?q=00000000-0000-0000-0000-000000000000', token,
     );
     expect(res.status).toBe(404);
   });
 
-  test('search with neither email nor id returns 400', async () => {
+  test('search with no q parameter returns 400', async () => {
     const { token } = await registerAdminUser(app);
     const res = await apiGet(app, '/api/admin/users', token);
     expect(res.status).toBe(400);
   });
 
-  test('search with both email and id returns 400', async () => {
+  test('search with an empty q parameter returns 400', async () => {
     const { token } = await registerAdminUser(app);
-    const res = await apiGet(
-      app,
-      '/api/admin/users?email=x@example.com&id=00000000-0000-0000-0000-000000000000',
-      token,
-    );
+    const res = await apiGet(app, '/api/admin/users?q=', token);
     expect(res.status).toBe(400);
+  });
+
+  test('search by external id finds an OIDC account', async () => {
+    const { token } = await registerAdminUser(app);
+    const providerSub = `ext-${uuidv7()}`;
+    const oidc = await createOidcUser({
+      providerSub,
+      email: `oidc-${uuidv7()}@example.com`,
+      name: 'OIDC Target',
+    });
+    const res = await apiGet(
+      app, `/api/admin/users?q=${encodeURIComponent(providerSub)}`, token,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.id).toBe(oidc.uid);
+    expect(body.externalId).toBe(providerSub);
+  });
+
+  test('email search is case-insensitive and finds an OIDC account stored mixed-case', async () => {
+    const { token } = await registerAdminUser(app);
+    // OIDC accounts store the email verbatim — here with uppercase letters.
+    const mixedEmail = `Mixed.Case-${uuidv7()}@Example.com`;
+    const oidc = await createOidcUser({
+      providerSub: `ext-${uuidv7()}`,
+      email: mixedEmail,
+      name: 'Mixed Case OIDC',
+    });
+    // Searching with the all-lowercase form must still match.
+    const res = await apiGet(
+      app, `/api/admin/users?q=${encodeURIComponent(mixedEmail.toLowerCase())}`, token,
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).id).toBe(oidc.uid);
+  });
+
+  test('a shared email returns the oldest account', async () => {
+    const { token } = await registerAdminUser(app);
+    const sharedEmail = `shared-${uuidv7()}@example.com`;
+    const older = await createOidcUser({
+      providerSub: `ext-old-${uuidv7()}`,
+      email: sharedEmail,
+      createdAt: new Date('2020-01-01T00:00:00Z'),
+    });
+    await createOidcUser({
+      providerSub: `ext-new-${uuidv7()}`,
+      email: sharedEmail,
+      createdAt: new Date('2021-01-01T00:00:00Z'),
+    });
+    const res = await apiGet(
+      app, `/api/admin/users?q=${encodeURIComponent(sharedEmail)}`, token,
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).id).toBe(older.uid);
   });
 });
 

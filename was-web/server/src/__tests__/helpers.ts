@@ -14,6 +14,7 @@ import { db } from '../db/connection.js';
 import { mapChanges, users } from '../db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { v7 as uuidv7 } from 'uuid';
 import { testS3, testBucket } from './setup.js';
 
 // ─── Test fixtures ─────────────────────────────────────────────────────────────
@@ -100,6 +101,29 @@ export async function registerAdminUser(
   const u = await registerUser(app, name, email, password);
   await promoteUser(u.uid, UserLevel.Admin);
   return u;
+}
+
+// Inserts a user row with an OIDC provider_sub set (no local password) — for
+// tests of external-id search and shared-email de-confliction. The register
+// endpoint only creates local accounts, so OIDC rows are inserted directly.
+// `createdAt` is settable so "oldest wins" ordering is deterministic.
+export async function createOidcUser(opts: {
+  providerSub: string;
+  email?: string;
+  name?: string;
+  createdAt?: Date;
+}): Promise<{ uid: string }> {
+  const uid = uuidv7();
+  await db.insert(users).values({
+    id: uid,
+    providerSub: opts.providerSub,
+    email: opts.email ?? null,
+    emailVerified: true,
+    name: opts.name ?? 'OIDC User',
+    level: 'basic',
+    ...(opts.createdAt ? { createdAt: opts.createdAt } : {}),
+  });
+  return { uid };
 }
 
 // ─── Request helpers ──────────────────────────────────────────────────────────

@@ -99,8 +99,8 @@ export interface IApi {
   addSprites(adventureId: string, geometry: string, sources: string[]): Promise<ISprite[]>;
 
   // ── Admin ────────────────────────────────────────────────────────────────
-  adminSearchUser(
-    query: { email: string } | { id: string },
-  ): Promise<IAdminUserSummary | undefined>;
+  // Search by a single term: an email, an internal account id, or an external
+  // (OIDC provider) id — the server auto-detects which.
+  adminSearchUser(term: string): Promise<IAdminUserSummary | undefined>;
   adminGetUser(id: string): Promise<IAdminUserDetail>;
 }

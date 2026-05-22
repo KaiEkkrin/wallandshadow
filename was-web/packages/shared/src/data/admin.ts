@@ -13,7 +13,7 @@ export interface IAdminUserSummary {
   level: UserLevel;
   createdAt: string;        // ISO 8601
   emailVerified: boolean;
-  isOidc: boolean;          // true if the account signs in via OIDC (provider_sub set)
+  externalId: string | null; // OIDC provider id (Zitadel sub); null for a local account
 }
 
 // One adventure owned by the account.

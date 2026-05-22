@@ -15,15 +15,13 @@ import { UserContext } from './components/UserContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 import { logError } from './services/consoleLogger';
 
-type SearchBy = 'email' | 'id';
-
-// Read-only admin account search. Exact match by email or by account id;
-// a hit shows a summary card linking to the full account-info page.
+// Read-only admin account search. One box accepts an email, an internal account
+// id, or an external (OIDC) id — the server auto-detects which. A hit shows a
+// summary card linking to the full account-info page.
 function Admin() {
   const { api } = useContext(UserContext);
   useDocumentTitle('Admin');
 
-  const [searchBy, setSearchBy] = useState<SearchBy>('email');
   const [term, setTerm] = useState('');
   const [result, setResult] = useState<IAdminUserSummary | undefined>(undefined);
   const [searched, setSearched] = useState(false);
@@ -36,10 +34,12 @@ function Admin() {
     const trimmed = term.trim();
     if (trimmed.length === 0) return;
 
+    // Reset every prior result field so nothing stale survives this search.
     setBusy(true);
     setError(undefined);
-    const query = searchBy === 'email' ? { email: trimmed } : { id: trimmed };
-    api.adminSearchUser(query)
+    setResult(undefined);
+    setSearched(false);
+    api.adminSearchUser(trimmed)
       .then((summary) => {
         setResult(summary);
         setSearched(true);
@@ -49,7 +49,7 @@ function Admin() {
         setError('The search failed. Please try again.');
       })
       .finally(() => setBusy(false));
-  }, [api, searchBy, term]);
+  }, [api, term]);
 
   return (
     <div>
@@ -60,25 +60,16 @@ function Admin() {
             <h5 className="mt-4">Admin — account search</h5>
             <Form onSubmit={handleSearch} className="mt-3">
               <Form.Group className="mb-2">
-                <Form.Check
-                  inline type="radio" label="Email" id="searchByEmail"
-                  checked={searchBy === 'email'}
-                  onChange={() => setSearchBy('email')}
-                />
-                <Form.Check
-                  inline type="radio" label="Account ID" id="searchById"
-                  checked={searchBy === 'id'}
-                  onChange={() => setSearchBy('id')}
-                />
-              </Form.Group>
-              <Form.Group className="mb-2">
                 <Form.Control
                   id="adminSearchInput"
                   type="text"
-                  placeholder={searchBy === 'email' ? 'exact email address' : 'exact account ID'}
+                  placeholder="email, account id, or external id"
                   value={term}
                   onChange={(e) => setTerm(e.target.value)}
                 />
+                <Form.Text className="text-muted">
+                  Searches by exact email, internal account id, or external (OIDC) id.
+                </Form.Text>
               </Form.Group>
               <Button type="submit" variant="primary" disabled={busy || term.trim().length === 0}>
                 Search
@@ -99,6 +90,9 @@ function Admin() {
                     <div>Email: {result.email ?? '(none)'}</div>
                     <div>Tier: {result.level}</div>
                     <div>Account ID: {result.id}</div>
+                    {result.externalId !== null && (
+                      <div>External ID: {result.externalId}</div>
+                    )}
                   </Card.Text>
                   <Link to={`/admin/users/${result.id}`}>View full account info</Link>
                 </Card.Body>

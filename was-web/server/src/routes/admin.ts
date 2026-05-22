@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { adminMiddleware } from '../auth/adminMiddleware.js';
 import { db } from '../db/connection.js';
+import { throwApiError } from '../errors.js';
 import { findUserSummary, getUserDetail } from '../services/adminExtensions.js';
 
 export const adminRoutes = new Hono<{ Variables: AuthVariables }>();
@@ -10,20 +11,16 @@ export const adminRoutes = new Hono<{ Variables: AuthVariables }>();
 adminRoutes.use('/admin/*', authMiddleware);
 adminRoutes.use('/admin/*', adminMiddleware);
 
-// ── Search for a single account by exact email or exact id ───────────────────
+// ── Search for a single account by email, account id, or external id ─────────
 
 adminRoutes.get('/admin/users', async (c) => {
-  const email = c.req.query('email');
-  const id = c.req.query('id');
-  // Exactly one of email / id is required — reject neither and both.
-  if ((email === undefined) === (id === undefined)) {
-    return c.json({ error: 'Provide exactly one of email or id' }, 400);
+  const term = c.req.query('q')?.trim();
+  if (!term) {
+    throwApiError('invalid-argument', 'A search term is required');
   }
-  const summary = email !== undefined
-    ? await findUserSummary(db, { email })
-    : await findUserSummary(db, { id: id as string });
+  const summary = await findUserSummary(db, term);
   if (!summary) {
-    return c.json({ error: 'User not found' }, 404);
+    throwApiError('not-found', 'User not found');
   }
   return c.json(summary);
 });

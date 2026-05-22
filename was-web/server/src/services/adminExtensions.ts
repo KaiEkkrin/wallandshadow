@@ -1,4 +1,4 @@
-import { count, eq } from 'drizzle-orm';
+import { asc, count, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/connection.js';
 import { adventures, images, maps, users } from '../db/schema.js';
 import { throwApiError } from '../errors.js';
@@ -42,29 +42,44 @@ function toSummary(row: SummaryRow): IAdminUserSummary {
     level: row.level as UserLevel,
     createdAt: row.createdAt.toISOString(),
     emailVerified: row.emailVerified,
-    isOidc: row.providerSub !== null,
+    externalId: row.providerSub,
   };
 }
 
-// Exact-match account lookup by lowercased email or by id. Returns undefined
-// when there is no match (the route turns that into a 404).
+// Exact-match account lookup. The search term is auto-classified:
+//   • contains '@'    → email       (case-insensitive; oldest match wins)
+//   • matches UUID_RE → account id  (users.id)
+//   • otherwise       → external id (users.provider_sub — the OIDC source of
+//                       truth, so any OIDC account is reliably findable)
+// Returns undefined when there is no match (the route turns that into a 404).
 export async function findUserSummary(
   db: Db,
-  query: { email: string } | { id: string },
+  term: string,
 ): Promise<IAdminUserSummary | undefined> {
   let row: SummaryRow | undefined;
-  if ('email' in query) {
+  if (term.includes('@')) {
+    // Case-insensitive (backed by the users_email_lower_idx functional index).
+    // users.email is unique only for local accounts, so a shared address can
+    // match several rows — the oldest wins, deterministically. (Session 3's
+    // soft-delete may later narrow this to non-banned accounts.)
     [row] = await db
       .select(summaryColumns)
       .from(users)
-      .where(eq(users.email, query.email.toLowerCase()))
+      .where(sql`lower(${users.email}) = ${term.toLowerCase()}`)
+      .orderBy(asc(users.createdAt))
+      .limit(1);
+  } else if (UUID_RE.test(term)) {
+    [row] = await db
+      .select(summaryColumns)
+      .from(users)
+      .where(eq(users.id, term))
       .limit(1);
   } else {
-    if (!UUID_RE.test(query.id)) return undefined;
+    // External (OIDC provider) id — unique via users_provider_sub_idx.
     [row] = await db
       .select(summaryColumns)
       .from(users)
-      .where(eq(users.id, query.id))
+      .where(eq(users.providerSub, term))
       .limit(1);
   }
   return row ? toSummary(row) : undefined;
@@ -77,7 +92,13 @@ export async function findUserSummary(
 // keep returning ALL rows, including soft-deleted ones, so an admin can still
 // inspect a banned account; Session 5 annotates soft-deleted rows in the UI.
 export async function getUserDetail(db: Db, id: string): Promise<IAdminUserDetail> {
-  const summary = await findUserSummary(db, { id });
+  // The :id path param is always the internal account id. Reject a non-UUID
+  // here: it would otherwise reach the uuid-typed ownerId/userId aggregation
+  // columns below and raise a 500 instead of a clean 404.
+  if (!UUID_RE.test(id)) {
+    throwApiError('not-found', 'User not found');
+  }
+  const summary = await findUserSummary(db, id);
   if (!summary) {
     throwApiError('not-found', 'User not found');
   }

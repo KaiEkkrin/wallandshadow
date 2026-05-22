@@ -31,6 +31,9 @@ export const users = pgTable('users', {
   // Email uniqueness only for local accounts (provider_sub IS NULL).
   // OIDC users are identified by provider_sub; their email is a cached display field.
   uniqueIndex('users_email_local_idx').on(t.email).where(sql`email IS NOT NULL AND provider_sub IS NULL`),
+  // Functional index backing the admin account search's case-insensitive
+  // email lookup (`WHERE lower(email) = …`), across local and OIDC accounts.
+  index('users_email_lower_idx').on(sql`lower(${t.email})`).where(sql`email IS NOT NULL`),
   check('users_identity_check', sql`provider_sub IS NOT NULL OR email IS NOT NULL`),
   check('users_level_check', sql`level IN ('basic', 'higher', 'admin')`),
 ]);

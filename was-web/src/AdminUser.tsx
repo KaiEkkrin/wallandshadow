@@ -55,9 +55,12 @@ function AdminUser() {
                     <div>Email: {detail.summary.email ?? '(none)'}</div>
                     <div>Tier: {detail.summary.level}</div>
                     <div>Account ID: {detail.summary.id}</div>
+                    {detail.summary.externalId !== null && (
+                      <div>External ID: {detail.summary.externalId}</div>
+                    )}
                     <div>Created: {detail.summary.createdAt}</div>
                     <div>Email verified: {detail.summary.emailVerified ? 'yes' : 'no'}</div>
-                    <div>Sign-in: {detail.summary.isOidc ? 'OIDC' : 'local password'}</div>
+                    <div>Sign-in: {detail.summary.externalId !== null ? 'OIDC' : 'local password'}</div>
                   </Card.Body>
                 </Card>
 
