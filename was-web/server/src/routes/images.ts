@@ -5,7 +5,7 @@ import { storage } from '../services/storage.js';
 import { logger } from '../services/logger.js';
 import { addImage, deleteImage, assertImageDownloadAccess } from '../services/imageExtensions.js';
 import { images } from '../db/schema.js';
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc, isNull } from 'drizzle-orm';
 
 export const imageRoutes = new Hono<{ Variables: AuthVariables }>();
 
@@ -28,7 +28,7 @@ imageRoutes.get('/images', async (c) => {
   const uid = c.get('uid');
   const rows = await db.select({ id: images.id, name: images.name, path: images.path })
     .from(images)
-    .where(eq(images.userId, uid))
+    .where(and(eq(images.userId, uid), isNull(images.deletedAt)))
     .orderBy(desc(images.createdAt));
   return c.json({ images: rows });
 });

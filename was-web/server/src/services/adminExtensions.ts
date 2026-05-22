@@ -60,8 +60,8 @@ export async function findUserSummary(
   if (term.includes('@')) {
     // Case-insensitive (backed by the users_email_lower_idx functional index).
     // users.email is unique only for local accounts, so a shared address can
-    // match several rows — the oldest wins, deterministically. (Session 3's
-    // soft-delete may later narrow this to non-banned accounts.)
+    // match several rows — the oldest wins, deterministically. Banned accounts
+    // are deliberately still findable so an admin can inspect them.
     [row] = await db
       .select(summaryColumns)
       .from(users)

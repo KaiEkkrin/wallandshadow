@@ -160,9 +160,11 @@ async function replaceMapImages(
 // ─── Shared auth helper ───────────────────────────────────────────────────────
 
 export async function assertAdventureMember(db: Db, uid: string, adventureId: string): Promise<void> {
+  // A soft-deleted adventure is treated as non-existent: this single filter
+  // gates every adventure-scoped read (routes + WS subscribe scopes).
   const [row] = await db.select({ ownerId: adventures.ownerId })
     .from(adventures)
-    .where(eq(adventures.id, adventureId))
+    .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
     .limit(1);
 
   if (!row) {
@@ -1071,7 +1073,7 @@ export async function addMapChanges(
 
   const [mapRow] = await db.select({ id: maps.id })
     .from(maps)
-    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)))
+    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId), isNull(maps.deletedAt)))
     .limit(1);
   if (!mapRow) {
     throwApiError('not-found', 'Map not found');

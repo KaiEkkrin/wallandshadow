@@ -10,6 +10,7 @@ import ProfileContextProvider from './components/ProfileContextProvider';
 import RequireAdmin from './components/RequireAdmin';
 import RootRedirect from './RootRedirect';
 import Routing from './components/Routing';
+import SuspendedGate from './components/SuspendedGate';
 import { IRoutingProps } from './components/interfaces';
 import Status from './components/Status';
 import StatusContextProvider from './components/StatusContextProvider';
@@ -50,23 +51,25 @@ function App(props: IRoutingProps) {
               <AdventureContextProvider>
                 <MapContextProvider>
                   <Suspense fallback={<Throbber />}>
-                    <Routes>
-                      <Route path="/" element={<RootRedirect />} />
-                      <Route path="/app" element={<Home />} />
-                      <Route path="/about" element={<About page="about" />} />
-                      <Route path="/about/privacy" element={<About page="privacy" />} />
-                      <Route path="/about/terms" element={<About page="terms" />} />
-                      <Route path="/about/acknowledgements" element={<About page="acknowledgements" />} />
-                      <Route path="/all" element={<All />} />
-                      <Route path="/adventure/:adventureId" element={<AdventurePage />} />
-                      <Route path="/adventure/:adventureId/map/:mapId" element={<MapPage />} />
-                      <Route path="/invite/:inviteId" element={<InvitePage />} />
-                      <Route path="/auth/callback" element={<OidcCallback />} />
-                      <Route path="/login" element={<Login />} />
-                      <Route path="/shared" element={<Shared />} />
-                      <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
-                      <Route path="/admin/users/:id" element={<RequireAdmin><AdminUserPage /></RequireAdmin>} />
-                    </Routes>
+                    <SuspendedGate>
+                      <Routes>
+                        <Route path="/" element={<RootRedirect />} />
+                        <Route path="/app" element={<Home />} />
+                        <Route path="/about" element={<About page="about" />} />
+                        <Route path="/about/privacy" element={<About page="privacy" />} />
+                        <Route path="/about/terms" element={<About page="terms" />} />
+                        <Route path="/about/acknowledgements" element={<About page="acknowledgements" />} />
+                        <Route path="/all" element={<All />} />
+                        <Route path="/adventure/:adventureId" element={<AdventurePage />} />
+                        <Route path="/adventure/:adventureId/map/:mapId" element={<MapPage />} />
+                        <Route path="/invite/:inviteId" element={<InvitePage />} />
+                        <Route path="/auth/callback" element={<OidcCallback />} />
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/shared" element={<Shared />} />
+                        <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
+                        <Route path="/admin/users/:id" element={<RequireAdmin><AdminUserPage /></RequireAdmin>} />
+                      </Routes>
+                    </SuspendedGate>
                   </Suspense>
                 </MapContextProvider>
               </AdventureContextProvider>

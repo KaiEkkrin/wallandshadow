@@ -84,6 +84,13 @@ export class ApiError extends Error {
   }
 }
 
+// True when an API call failed because the account is suspended (banned). The
+// server returns 403 with body `{ error: 'account-suspended' }`, which
+// `throwIfNotOk` surfaces as the ApiError message.
+export function isAccountSuspendedError(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 403 && e.message === 'account-suspended';
+}
+
 // ── Raw HTTP client (transport-only; consumers should depend on HonoApi instead) ──
 
 export class HonoApiClient {

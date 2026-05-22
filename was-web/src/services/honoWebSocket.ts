@@ -4,9 +4,10 @@ import { Change, UpdateScope, createChangesConverter } from '@wallandshadow/shar
 import { HEARTBEAT_INTERVAL_MS } from '../models/networkQualityConstants';
 
 // Wire-compatible with was-web/server/src/ws/{handler,notify,subscriptions}.ts.
-// Application-specific close code: token verification failed.
-// Kept in sync with the server constant in ws/handler.ts.
-const WS_CLOSE_AUTH_REJECTED = 4001;
+// Application-specific close codes. Kept in sync with the server constants in
+// ws/handler.ts.
+const WS_CLOSE_AUTH_REJECTED = 4001;     // token verification failed
+const WS_CLOSE_ACCOUNT_SUSPENDED = 4003; // account is suspended (banned)
 
 export type { UpdateScope };
 
@@ -269,9 +270,11 @@ export class HonoWebSocket {
       this.failPendingAcks(new Error('WebSocket closed'));
       if (this.closed) return;
       this.callbacks.onDisconnected?.();
-      if (event.code === WS_CLOSE_AUTH_REJECTED) {
-        // Server explicitly rejected our token. Stop retrying — the app needs
-        // to re-authenticate rather than loop forever with an expired token.
+      if (event.code === WS_CLOSE_AUTH_REJECTED || event.code === WS_CLOSE_ACCOUNT_SUSPENDED) {
+        // Server explicitly rejected our token, or the account was suspended.
+        // Stop retrying — the app needs to re-authenticate rather than loop
+        // forever. For a suspension, the ensuing /auth/me call resolves to the
+        // Suspended page; for a rejected token, to the login page.
         this.callbacks.onAuthFailure();
       } else {
         this.scheduleReconnect();

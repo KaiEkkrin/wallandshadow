@@ -3,8 +3,8 @@ import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import { resolveTokenToUid } from '../auth/resolveToken.js';
 import { db } from '../db/connection.js';
-import { maps } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { maps, users } from '../db/schema.js';
+import { and, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { assertAdventureMember, addMapChanges } from '../services/extensions.js';
 import { logger } from '../services/logger.js';
@@ -31,6 +31,9 @@ const WS_PATH = '/ws';
 // Application-specific close code: token verification failed.
 // Kept in sync with the client constant in honoWebSocket.ts.
 const WS_CLOSE_AUTH_REJECTED = 4001;
+// Application-specific close code: the account is suspended (banned).
+// Kept in sync with the client constant in honoWebSocket.ts.
+const WS_CLOSE_ACCOUNT_SUSPENDED = 4003;
 
 // Which manager each scope lives in. `players` and `spritesheets` share the
 // adventure rooms — they always concern the same adventureId, and messages
@@ -76,6 +79,18 @@ export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
         // client, making auth failure indistinguishable from "server is down".
         wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
           ws.close(WS_CLOSE_AUTH_REJECTED, 'Unauthorized');
+        });
+        return;
+      }
+
+      // Reject suspended (banned) accounts — same handshake-then-close pattern
+      // so the client receives a typed close code rather than a bare drop.
+      const [userRow] = await db.select({ bannedAt: users.bannedAt })
+        .from(users).where(eq(users.id, uid)).limit(1);
+      if (userRow?.bannedAt) {
+        logger.logWarning(`WebSocket rejected: account suspended (${uid})`);
+        wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+          ws.close(WS_CLOSE_ACCOUNT_SUSPENDED, 'Account suspended');
         });
         return;
       }
@@ -312,7 +327,7 @@ async function resolveSubscribe(
     case 'map': {
       const mapId = requireId(frame);
       const [mapRow] = await db.select({ adventureId: maps.adventureId })
-        .from(maps).where(eq(maps.id, mapId)).limit(1);
+        .from(maps).where(and(eq(maps.id, mapId), isNull(maps.deletedAt))).limit(1);
       if (!mapRow) throw new Error('Map not found');
       const [, pair] = await Promise.all([
         assertAdventureMember(db, uid, mapRow.adventureId),
@@ -328,7 +343,7 @@ async function resolveSubscribe(
     case 'mapChanges': {
       const mapId = requireId(frame);
       const [mapRow] = await db.select({ adventureId: maps.adventureId })
-        .from(maps).where(eq(maps.id, mapId)).limit(1);
+        .from(maps).where(and(eq(maps.id, mapId), isNull(maps.deletedAt))).limit(1);
       if (!mapRow) throw new Error('Map not found');
       await assertAdventureMember(db, uid, mapRow.adventureId);
       return { key: mapId, entityKey: mapId, data: await snapshotMapChanges(db, mapId, frame.lastSeq) };

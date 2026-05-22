@@ -11,8 +11,8 @@ import { throwApiError } from '../errors.js';
 import { StorageObjectNotFoundError } from './storage.js';
 import { Db } from '../db/connection.js';
 import { notifyAdventureSpritesheets, notifySafe } from '../ws/notify.js';
-import { adventures, adventurePlayers, spritesheets } from '../db/schema.js';
-import { eq, and, gt, isNull, sql } from 'drizzle-orm';
+import { adventures, adventurePlayers, images, spritesheets } from '../db/schema.js';
+import { eq, and, gt, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import * as fs from 'fs/promises';
 import * as os from 'os';
@@ -79,6 +79,7 @@ async function createMontage(
   sources: string[],
   geometry: string,
   newSheetId: string,
+  softDeletedSources: ReadonlySet<string>,
 ): Promise<{ ref: IStorageReference; effectiveSources: string[] }> {
   const tmp = os.tmpdir();
   const tmpPaths: string[] = [];
@@ -86,6 +87,12 @@ async function createMontage(
     logger.logInfo('downloading: ' + sources);
     const downloaded = await Promise.all(sources.map(async (s, i) => {
       if (s === '') return null;
+      // A soft-deleted source image is dropped just like a 404: the slot is
+      // left empty and the gap self-heals into the new sheet.
+      if (softDeletedSources.has(s)) {
+        logger.logWarning(`Dropping soft-deleted sprite source at slot ${i}: ${s}`);
+        return null;
+      }
       const tmpPath = path.join(tmp, uuidv7());
       // Registered before the attempt so a partially-written file from a
       // failed download is still cleaned up by the `finally` block.
@@ -233,6 +240,20 @@ async function allocateNewSpritesToSheets(
   return allAllocated;
 }
 
+// Returns the subset of the allocated sheets' source image paths whose `images`
+// row is soft-deleted. The montage build drops these exactly as it drops a 404.
+async function findSoftDeletedSources(
+  db: Db,
+  allocated: AllocatedSprites[],
+): Promise<ReadonlySet<string>> {
+  const paths = [...new Set(allocated.flatMap(a => a.sources).filter(s => s !== ''))];
+  if (paths.length === 0) return new Set();
+  const rows = await db.select({ path: images.path })
+    .from(images)
+    .where(and(inArray(images.path, paths), isNotNull(images.deletedAt)));
+  return new Set(rows.map(r => r.path));
+}
+
 async function writeNewSpritesheets(
   db: Db,
   storage: IStorage,
@@ -242,11 +263,12 @@ async function writeNewSpritesheets(
   adventureId: string,
 ): Promise<AllocatedSprites[]> {
   try {
+    const softDeletedSources = await findSoftDeletedSources(db, allocated);
     // allSettled (not all) so that if one montage aborts we can still see
     // which others completed — each completed montage has already uploaded its
     // assembled PNG to S3, and those must be cleaned up before we throw.
     const results = await Promise.allSettled(allocated.map(async (a): Promise<AllocatedSprites> => {
-      const m = await createMontage(storage, logger, a.sources, geometry, a.newSheetId);
+      const m = await createMontage(storage, logger, a.sources, geometry, a.newSheetId, softDeletedSources);
       return { ...a, sources: m.effectiveSources };
     }));
 

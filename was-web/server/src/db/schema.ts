@@ -25,6 +25,7 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   level: text('level').notNull().default('basic'),
   passwordHash: text('password_hash'),                      // Local auth only — NULL for OIDC users
+  bannedAt: tstz('banned_at'),                              // Set when an admin bans the account — NULL for active accounts
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('users_provider_sub_idx').on(t.providerSub).where(sql`provider_sub IS NOT NULL`),
@@ -44,9 +45,12 @@ export const adventures = pgTable('adventures', {
   description: text('description').notNull().default(''),
   ownerId: uuid('owner_id').notNull().references(() => users.id),
   imagePath: text('image_path').notNull().default(''),
+  deletedAt: tstz('deleted_at'),                            // Soft-delete marker (e.g. owner banned) — NULL for live rows
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
-  index('adventures_owner_id_idx').on(t.ownerId),
+  // Partial: read paths only ever query live rows, so soft-deleted rows are
+  // excluded from the index entirely.
+  index('adventures_owner_id_idx').on(t.ownerId).where(sql`deleted_at IS NULL`),
   index('adventures_image_path_idx').on(t.imagePath).where(sql`image_path != ''`),
 ]);
 
@@ -70,9 +74,10 @@ export const maps = pgTable('maps', {
   ffa: boolean('ffa').notNull().default(false),
   enableGroupVision: boolean('enable_group_vision').notNull().default(false),
   imagePath: text('image_path').notNull().default(''),
+  deletedAt: tstz('deleted_at'),                            // Soft-delete marker (e.g. owner banned) — NULL for live rows
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
-  index('maps_adventure_id_idx').on(t.adventureId),
+  index('maps_adventure_id_idx').on(t.adventureId).where(sql`deleted_at IS NULL`),
   index('maps_image_path_idx').on(t.imagePath).where(sql`image_path != ''`),
 ]);
 
@@ -112,9 +117,10 @@ export const images = pgTable('images', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   path: text('path').notNull(),
+  deletedAt: tstz('deleted_at'),                            // Soft-delete marker (e.g. owner banned) — NULL for live rows
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
-  index('images_user_id_idx').on(t.userId),
+  index('images_user_id_idx').on(t.userId).where(sql`deleted_at IS NULL`),
 ]);
 
 export const spritesheets = pgTable('spritesheets', {

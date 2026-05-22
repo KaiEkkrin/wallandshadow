@@ -1,4 +1,4 @@
-import { eq, and, gte } from 'drizzle-orm';
+import { eq, and, gte, isNull } from 'drizzle-orm';
 import type { Changes, ICharacter, MapType, UserLevel } from '@wallandshadow/shared';
 import type { Db } from '../db/connection.js';
 import {
@@ -105,7 +105,7 @@ export async function snapshotAdventures(database: Db, uid: string): Promise<Adv
     .from(adventurePlayers)
     .innerJoin(adventures, eq(adventurePlayers.adventureId, adventures.id))
     .innerJoin(users, eq(adventures.ownerId, users.id))
-    .where(eq(adventurePlayers.userId, uid));
+    .where(and(eq(adventurePlayers.userId, uid), isNull(adventures.deletedAt)));
 
   return rows.map(r => ({
     id: r.id,
@@ -284,7 +284,7 @@ export async function snapshotAdventureDetail(
       })
       .from(adventures)
       .innerJoin(users, eq(adventures.ownerId, users.id))
-      .where(eq(adventures.id, adventureId))
+      .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
       .limit(1),
     database
       .select({
@@ -295,7 +295,7 @@ export async function snapshotAdventureDetail(
         imagePath: mapsTable.imagePath,
       })
       .from(mapsTable)
-      .where(eq(mapsTable.adventureId, adventureId)),
+      .where(and(eq(mapsTable.adventureId, adventureId), isNull(mapsTable.deletedAt))),
   ]);
 
   const adv = advRows[0];
@@ -336,7 +336,11 @@ export async function snapshotMap(
         imagePath: mapsTable.imagePath,
       })
       .from(mapsTable)
-      .where(and(eq(mapsTable.id, mapId), eq(mapsTable.adventureId, adventureId)))
+      .where(and(
+        eq(mapsTable.id, mapId),
+        eq(mapsTable.adventureId, adventureId),
+        isNull(mapsTable.deletedAt),
+      ))
       .limit(1),
     database
       .select({
@@ -349,7 +353,7 @@ export async function snapshotMap(
       })
       .from(adventures)
       .innerJoin(users, eq(adventures.ownerId, users.id))
-      .where(eq(adventures.id, adventureId))
+      .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
       .limit(1),
   ]);
 
@@ -400,7 +404,7 @@ export async function fetchAdventureMapPairs(
       })
       .from(adventures)
       .innerJoin(users, eq(adventures.ownerId, users.id))
-      .where(eq(adventures.id, adventureId))
+      .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
       .limit(1),
     database
       .select({
@@ -413,7 +417,7 @@ export async function fetchAdventureMapPairs(
         imagePath: mapsTable.imagePath,
       })
       .from(mapsTable)
-      .where(eq(mapsTable.adventureId, adventureId)),
+      .where(and(eq(mapsTable.adventureId, adventureId), isNull(mapsTable.deletedAt))),
   ]);
 
   const adv = advRows[0];

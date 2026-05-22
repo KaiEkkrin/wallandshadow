@@ -1,5 +1,5 @@
 import { IAuth, IAuthProvider, IUser } from '@wallandshadow/shared';
-import { HonoApiClient } from './honoApiClient';
+import { HonoApiClient, isAccountSuspendedError } from './honoApiClient';
 import { isOidcEnabled, startOidcLogin, getOidcUser, getOidcBearerToken, oidcSignOut, subscribeToTokenRenewal } from './oidcAuth';
 import md5 from 'blueimp-md5';
 
@@ -37,6 +37,9 @@ export class HonoAuth implements IAuth {
   // True once the initial restoreSession() has settled. Until then currentUser
   // is the pre-restore default and must not be reported as a settled state.
   private sessionResolved = false;
+  // Set when a /auth/me call is rejected with 403 account-suspended. The user
+  // is not signed in, but must be shown the Suspended page rather than login.
+  suspended = false;
   readonly oidcEnabled: boolean;
 
   constructor(api: HonoApiClient) {
@@ -93,7 +96,10 @@ export class HonoAuth implements IAuth {
       this.api.setToken(token);
       const me = await this.api.getMe();
       return new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'oidc');
-    } catch {
+    } catch (e) {
+      // Keep the OIDC session so a reload re-detects suspension instead of
+      // dropping the user to the login page.
+      if (isAccountSuspendedError(e)) this.suspended = true;
       return null;
     }
   }
@@ -119,7 +125,13 @@ export class HonoAuth implements IAuth {
     try {
       const me = await this.api.getMe();
       return new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'password');
-    } catch {
+    } catch (e) {
+      if (isAccountSuspendedError(e)) {
+        // Keep the token so a reload re-detects suspension rather than
+        // dropping the user back to the login page.
+        this.suspended = true;
+        return null;
+      }
       this.clearSession();
       return null;
     }
@@ -136,6 +148,12 @@ export class HonoAuth implements IAuth {
       const user = new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'oidc');
       this.fireListeners(user);
     } catch (e) {
+      if (isAccountSuspendedError(e)) {
+        // A banned account: surface the Suspended page rather than an error.
+        this.suspended = true;
+        this.fireListeners(null);
+        return;
+      }
       this.api.setToken(null);
       throw e;
     }
@@ -152,7 +170,18 @@ export class HonoAuth implements IAuth {
   async signInWithEmailAndPassword(email: string, password: string): Promise<IUser | null> {
     const { token } = await this.api.login(email, password);
     this.storeLocalToken(token);
-    const me = await this.api.getMe();
+    let me;
+    try {
+      me = await this.api.getMe();
+    } catch (e) {
+      if (isAccountSuspendedError(e)) {
+        // A banned account: surface the Suspended page rather than an error.
+        this.suspended = true;
+        this.fireListeners(null);
+        return null;
+      }
+      throw e;
+    }
     const user = new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'password');
     this.fireListeners(user);
     return user;
@@ -169,6 +198,7 @@ export class HonoAuth implements IAuth {
 
   async signOut(): Promise<void> {
     const wasOidcUser = this.currentUser?.providerId === 'oidc';
+    this.suspended = false;
     this.clearSession();
     this.fireListeners(null);
     if (wasOidcUser) {

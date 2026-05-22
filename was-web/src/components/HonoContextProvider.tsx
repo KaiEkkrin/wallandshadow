@@ -78,7 +78,9 @@ function HonoContextProvider(props: IContextProviderProps) {
         });
       } else {
         currentLive = undefined;
-        setUserContext({ user: null });
+        // auth.suspended distinguishes a banned account from a plain logout —
+        // SuspendedGate routes the former to the Suspended page.
+        setUserContext({ user: null, suspended: auth.suspended });
       }
     }, e => console.error('Authentication state error:', e));
 

@@ -78,32 +78,44 @@ export async function assertImageDownloadAccess(
   // Case 1: images/{ownerUid}/{id}
   const imageOwner = getImageUid(path);
   if (imageOwner) {
+    // A soft-deleted image is treated as gone for everyone, the owner included —
+    // this check runs before the owner shortcut and the reference scan below.
+    const [imageRow] = await db.select({ deletedAt: images.deletedAt })
+      .from(images)
+      .where(eq(images.path, path))
+      .limit(1);
+    if (imageRow?.deletedAt) {
+      logger.logWarning(`Image download denied (soft-deleted) for user ${uid}, path ${path}`);
+      throwApiError('not-found', 'Image not found');
+    }
+
     if (imageOwner === uid) return; // Owner can always download their own images
 
     // Four grant sources: adventure background, map background, spritesheet source,
-    // or an image placed onto a map (tracked in map_images junction).
+    // or an image placed onto a map (tracked in map_images junction). A soft-deleted
+    // adventure or map grants nothing, so each branch also filters deleted_at.
     const memberOfAdventure = sql`(${adventures.ownerId} = ${uid} OR (${adventurePlayers.userId} = ${uid} AND ${adventurePlayers.allowed} = true))`;
     const result = await db.execute<{ found: boolean }>(sql`
       SELECT EXISTS (
         SELECT 1 FROM ${adventures}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${adventures.imagePath} = ${path} AND ${memberOfAdventure}
+        WHERE ${adventures.imagePath} = ${path} AND ${adventures.deletedAt} IS NULL AND ${memberOfAdventure}
         UNION ALL
         SELECT 1 FROM ${maps}
           JOIN ${adventures} ON ${adventures.id} = ${maps.adventureId}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${maps.imagePath} = ${path} AND ${memberOfAdventure}
+        WHERE ${maps.imagePath} = ${path} AND ${maps.deletedAt} IS NULL AND ${adventures.deletedAt} IS NULL AND ${memberOfAdventure}
         UNION ALL
         SELECT 1 FROM ${spritesheets}
           JOIN ${adventures} ON ${adventures.id} = ${spritesheets.adventureId}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${spritesheets.sprites}::jsonb @> ${JSON.stringify([path])}::jsonb AND ${memberOfAdventure}
+        WHERE ${spritesheets.sprites}::jsonb @> ${JSON.stringify([path])}::jsonb AND ${adventures.deletedAt} IS NULL AND ${memberOfAdventure}
         UNION ALL
         SELECT 1 FROM ${mapImages}
           JOIN ${maps} ON ${maps.id} = ${mapImages.mapId}
           JOIN ${adventures} ON ${adventures.id} = ${maps.adventureId}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${mapImages.path} = ${path} AND ${memberOfAdventure}
+        WHERE ${mapImages.path} = ${path} AND ${maps.deletedAt} IS NULL AND ${adventures.deletedAt} IS NULL AND ${memberOfAdventure}
       ) AS found
     `);
     // Return 404 rather than 403 to avoid leaking whether the image exists (RFC 9110 §15.5.4).
