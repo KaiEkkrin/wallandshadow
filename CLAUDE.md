@@ -92,7 +92,7 @@ yarn test:server        # Server integration tests against real PostgreSQL + Min
 yarn test:e2e           # Playwright (requires Hono + Vite dev server running)
 ```
 
-See @README.md for comprehensive developer setup and Zitadel OIDC configuration.
+See @docs/DEVELOPMENT.md for developer setup and the day-to-day workflow, and @docs/ZITADEL_OIDC_SETUP.md for OIDC provider configuration.
 
 ## Code Standards
 
@@ -222,7 +222,9 @@ Defined in `data/coord.ts`:
 
 ## Additional Documentation
 
-- @README.md — developer setup, Zitadel OIDC config, deployment overview
+- @README.md — project overview, tech stack, documentation index
+- @docs/DEVELOPMENT.md — local development setup and the day-to-day workflow
+- @docs/ZITADEL_OIDC_SETUP.md — first-time Zitadel OIDC provider configuration
 - @docs/REPLATFORM.md — current architecture and deployment details
 - @docs/EPHEMERAL_WS.md — unimplemented ephemeral WebSocket message design
 - @docs/ANALYTICS.md — future analytics options (Plausible / Umami / GoAccess)
