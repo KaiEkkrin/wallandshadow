@@ -23,7 +23,13 @@ interface IAboutDocument {
 // THIRD-PARTY-NOTICES delimiters in acknowledgements.md) stay in the source
 // files for later tooling but never show on the page.
 function stripHtmlComments(markdown: string): string {
-  return markdown.replace(/<!--[\s\S]*?-->/g, '');
+  let previous: string;
+  let sanitized = markdown;
+  do {
+    previous = sanitized;
+    sanitized = sanitized.replace(/<!--[\s\S]*?-->/g, '');
+  } while (sanitized !== previous);
+  return sanitized;
 }
 
 const aboutDocuments: Record<AboutPageName, IAboutDocument> = {
