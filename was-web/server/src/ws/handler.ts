@@ -25,15 +25,10 @@ import {
   type SocketState,
 } from './socketState.js';
 import { onPresenceSubscribe, onPresenceUnsubscribe, onPresenceUpdate } from './presence.js';
+import { WS_CLOSE_ACCOUNT_SUSPENDED, WS_CLOSE_AUTH_REJECTED } from './closeCodes.js';
 import type { Change, UpdateScope } from '@wallandshadow/shared';
 
 const WS_PATH = '/ws';
-// Application-specific close code: token verification failed.
-// Kept in sync with the client constant in honoWebSocket.ts.
-const WS_CLOSE_AUTH_REJECTED = 4001;
-// Application-specific close code: the account is suspended (banned).
-// Kept in sync with the client constant in honoWebSocket.ts.
-const WS_CLOSE_ACCOUNT_SUSPENDED = 4003;
 
 // Which manager each scope lives in. `players` and `spritesheets` share the
 // adventure rooms — they always concern the same adventureId, and messages

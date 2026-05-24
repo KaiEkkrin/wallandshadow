@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
 import type { UpdateScope } from '@wallandshadow/shared';
+import { WS_CLOSE_ACCOUNT_SUSPENDED } from './closeCodes.js';
 
 export interface ActiveSub {
   subId: number;
@@ -18,10 +19,6 @@ export interface SocketState {
   uid: string;
   subs: Map<number, ActiveSub>;
 }
-
-// Application-specific close code (kept in sync with handler.ts and the
-// client-side honoWebSocket.ts).
-const WS_CLOSE_ACCOUNT_SUSPENDED = 4003;
 
 // Per-socket state: which uid, which subscriptions are currently active.
 // `WeakMap` avoids attaching custom fields to the ws instance.
