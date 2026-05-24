@@ -59,13 +59,10 @@ export async function banUser(
   }
 
   // ── Pre-transaction snapshots ────────────────────────────────────────
-  // We need the ORIGINAL image paths after the tx rewrites images.path, plus
-  // the target's adventure ids and spritesheet ids for S3 quarantine, plus
-  // the recipient sets for post-commit notification.
-  const [imageRows, ownAdventureRows, sheetRows, coMemberRows, otherAdventureRows] =
+  // We need the target's adventure ids and spritesheet ids for S3 quarantine,
+  // plus the recipient sets for post-commit notification.
+  const [ownAdventureRows, sheetRows, coMemberRows, otherAdventureRows] =
     await Promise.all([
-      db.select({ path: images.path })
-        .from(images).where(eq(images.userId, targetUid)),
       db.select({ id: adventures.id })
         .from(adventures).where(eq(adventures.ownerId, targetUid)),
       db.select({ id: spritesheets.id })
@@ -94,35 +91,48 @@ export async function banUser(
         )),
     ]);
 
-  const imagePaths = imageRows.map(r => r.path);
   const targetAdventureIds = ownAdventureRows.map(r => r.id);
   const sheetIds = sheetRows.map(r => r.id);
   const coMemberIds = Array.from(new Set(coMemberRows.map(r => r.userId)));
   const otherAdventureIds = otherAdventureRows.map(r => r.adventureId);
 
   // ── Transaction ──────────────────────────────────────────────────────
-  const affectedSheetAdventureIds = await db.transaction(async (tx) => {
-    const now = new Date();
-    await tx.update(users).set({ bannedAt: now }).where(eq(users.id, targetUid));
-    await tx.update(adventures).set({ deletedAt: now })
-      .where(eq(adventures.ownerId, targetUid));
-    if (targetAdventureIds.length > 0) {
-      await tx.update(maps).set({ deletedAt: now })
-        .where(inArray(maps.adventureId, targetAdventureIds));
-    }
-    // Rewrite the path column atomically so any future read for these rows
-    // points at the quarantine prefix. images.deletedAt also gates reads via
-    // existing soft-delete filtering, but the path rewrite keeps the on-disk
-    // truth in sync with the rewritten location.
-    await tx.update(images).set({
-      deletedAt: now,
-      path: sql`regexp_replace(${images.path}, '^images/', 'quarantine/')`,
-    }).where(eq(images.userId, targetUid));
+  const { imagePaths, affectedSheetAdventureIds } =
+    await db.transaction(async (tx) => {
+      const now = new Date();
+      await tx.update(users).set({ bannedAt: now }).where(eq(users.id, targetUid));
+      await tx.update(adventures).set({ deletedAt: now })
+        .where(eq(adventures.ownerId, targetUid));
+      if (targetAdventureIds.length > 0) {
+        await tx.update(maps).set({ deletedAt: now })
+          .where(inArray(maps.adventureId, targetAdventureIds));
+      }
 
-    // Scrub footprint using the ORIGINAL image paths — those are still
-    // what's stored on other users' adventures/maps/spritesheets/mapImages.
-    return await scrubUserFootprint(tx, targetUid, imagePaths);
-  });
+      // UPDATE … RETURNING gives us exactly the set of paths the in-tx UPDATE
+      // rewrote. Driving the S3 quarantine from this set (rather than a pre-tx
+      // snapshot) closes the race where a target's concurrent image upload
+      // commits between the snapshot and the UPDATE: any such row is matched
+      // by the UPDATE's `userId = targetUid` predicate and therefore appears
+      // in the returning result here.
+      const updatedImages = await tx.update(images).set({
+        deletedAt: now,
+        path: sql`regexp_replace(${images.path}, '^images/', 'quarantine/')`,
+      })
+      .where(eq(images.userId, targetUid))
+      .returning({ newPath: images.path });
+
+      // RETURNING gives the post-UPDATE (quarantine/…) path; the S3 source we
+      // need to copy *from* is the original images/… path. Reversing the prefix
+      // is sound because the upload handler always writes paths with the
+      // `images/` prefix, so every row updated here started there.
+      const imagePaths = updatedImages.map(r =>
+        r.newPath.replace(/^quarantine\//, 'images/'));
+
+      // Scrub footprint using the ORIGINAL image paths — those are still
+      // what's stored on other users' adventures/maps/spritesheets/mapImages.
+      const affected = await scrubUserFootprint(tx, targetUid, imagePaths);
+      return { imagePaths, affectedSheetAdventureIds: affected };
+    });
 
   // ── Post-transaction S3 quarantine ───────────────────────────────────
   const imagePairs = imagePaths.map(src => ({

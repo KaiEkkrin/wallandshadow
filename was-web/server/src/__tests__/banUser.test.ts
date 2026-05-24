@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeAll } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
 import { MapType } from '@wallandshadow/shared';
 import { createApp } from '../app.js';
 import { db } from '../db/connection.js';
@@ -200,6 +201,45 @@ describe('banUser — happy path', () => {
     expect(meBody.error).toBe('account-suspended');
   }, 60000);
 });
+
+// ─── Regression: in-tx UPDATE RETURNING covers rows not in pre-tx snapshot ───
+
+test('an image inserted directly into the DB (no pre-tx snapshot) is still quarantined', async () => {
+  const admin = await registerAdminUser(app, 'AdminRet');
+  const target = await registerHigherUser(app, 'TargetRet');
+
+  // Upload one image through the normal path so the S3 blob exists.
+  const path = await uploadImage(target.token, 'late');
+
+  // Insert a second images row referencing the SAME blob but with a different
+  // id, simulating "this row didn't exist when the snapshot was taken". The
+  // pre-tx snapshot would have missed it; the in-tx UPDATE will still match
+  // on userId and rewrite it.
+  await db.insert(images).values({
+    id: uuidv7(),
+    userId: target.uid,
+    name: 'late-row',
+    path,
+  });
+
+  const banRes = await apiPost(app, `/api/admin/users/${target.uid}/ban`, {}, admin.token);
+  expect(banRes.status).toBe(200);
+
+  // Both images rows should be soft-deleted with a quarantined path.
+  const rows = await db.select({ path: images.path, deletedAt: images.deletedAt })
+    .from(images).where(eq(images.userId, target.uid));
+  expect(rows.length).toBe(2);
+  for (const r of rows) {
+    expect(r.deletedAt).not.toBeNull();
+    expect(r.path.startsWith('quarantine/')).toBe(true);
+  }
+
+  // The single underlying blob has been moved to quarantine exactly once
+  // (the second pair points at the same src/dst so the copy is idempotent).
+  expect(await s3ObjectExists(path)).toBe(false);
+  const quarantinedPath = path.replace(/^images\//, 'quarantine/');
+  expect(await s3ObjectExists(quarantinedPath)).toBe(true);
+}, 60000);
 
 // ─── Guard tests ──────────────────────────────────────────────────────────────
 
