@@ -183,7 +183,12 @@ mapRoutes.post('/adventures/:id/maps/:mapId/consolidate', async (c) => {
   })
     .from(mapsTable)
     .innerJoin(adventures, eq(mapsTable.adventureId, adventures.id))
-    .where(and(eq(mapsTable.id, mapId), eq(mapsTable.adventureId, adventureId)))
+    .where(and(
+      eq(mapsTable.id, mapId),
+      eq(mapsTable.adventureId, adventureId),
+      isNull(mapsTable.deletedAt),
+      isNull(adventures.deletedAt),
+    ))
     .limit(1);
 
   if (!row) {

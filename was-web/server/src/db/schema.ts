@@ -48,9 +48,8 @@ export const adventures = pgTable('adventures', {
   deletedAt: tstz('deleted_at'),                            // Soft-delete marker (e.g. owner banned) — NULL for live rows
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
-  // Partial: read paths only ever query live rows, so soft-deleted rows are
-  // excluded from the index entirely.
-  index('adventures_owner_id_idx').on(t.ownerId).where(sql`deleted_at IS NULL`),
+  // Full index — admin and cleanup paths need to find soft-deleted rows.
+  index('adventures_owner_id_idx').on(t.ownerId),
   index('adventures_image_path_idx').on(t.imagePath).where(sql`image_path != ''`),
 ]);
 
@@ -77,7 +76,8 @@ export const maps = pgTable('maps', {
   deletedAt: tstz('deleted_at'),                            // Soft-delete marker (e.g. owner banned) — NULL for live rows
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
-  index('maps_adventure_id_idx').on(t.adventureId).where(sql`deleted_at IS NULL`),
+  // Full index — admin and cleanup paths need to find soft-deleted rows.
+  index('maps_adventure_id_idx').on(t.adventureId),
   index('maps_image_path_idx').on(t.imagePath).where(sql`image_path != ''`),
 ]);
 
@@ -120,7 +120,8 @@ export const images = pgTable('images', {
   deletedAt: tstz('deleted_at'),                            // Soft-delete marker (e.g. owner banned) — NULL for live rows
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
-  index('images_user_id_idx').on(t.userId).where(sql`deleted_at IS NULL`),
+  // Full index — admin and cleanup paths need to find soft-deleted rows.
+  index('images_user_id_idx').on(t.userId),
 ]);
 
 export const spritesheets = pgTable('spritesheets', {

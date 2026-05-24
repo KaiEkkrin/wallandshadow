@@ -6,6 +6,9 @@ import { MapType } from '@wallandshadow/shared';
 import type { ILogger } from '@wallandshadow/shared';
 import { createApp } from '../app.js';
 import { db } from '../db/connection.js';
+import { adventurePlayers, images } from '../db/schema.js';
+import { and, eq } from 'drizzle-orm';
+import { UserLevel, getUserPolicy } from '@wallandshadow/shared';
 import { RoomManager, type Rooms } from '../ws/rooms.js';
 import { createUpgradeHandler } from '../ws/handler.js';
 import { startNotifyListener } from '../ws/notify.js';
@@ -19,6 +22,8 @@ import {
   registerAdminUser,
   apiGet,
   apiPost,
+  apiPatch,
+  apiDelete,
   apiUploadImage,
   createAddToken1,
   markAdventureDeleted,
@@ -193,6 +198,30 @@ describe('soft-delete: image download access', () => {
     await markImageDeleted(image.id);
     await expect(assertImageDownloadAccess(db, silentLogger, uid, image.path)).rejects.toThrow();
   });
+
+  test('a leading slash on the path behaves like the canonical path (live)', async () => {
+    const { token, uid } = await registerHigherUser(app);
+    const image = await uploadImage(token, 'Slashed');
+
+    // Canonical (no leading slash) — owner shortcut returns.
+    await expect(
+      assertImageDownloadAccess(db, silentLogger, uid, image.path),
+    ).resolves.toBeUndefined();
+    // Leading slash must match the same behaviour: owner can download.
+    await expect(
+      assertImageDownloadAccess(db, silentLogger, uid, `/${image.path}`),
+    ).resolves.toBeUndefined();
+  });
+
+  test('a leading slash on the path still 404s a soft-deleted image', async () => {
+    const { token, uid } = await registerHigherUser(app);
+    const image = await uploadImage(token, 'Slashed-doomed');
+    await markImageDeleted(image.id);
+
+    await expect(
+      assertImageDownloadAccess(db, silentLogger, uid, `/${image.path}`),
+    ).rejects.toThrow();
+  });
 });
 
 // ── Spritesheet montage ──────────────────────────────────────────────────────
@@ -213,6 +242,193 @@ describe('soft-delete: spritesheet montage', () => {
     expect(result.some(s => s.source === good.path)).toBe(true);
     expect(result.some(s => s.source === gone.path)).toBe(false);
   }, 60000);
+});
+
+// ── Invite paths ─────────────────────────────────────────────────────────────
+
+describe('soft-delete: invite paths', () => {
+  async function createInvite(token: string, adventureId: string): Promise<string> {
+    const res = await apiPost(app, `/api/adventures/${adventureId}/invites`, {}, token);
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { inviteId: string }).inviteId;
+  }
+
+  test('GET /api/invites/:id returns 404 for a soft-deleted adventure', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const inviteId = await createInvite(token, adventureId);
+    await markAdventureDeleted(adventureId);
+
+    const res = await apiGet(app, `/api/invites/${inviteId}`, token);
+    expect(res.status).toBe(404);
+  });
+
+  test('POST /api/invites/:id/join returns 404 for a soft-deleted adventure and inserts no membership', async () => {
+    const owner = await registerUser(app);
+    const adventureId = await createAdventure(owner.token);
+    const inviteId = await createInvite(owner.token, adventureId);
+    await markAdventureDeleted(adventureId);
+
+    const joiner = await registerUser(app);
+    const res = await apiPost(app, `/api/invites/${inviteId}/join`, {}, joiner.token);
+    expect(res.status).toBe(404);
+
+    const rows = await db.select({ userId: adventurePlayers.userId })
+      .from(adventurePlayers)
+      .where(and(
+        eq(adventurePlayers.adventureId, adventureId),
+        eq(adventurePlayers.userId, joiner.uid),
+      ));
+    expect(rows).toHaveLength(0);
+  });
+});
+
+// ── Write paths on a soft-deleted adventure all 404 ─────────────────────────
+
+describe('soft-delete: owner mutations on a soft-deleted adventure return 404', () => {
+  test('PATCH /api/adventures/:id', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    await markAdventureDeleted(adventureId);
+
+    const res = await apiPatch(app, `/api/adventures/${adventureId}`, { name: 'New' }, token);
+    expect(res.status).toBe(404);
+  });
+
+  test('POST /api/adventures/:id/maps', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    await markAdventureDeleted(adventureId);
+
+    const res = await apiPost(app, `/api/adventures/${adventureId}/maps`, {
+      name: 'M', description: '', ty: MapType.Square, ffa: false, enableGroupVision: false,
+    }, token);
+    expect(res.status).toBe(404);
+  });
+
+  test('POST /api/adventures/:id/maps/:mapId/clone', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const mapId = await createMap(token, adventureId);
+    await markAdventureDeleted(adventureId);
+
+    const res = await apiPost(app, `/api/adventures/${adventureId}/maps/${mapId}/clone`,
+      { name: 'Copy' }, token);
+    expect(res.status).toBe(404);
+  });
+
+  test('PATCH /api/adventures/:id/maps/:mapId', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const mapId = await createMap(token, adventureId);
+    await markAdventureDeleted(adventureId);
+
+    const res = await apiPatch(app, `/api/adventures/${adventureId}/maps/${mapId}`,
+      { name: 'New' }, token);
+    expect(res.status).toBe(404);
+  });
+
+  test('DELETE /api/adventures/:id/maps/:mapId', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const mapId = await createMap(token, adventureId);
+    await markAdventureDeleted(adventureId);
+
+    const res = await apiDelete(app, `/api/adventures/${adventureId}/maps/${mapId}`, token);
+    expect(res.status).toBe(404);
+  });
+
+  test('POST /api/adventures/:id/maps/:mapId/consolidate', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const mapId = await createMap(token, adventureId);
+    await markAdventureDeleted(adventureId);
+
+    const res = await apiPost(app, `/api/adventures/${adventureId}/maps/${mapId}/consolidate`,
+      {}, token);
+    expect(res.status).toBe(404);
+  });
+
+  test('POST /api/adventures/:id/invites', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    await markAdventureDeleted(adventureId);
+
+    const res = await apiPost(app, `/api/adventures/${adventureId}/invites`, {}, token);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── Quota counts ignore soft-deleted rows ───────────────────────────────────
+
+describe('soft-delete: quota counts ignore soft-deleted rows', () => {
+  test('adventure quota: a soft-deleted adventure does not consume a slot', async () => {
+    const { token } = await registerUser(app);
+    const policy = getUserPolicy(UserLevel.Basic);
+    // Fill the cap exactly.
+    for (let i = 0; i < policy.adventures; i++) {
+      await createAdventure(token, `Adv ${i}`);
+    }
+    // Soft-delete one — must free a slot.
+    const ids = ((await (await apiGet(app, '/api/adventures', token)).json()) as { id: string }[])
+      .map(a => a.id);
+    await markAdventureDeleted(ids[0]);
+
+    const res = await apiPost(app, '/api/adventures', { name: 'Replacement', description: '' }, token);
+    expect(res.status).toBe(201);
+  });
+
+  test('map quota: a soft-deleted map does not consume a slot', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const policy = getUserPolicy(UserLevel.Basic);
+    const mapIds: string[] = [];
+    for (let i = 0; i < policy.maps; i++) {
+      mapIds.push(await createMap(token, adventureId, `Map ${i}`));
+    }
+    await markMapDeleted(mapIds[0]);
+
+    const res = await apiPost(app, `/api/adventures/${adventureId}/maps`, {
+      name: 'Replacement', description: '', ty: MapType.Square, ffa: false, enableGroupVision: false,
+    }, token);
+    expect(res.status).toBe(201);
+  });
+
+  test('clone-map quota: a soft-deleted map does not consume a slot', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const policy = getUserPolicy(UserLevel.Basic);
+    const mapIds: string[] = [];
+    for (let i = 0; i < policy.maps; i++) {
+      mapIds.push(await createMap(token, adventureId, `Map ${i}`));
+    }
+    // Soft-delete one to free a slot; clone a live source map.
+    await markMapDeleted(mapIds[0]);
+    const sourceId = mapIds[1];
+
+    const res = await apiPost(app, `/api/adventures/${adventureId}/maps/${sourceId}/clone`,
+      { name: 'Clone' }, token);
+    expect(res.status).toBe(201);
+  });
+
+  test('image quota: a soft-deleted image does not consume a slot', async () => {
+    const { token, uid } = await registerHigherUser(app);
+    const policy = getUserPolicy(UserLevel.Higher);
+    // Insert images at the cap directly via the DB (rather than via the upload
+    // route) so we don't touch S3 200 times for one assertion.
+    const rows = Array.from({ length: policy.images }, (_, i) => ({
+      id: `00000000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+      userId: uid,
+      name: `image-${i}`,
+      path: `images/${uid}/seed-${i}`,
+    }));
+    await db.insert(images).values(rows);
+    // Soft-delete them all — live count back to zero.
+    await db.update(images).set({ deletedAt: new Date() }).where(eq(images.userId, uid));
+
+    const res = await apiUploadImage(app, token, TINY_PNG, 'pic.png', 'image/png', 'after-cleanup');
+    expect(res.status).toBe(201);
+  });
 });
 
 // ── Admin still inspects soft-deleted content ────────────────────────────────
@@ -237,6 +453,7 @@ describe('soft-delete: admin account-info', () => {
     const body = await res.json();
     // Admin aggregation deliberately does not filter soft-deleted rows.
     expect(body.adventures.some((a: { id: string }) => a.id === adventureId)).toBe(true);
+    expect(body.maps.some((m: { id: string }) => m.id === mapId)).toBe(true);
     expect(body.images.some((i: { id: string }) => i.id === image.id)).toBe(true);
   });
 });

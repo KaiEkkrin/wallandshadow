@@ -31,6 +31,13 @@ function OidcCallback() {
         const token = getOidcBearerToken(oidcUser);
         if (auth instanceof HonoAuth) {
           await auth.completeOidcLogin(token);
+          // A suspended account swallows the rejection inside completeOidcLogin
+          // and flips auth.suspended. Land on /login (matching the rejected-token
+          // path) so SuspendedGate can mask the right page.
+          if (auth.suspended) {
+            navigate('/login', { replace: true });
+            return;
+          }
         }
         const rawFrom = (oidcUser.state as { from?: unknown } | undefined)?.from;
         navigate(getPostLoginPath(rawFrom), { replace: true });

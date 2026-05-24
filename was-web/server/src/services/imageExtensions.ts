@@ -2,7 +2,7 @@ import { ICharacter, IStorage, ILogger, getUserPolicy, UserLevel } from '@wallan
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
 import { adventures, adventurePlayers, mapChanges, maps, mapImages, images, spritesheets, users } from '../db/schema.js';
-import { eq, and, sql, count } from 'drizzle-orm';
+import { eq, and, sql, count, isNull } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { assertAdventureMember, scrubMapSpriteReferences } from './extensions.js';
 import {
@@ -40,7 +40,8 @@ export async function addImage(
     }
 
     const [{ imageCount }] = await tx.select({ imageCount: count() })
-      .from(images).where(eq(images.userId, uid));
+      .from(images)
+      .where(and(eq(images.userId, uid), isNull(images.deletedAt)));
     if (imageCount >= policy.images) {
       throwApiError('resource-exhausted', 'You have too many images; delete one to upload another.');
     }
@@ -73,8 +74,12 @@ export async function assertImageDownloadAccess(
   db: Db,
   logger: ILogger,
   uid: string,
-  path: string,
+  rawPath: string,
 ): Promise<void> {
+  // Normalise once: `images.path` (and the other reference columns) are stored
+  // slash-free. A leading `/` from the client must not skip the soft-delete
+  // lookup or fall through the UNION's exact-match comparisons.
+  const path = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
   // Case 1: images/{ownerUid}/{id}
   const imageOwner = getImageUid(path);
   if (imageOwner) {

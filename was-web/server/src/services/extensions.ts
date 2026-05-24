@@ -190,7 +190,7 @@ export async function assertAdventureMember(db: Db, uid: string, adventureId: st
 export async function assertAdventureOwner(db: Db, uid: string, adventureId: string): Promise<void> {
   const [row] = await db.select({ ownerId: adventures.ownerId })
     .from(adventures)
-    .where(eq(adventures.id, adventureId))
+    .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
     .limit(1);
 
   if (!row) {
@@ -299,7 +299,7 @@ export async function createAdventure(
     const [{ adventureCount }] = await tx
       .select({ adventureCount: count() })
       .from(adventures)
-      .where(eq(adventures.ownerId, uid));
+      .where(and(eq(adventures.ownerId, uid), isNull(adventures.deletedAt)));
 
     const policy = getUserPolicy(user.level as UserLevel);
     if (Number(adventureCount) >= policy.adventures) {
@@ -470,9 +470,11 @@ export async function createMap(
 
   await db.transaction(async (tx) => {
     const [adventure] = await tx.select({ ownerId: adventures.ownerId })
-      .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
+      .from(adventures)
+      .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
+      .limit(1);
     if (!adventure) {
-      throwApiError('invalid-argument', 'No such adventure');
+      throwApiError('not-found', 'Adventure not found');
     }
     if (adventure.ownerId !== uid) {
       throwApiError('not-found', 'Adventure not found');
@@ -487,7 +489,7 @@ export async function createMap(
     const [{ mapCount }] = await tx
       .select({ mapCount: count() })
       .from(maps)
-      .where(eq(maps.adventureId, adventureId));
+      .where(and(eq(maps.adventureId, adventureId), isNull(maps.deletedAt)));
 
     const policy = getUserPolicy(user.level as UserLevel);
     if (Number(mapCount) >= policy.maps) {
@@ -511,9 +513,15 @@ export async function cloneMap(
 ): Promise<string> {
   const [mapResult, adventureResult] = await Promise.all([
     db.select().from(maps)
-      .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId))).limit(1),
+      .where(and(
+        eq(maps.id, mapId),
+        eq(maps.adventureId, adventureId),
+        isNull(maps.deletedAt),
+      )).limit(1),
     db.select({ name: adventures.name, ownerId: adventures.ownerId })
-      .from(adventures).where(eq(adventures.id, adventureId)).limit(1),
+      .from(adventures)
+      .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
+      .limit(1),
   ]);
 
   const [existingMap] = mapResult;
@@ -556,7 +564,7 @@ export async function cloneMap(
     const [{ mapCount }] = await tx
       .select({ mapCount: count() })
       .from(maps)
-      .where(eq(maps.adventureId, adventureId));
+      .where(and(eq(maps.adventureId, adventureId), isNull(maps.deletedAt)));
 
     const policy = getUserPolicy(user.level as UserLevel);
     if (Number(mapCount) >= policy.maps) {
@@ -747,7 +755,9 @@ export async function consolidateMapChanges(
 
 export async function deleteMap(db: Db, uid: string, adventureId: string, mapId: string): Promise<void> {
   const [adventure] = await db.select({ ownerId: adventures.ownerId })
-    .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
+    .from(adventures)
+    .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
+    .limit(1);
   if (!adventure) {
     throwApiError('not-found', 'Adventure not found');
   }
@@ -759,7 +769,11 @@ export async function deleteMap(db: Db, uid: string, adventureId: string, mapId:
   // image referenced by a map (background, placed images, token sprites) is a
   // user-owned object in the images table that survives the map and is only
   // collected when the user is deleted.
-  await db.delete(maps).where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)));
+  await db.delete(maps).where(and(
+    eq(maps.id, mapId),
+    eq(maps.adventureId, adventureId),
+    isNull(maps.deletedAt),
+  ));
 
   await notifySafe(notifyAdventureDetail(adventureId));
 }
@@ -773,7 +787,9 @@ export async function inviteToAdventure(
   policy: IInviteExpiryPolicy = defaultInviteExpiryPolicy,
 ): Promise<string> {
   const [adventure] = await db.select({ ownerId: adventures.ownerId })
-    .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
+    .from(adventures)
+    .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
+    .limit(1);
   if (!adventure) {
     throwApiError('not-found', 'Adventure not found');
   }
@@ -1186,7 +1202,10 @@ export async function joinAdventure(
     // FOR UPDATE serialises concurrent joins to this adventure: without it,
     // two joiners can both pass the cap check at READ COMMITTED and both insert.
     const [adventure] = await tx.select({ ownerId: adventures.ownerId, name: adventures.name })
-      .from(adventures).where(eq(adventures.id, adventureId)).for('update').limit(1);
+      .from(adventures)
+      .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
+      .for('update')
+      .limit(1);
     if (!adventure) {
       throwApiError('not-found', 'No such adventure');
     }
