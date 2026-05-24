@@ -364,6 +364,67 @@ export async function deleteAdventure(
 
 // ─── User account deletion ───────────────────────────────────────────────────
 
+type DbTx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+// Shared by deleteUser and banUser. Removes every reference to `uid` that
+// other users' content holds: the user's player rows, their invites, any
+// imagePath / map_images / spritesheet entry that points at one of their
+// images, and the userId on map_changes (NULLed to preserve history while
+// dropping the FK). Returns the set of adventure ids whose spritesheets were
+// modified, so the caller can fire spritesheet notifications. Must run
+// inside a transaction.
+//
+// Note: when this runs from banUser, the target's own adventures are
+// merely soft-deleted (still present), so the spec-mandated scrub also
+// touches them. Their imagePath columns reset to '' and their map_images
+// rows are deleted. This is consistent: the underlying S3 objects are
+// quarantined, so leaving stale paths in place would point at moved blobs.
+export async function scrubUserFootprint(
+  tx: DbTx,
+  uid: string,
+  imagePaths: string[],
+): Promise<Set<string>> {
+  await tx.delete(adventurePlayers).where(eq(adventurePlayers.userId, uid));
+  await tx.delete(invites).where(eq(invites.ownerId, uid));
+
+  const affectedSheetAdventureIds = new Set<string>();
+  if (imagePaths.length > 0) {
+    await tx.update(adventures).set({ imagePath: '' })
+      .where(inArray(adventures.imagePath, imagePaths));
+    await tx.update(maps).set({ imagePath: '' })
+      .where(inArray(maps.imagePath, imagePaths));
+    await tx.delete(mapImages).where(inArray(mapImages.path, imagePaths));
+
+    const pathSet = new Set(imagePaths);
+    const sheetRowsToScrub = await tx.select({
+      id: spritesheets.id,
+      adventureId: spritesheets.adventureId,
+      sprites: spritesheets.sprites,
+      freeSpaces: spritesheets.freeSpaces,
+    })
+      .from(spritesheets)
+      .where(or(...imagePaths.map(p =>
+        sql`${spritesheets.sprites} @> ${JSON.stringify([p])}::jsonb`)));
+
+    for (const row of sheetRowsToScrub) {
+      const sprites = row.sprites as string[];
+      let freed = 0;
+      const newSprites = sprites.map(s => {
+        if (pathSet.has(s)) { freed += 1; return ''; }
+        return s;
+      });
+      if (freed === 0) continue;
+      await tx.update(spritesheets)
+        .set({ sprites: newSprites as unknown as object, freeSpaces: row.freeSpaces + freed })
+        .where(eq(spritesheets.id, row.id));
+      affectedSheetAdventureIds.add(row.adventureId);
+    }
+  }
+
+  await tx.update(mapChanges).set({ userId: null }).where(eq(mapChanges.userId, uid));
+  return affectedSheetAdventureIds;
+}
+
 export async function deleteUser(
   db: Db,
   storage: IStorage,
@@ -393,56 +454,11 @@ export async function deleteUser(
   const coMemberIds = Array.from(new Set(coMemberRows.map(r => r.userId)));
   const otherAdventureIds = otherAdventureRows.map(r => r.adventureId);
 
-  const affectedSheetAdventureIds = new Set<string>();
-  await db.transaction(async (tx) => {
+  const affectedSheetAdventureIds = await db.transaction(async (tx) => {
     await tx.delete(adventures).where(eq(adventures.ownerId, uid));
-    await tx.delete(adventurePlayers).where(eq(adventurePlayers.userId, uid));
-    await tx.delete(invites).where(eq(invites.ownerId, uid));
-    // Scrub stale references to this user's images from other adventures the
-    // user was a member of. Without this, spritesheets, map_images, and map
-    // backgrounds in those adventures keep pointing at paths whose S3 objects
-    // and images rows are about to vanish — extending a spritesheet that holds
-    // such a reference then 500s when createMontage tries to download it.
-    if (imagePaths.length > 0) {
-      await tx.update(adventures).set({ imagePath: '' })
-        .where(inArray(adventures.imagePath, imagePaths));
-      await tx.update(maps).set({ imagePath: '' })
-        .where(inArray(maps.imagePath, imagePaths));
-      await tx.delete(mapImages).where(inArray(mapImages.path, imagePaths));
-
-      // One indexed lookup for every sheet referencing any of the user's
-      // images, rather than a containment query per path. Each `@>` clause is
-      // served by the GIN index on `spritesheets.sprites`; the planner
-      // BitmapOr's them.
-      const pathSet = new Set(imagePaths);
-      const sheetRowsToScrub = await tx.select({
-        id: spritesheets.id,
-        adventureId: spritesheets.adventureId,
-        sprites: spritesheets.sprites,
-        freeSpaces: spritesheets.freeSpaces,
-      })
-        .from(spritesheets)
-        .where(or(...imagePaths.map(p =>
-          sql`${spritesheets.sprites} @> ${JSON.stringify([p])}::jsonb`)));
-
-      for (const row of sheetRowsToScrub) {
-        const sprites = row.sprites as string[];
-        let freed = 0;
-        const newSprites = sprites.map(s => {
-          if (pathSet.has(s)) { freed += 1; return ''; }
-          return s;
-        });
-        if (freed === 0) continue; // defensive — every returned row should match
-        await tx.update(spritesheets)
-          .set({ sprites: newSprites as unknown as object, freeSpaces: row.freeSpaces + freed })
-          .where(eq(spritesheets.id, row.id));
-        affectedSheetAdventureIds.add(row.adventureId);
-      }
-    }
-    // NULL preserves the change row + history while releasing the FK so the
-    // user can be deleted.
-    await tx.update(mapChanges).set({ userId: null }).where(eq(mapChanges.userId, uid));
+    const affected = await scrubUserFootprint(tx, uid, imagePaths);
     await tx.delete(users).where(eq(users.id, uid));
+    return affected;
   });
 
   await auditedDeleteS3(storage, logger, [...imagePaths, ...sheetPaths], uid);
