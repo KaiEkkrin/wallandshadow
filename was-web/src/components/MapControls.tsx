@@ -95,6 +95,11 @@ interface IMapControlsProps {
   addGroupVisionColourRange(from: number, to: number): void;
   removeGroupVisionColourRange(from: number, to: number): void;
   canDoAnything: boolean;
+  // True when the signed-in user's tier permits uploading images. Tiers with
+  // images cap = 0 (Basic) get the image layer button and the image edit-mode
+  // button removed entirely — they can't add images, so the toolbar entry
+  // would lead to a dead end.
+  canUploadImages: boolean;
   isOwner: boolean;
   openMapEditor(): void;
   setShowAnnotationFlags(flags: ShowAnnotationFlags): void;
@@ -105,28 +110,33 @@ function MapControls({
   zoomInDisabled, zoomOutDisabled, zoomIn, zoomOut, resetView,
   mapColourVisualisationMode, setMapColourVisualisationMode,
   groupVisionColours, toggleGroupVisionColour, addGroupVisionColourRange, removeGroupVisionColourRange,
-  canDoAnything, isOwner, openMapEditor, setShowAnnotationFlags
+  canDoAnything, canUploadImages, isOwner, openMapEditor, setShowAnnotationFlags
 }: IMapControlsProps) {
   const layerButtons = useMemo(() => {
-    if (canDoAnything) {
-      return [
+    if (!canDoAnything) {
+      return [];
+    }
+    const buttons = [];
+    if (canUploadImages) {
+      buttons.push(
         <ModeButton key={Layer.Image} value={Layer.Image}
           icon={<FontAwesomeIcon icon={faImages} color="white" />}
           mode={layer} setMode={setLayer} name="layer-select"
         >
           Image layer
-        </ModeButton>,
-        <ModeButton key={Layer.Object} value={Layer.Object}
-          icon={<FontAwesomeIcon icon={faCubes} color="white" />}
-          mode={layer} setMode={setLayer} name="layer-select"
-        >
-          Object layer
         </ModeButton>
-      ];
-    } else {
-      return [];
+      );
     }
-  }, [canDoAnything, layer, setLayer]);
+    buttons.push(
+      <ModeButton key={Layer.Object} value={Layer.Object}
+        icon={<FontAwesomeIcon icon={faCubes} color="white" />}
+        mode={layer} setMode={setLayer} name="layer-select"
+      >
+        Object layer
+      </ModeButton>
+    );
+    return buttons;
+  }, [canDoAnything, canUploadImages, layer, setLayer]);
 
   // Use layer-specific radio group names to avoid browser radio state conflicts
   // when switching between layers (unmounted buttons can leave stale radio state)
@@ -143,7 +153,7 @@ function MapControls({
     ];
 
     if (canDoAnything) {
-      if (layer === Layer.Image) {
+      if (layer === Layer.Image && canUploadImages) {
         buttons.push(
           <ModeButton key={EditMode.Image} value={EditMode.Image}
             icon={<FontAwesomeIcon icon={faImage} color="white" />}
@@ -211,7 +221,7 @@ function MapControls({
     }
 
     return buttons;
-  }, [canDoAnything, editMode, editModeRadioName, layer, selectedStripe, setEditMode]);
+  }, [canDoAnything, canUploadImages, editMode, editModeRadioName, layer, selectedStripe, setEditMode]);
 
   const stripeMenuItems = useMemo(
     () => ([1, 2, 3, 4]).map(s => (

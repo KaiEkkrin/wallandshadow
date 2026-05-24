@@ -20,7 +20,7 @@ import { RequireLoggedIn } from './components/RequireLoggedIn';
 import { UserContext } from './components/UserContext';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 
-import { summariseAdventure, IPlayer, IMapSummary, ICharacter, maxCharacters, IImage, getUserPolicy } from '@wallandshadow/shared';
+import { summariseAdventure, IPlayer, IMapSummary, ICharacter, maxCharacters, IImage, canUploadImages, getUserPolicy } from '@wallandshadow/shared';
 import { logError } from './services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
@@ -115,6 +115,14 @@ function Adventure({ adventureId }: IAdventureProps) {
   const canEditAdventure = useMemo(
     () => adventure?.record.owner === user?.uid,
     [user, adventure]
+  );
+
+  // Basic tier (images cap = 0) sees no image-related affordances. Used to
+  // hide the adventure-banner button here and the per-map image button on the
+  // MapCollection below.
+  const canPickImages = useMemo(
+    () => profile !== undefined && canUploadImages(profile.level),
+    [profile]
   );
 
   const canCreateNewMap = useMemo(() => {
@@ -388,9 +396,12 @@ function Adventure({ adventureId }: IAdventureProps) {
                         {canEditAdventure === true ?
                           <ButtonGroup className="ms-2">
                             <Button variant="primary" onClick={handleShowEditAdventure}>Edit</Button>
-                            <Button variant="primary" onClick={() => handleShowImagePicker()}>
-                              <FontAwesomeIcon icon={faImage} color="white" />
-                            </Button>
+                            {canPickImages && (
+                              <Button variant="primary" aria-label="Set adventure image"
+                                onClick={() => handleShowImagePicker()}>
+                                <FontAwesomeIcon icon={faImage} color="white" />
+                              </Button>
+                            )}
                           </ButtonGroup> :
                           <div></div>
                         }
@@ -471,7 +482,7 @@ function Adventure({ adventureId }: IAdventureProps) {
               maps={maps}
               showNewMap={canCreateNewMap}
               deleteMap={mapDelete}
-              pickImage={handleShowImagePicker} />
+              pickImage={canPickImages ? handleShowImagePicker : undefined} />
           </Col>
         </Row>
       </Container>

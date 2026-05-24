@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { ICharacter, IImage, ISprite } from '@wallandshadow/shared';
+import { canUploadImages, ICharacter, IImage, ISprite } from '@wallandshadow/shared';
 
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
@@ -9,6 +9,7 @@ import Tab from 'react-bootstrap/Tab';
 import Tabs from 'react-bootstrap/Tabs';
 
 import { v7 as uuidv7 } from 'uuid';
+import { ProfileContext } from './ProfileContext';
 import TokenImageEditor from './TokenImageEditor';
 
 interface ICharacterEditorModalProps {
@@ -25,6 +26,9 @@ interface ICharacterEditorModalProps {
 function CharacterEditorModal(
   { show, adventureId, character, handleClose, handleImageDelete, handleSave }: ICharacterEditorModalProps
 ) {
+  const { profile } = useContext(ProfileContext);
+  const showImageTab = profile !== undefined && canUploadImages(profile.level);
+
   const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [sprites, setSprites] = useState<ISprite[]>([]);
@@ -79,12 +83,14 @@ function CharacterEditorModal(
               </Form.Group>
             </Form>
           </Tab>
-          <Tab eventKey="image" title={imageTabTitle}>
-            <TokenImageEditor adventureId={adventureId} altText={text} colour="grey" show={show}
-              busySettingImage={busySettingImage} setBusySettingImage={setBusySettingImage}
-              setImageTabTitle={setImageTabTitle}
-              sprites={sprites} setSprites={setSprites} handleImageDelete={handleImageDelete} />
-          </Tab>
+          {showImageTab && (
+            <Tab eventKey="image" title={imageTabTitle}>
+              <TokenImageEditor adventureId={adventureId} altText={text} colour="grey" show={show}
+                busySettingImage={busySettingImage} setBusySettingImage={setBusySettingImage}
+                setImageTabTitle={setImageTabTitle}
+                sprites={sprites} setSprites={setSprites} handleImageDelete={handleImageDelete} />
+            </Tab>
+          )}
         </Tabs>
       </Modal.Body>
       <Modal.Footer>

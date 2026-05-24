@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 import * as Util from './util';
 import { createApiUser, setupAdventure } from './apiFixture';
-import { promoteToAdmin } from './dbAdmin';
+import { promoteToAdmin, setUserLevel } from './dbAdmin';
 
 test.describe('admin account info', () => {
   // An admin sees the Admin link, can search, and can open an account-info page.
@@ -169,6 +169,62 @@ test.describe('admin account info', () => {
     } finally {
       await bannedContext.close();
     }
+  });
+
+  // Basic-tier users have images cap = 0 and cannot upload images. Every UI
+  // affordance that leads to an image picker should be hidden for them — not
+  // merely shown-then-rejected. This test asserts that the adventure banner
+  // button and the character editor's Image tab are absent on Basic and
+  // reappear after the tier is bumped to Higher.
+  test('image-upload affordances are hidden on Basic and shown after promotion', async ({ page }, testInfo) => {
+    const deviceName = Util.getDeviceNameFromProject(testInfo.project.name);
+
+    // Fresh user starts as Basic (the default for new registrations). Create
+    // an adventure via the API so the user can navigate straight to it.
+    const user = await createApiUser('TierGate');
+    const adventureId = await setupAdventure(user.api, 'TierGate Adventure', 'an adventure');
+
+    // Sign in via the browser and open the adventure page.
+    await page.goto('/');
+    await Util.signIn(
+      page,
+      { displayName: user.displayName, email: user.email, number: 0, password: user.password },
+      deviceName,
+    );
+    await page.goto(`/adventure/${adventureId}`);
+
+    // Owner is signed in, so the Edit button on the adventure card is present
+    // — assert that as the anchor that proves the card has rendered before
+    // checking for the absence of the image button next to it.
+    const editButton = page.locator('button', { hasText: 'Edit' }).first();
+    await expect(editButton).toBeVisible();
+    const bannerImageButton = page.locator('button[aria-label="Set adventure image"]');
+    await expect(bannerImageButton).toHaveCount(0);
+
+    // Open the character editor and assert the Image tab is not rendered.
+    await page.locator('button', { hasText: 'New character' }).click();
+    await expect(page.locator('.modal-title', { hasText: 'Character' })).toBeVisible();
+    await expect(
+      page.locator('[role="tab"]', { hasText: 'Properties' }),
+    ).toBeVisible();
+    await expect(page.locator('[role="tab"]', { hasText: 'Image' })).toHaveCount(0);
+    // Dismiss the modal before promoting the user.
+    await page.locator('.modal-footer button', { hasText: 'Close' }).click();
+    await expect(page.locator('.modal-title', { hasText: 'Character' })).not.toBeVisible();
+
+    // Promote in the DB and reload — the client picks up the fresh tier from
+    // /api/auth/me on next page load.
+    await setUserLevel(user.email, 'higher');
+    await page.reload();
+    await page.waitForURL(`**/adventure/${adventureId}`);
+
+    // Same anchor + presence assertions, post-promotion.
+    await expect(page.locator('button', { hasText: 'Edit' }).first()).toBeVisible();
+    await expect(bannerImageButton).toBeVisible();
+
+    await page.locator('button', { hasText: 'New character' }).click();
+    await expect(page.locator('.modal-title', { hasText: 'Character' })).toBeVisible();
+    await expect(page.locator('[role="tab"]', { hasText: 'Image' })).toBeVisible();
   });
 
   // Regression: the ban confirmation modal wraps its input in a <Form>.

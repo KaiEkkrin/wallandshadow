@@ -70,12 +70,18 @@ interface IMapContextMenuProps {
 
   editMode: EditMode;
   setEditMode: (m: EditMode) => void;
+
+  // True when the signed-in user's tier permits uploading images. Tiers with
+  // images cap = 0 (Basic) get the "Add image" / "Edit image" entry removed —
+  // it would otherwise be a dead end pointing at a modal that can't upload.
+  canUploadImages: boolean;
 }
 
 // We replace the context menu with this when the map is seen.
 function MapContextMenu(
   { show, hide, x, y, pageRight, pageBottom, tokens, note, image,
-    editToken, editCharacterToken, flipToken, editNote, editImage, setEditMode }: IMapContextMenuProps
+    editToken, editCharacterToken, flipToken, editNote, editImage, setEditMode,
+    canUploadImages }: IMapContextMenuProps
 ) {
   const hidden = useMemo(() => !show, [show]);
   const noteLabel = useMemo(() => note === undefined ? "Add note" : "Edit note", [note]);
@@ -177,7 +183,7 @@ function MapContextMenu(
         <MapContextMenuItem onClick={handleNoteClick}>
           <FontAwesomeIcon className="me-1" icon={faMapMarker} color="white" />{noteLabel}
         </MapContextMenuItem>
-        <MapContextMenuItem onClick={handleImageClick}>
+        <MapContextMenuItem visible={canUploadImages} onClick={handleImageClick}>
           <FontAwesomeIcon className="me-1" icon={faImage} color="white" />{imageLabel}
         </MapContextMenuItem>
         <MapContextMenuItem onClick={setAreaMode}>
