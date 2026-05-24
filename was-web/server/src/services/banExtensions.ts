@@ -1,0 +1,155 @@
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import type { Db } from '../db/connection.js';
+import {
+  adventurePlayers,
+  adventures,
+  images,
+  maps,
+  spritesheets,
+  users,
+} from '../db/schema.js';
+import { throwApiError } from '../errors.js';
+import {
+  notifyAdventurePlayers,
+  notifyAdventureSpritesheets,
+  notifyAdventuresUsers,
+  notifySafe,
+} from '../ws/notify.js';
+import { disconnectBannedUser } from '../ws/socketState.js';
+import { scrubUserFootprint, auditedQuarantineS3 } from './extensions.js';
+import { findUserSummary } from './adminExtensions.js';
+import {
+  getSpritePathFromId,
+  UserLevel,
+  type IAdminUserSummary,
+  type ILogger,
+  type IStorage,
+} from '@wallandshadow/shared';
+
+// Marks a user as banned, soft-deletes their content, quarantines their S3
+// objects, scrubs references to their images from other users' content, and
+// disconnects their live WebSocket connections. Idempotent against double
+// invocation only insofar as the guard rejects it: a partial first run is
+// not transparently resumable — the post-tx S3 quarantine is best-effort
+// and logs orphans for manual recovery.
+export async function banUser(
+  db: Db,
+  storage: IStorage,
+  logger: ILogger,
+  adminUid: string,
+  targetUid: string,
+): Promise<IAdminUserSummary> {
+  // ── Guards (pre-write) ────────────────────────────────────────────────
+  const [target] = await db
+    .select({ id: users.id, level: users.level, bannedAt: users.bannedAt })
+    .from(users)
+    .where(eq(users.id, targetUid))
+    .limit(1);
+  if (!target) {
+    throwApiError('not-found', 'User not found');
+  }
+  if (targetUid === adminUid) {
+    throwApiError('invalid-argument', 'Cannot ban yourself');
+  }
+  if (target.level === UserLevel.Admin) {
+    throwApiError('invalid-argument', 'Cannot ban an admin; demote first');
+  }
+  if (target.bannedAt) {
+    throwApiError('already-exists', 'User is already banned');
+  }
+
+  // ── Pre-transaction snapshots ────────────────────────────────────────
+  // We need the ORIGINAL image paths after the tx rewrites images.path, plus
+  // the target's adventure ids and spritesheet ids for S3 quarantine, plus
+  // the recipient sets for post-commit notification.
+  const [imageRows, ownAdventureRows, sheetRows, coMemberRows, otherAdventureRows] =
+    await Promise.all([
+      db.select({ path: images.path })
+        .from(images).where(eq(images.userId, targetUid)),
+      db.select({ id: adventures.id })
+        .from(adventures).where(eq(adventures.ownerId, targetUid)),
+      db.select({ id: spritesheets.id })
+        .from(spritesheets)
+        .innerJoin(adventures, eq(adventures.id, spritesheets.adventureId))
+        .where(eq(adventures.ownerId, targetUid)),
+      db.select({ userId: adventurePlayers.userId })
+        .from(adventurePlayers)
+        .innerJoin(adventures, eq(adventures.id, adventurePlayers.adventureId))
+        .where(and(
+          eq(adventures.ownerId, targetUid),
+          // Exclude the target's own membership so we don't notify them.
+          sql`${adventurePlayers.userId} != ${targetUid}`,
+        )),
+      db.select({ adventureId: adventurePlayers.adventureId })
+        .from(adventurePlayers)
+        .innerJoin(adventures, eq(adventures.id, adventurePlayers.adventureId))
+        .where(and(
+          eq(adventurePlayers.userId, targetUid),
+          sql`${adventures.ownerId} != ${targetUid}`,
+        )),
+    ]);
+
+  const imagePaths = imageRows.map(r => r.path);
+  const targetAdventureIds = ownAdventureRows.map(r => r.id);
+  const sheetIds = sheetRows.map(r => r.id);
+  const coMemberIds = Array.from(new Set(coMemberRows.map(r => r.userId)));
+  const otherAdventureIds = otherAdventureRows.map(r => r.adventureId);
+
+  // ── Transaction ──────────────────────────────────────────────────────
+  const affectedSheetAdventureIds = await db.transaction(async (tx) => {
+    const now = new Date();
+    await tx.update(users).set({ bannedAt: now }).where(eq(users.id, targetUid));
+    await tx.update(adventures).set({ deletedAt: now })
+      .where(eq(adventures.ownerId, targetUid));
+    if (targetAdventureIds.length > 0) {
+      await tx.update(maps).set({ deletedAt: now })
+        .where(inArray(maps.adventureId, targetAdventureIds));
+    }
+    // Rewrite the path column atomically so any future read for these rows
+    // points at the quarantine prefix. images.deletedAt also gates reads via
+    // existing soft-delete filtering, but the path rewrite keeps the on-disk
+    // truth in sync with the rewritten location.
+    await tx.update(images).set({
+      deletedAt: now,
+      path: sql`regexp_replace(${images.path}, '^images/', 'quarantine/')`,
+    }).where(eq(images.userId, targetUid));
+
+    // Scrub footprint using the ORIGINAL image paths — those are still
+    // what's stored on other users' adventures/maps/spritesheets/mapImages.
+    return await scrubUserFootprint(tx, targetUid, imagePaths);
+  });
+
+  // ── Post-transaction S3 quarantine ───────────────────────────────────
+  const imagePairs = imagePaths.map(src => ({
+    src,
+    dst: src.replace(/^images\//, 'quarantine/'),
+  }));
+  const sheetPairs = sheetIds.map(id => ({
+    src: getSpritePathFromId(id),
+    dst: `quarantine/${getSpritePathFromId(id)}`,
+  }));
+  await auditedQuarantineS3(
+    storage, logger, [...imagePairs, ...sheetPairs], 'user-ban', targetUid,
+  );
+
+  // ── Disconnect live WebSocket connections ────────────────────────────
+  disconnectBannedUser(targetUid);
+
+  // ── Notify ───────────────────────────────────────────────────────────
+  // Matches deleteUser's pattern: co-members of the (now-soft-deleted)
+  // adventures re-fetch their adventure list and see them vanish; players
+  // in other adventures see the target removed from the player list;
+  // affected spritesheets get re-fetched.
+  await notifySafe(
+    notifyAdventuresUsers(coMemberIds),
+    ...otherAdventureIds.map(id => notifyAdventurePlayers(id)),
+    ...Array.from(affectedSheetAdventureIds).map(id => notifyAdventureSpritesheets(id)),
+  );
+
+  // Return the updated summary. The bannedAt field reflects the ban.
+  const summary = await findUserSummary(db, targetUid);
+  if (!summary) {
+    throwApiError('internal', 'Banned user vanished');
+  }
+  return summary;
+}
