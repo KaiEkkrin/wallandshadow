@@ -1,5 +1,6 @@
 import {
   S3Client,
+  CopyObjectCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
@@ -82,6 +83,17 @@ export class Storage implements IStorage {
       }
     }
     return { failed };
+  }
+
+  async copy(srcPath: string, dstPath: string): Promise<void> {
+    // CopySource must be `bucket/key` and URL-encoded. The S3 SDK does not
+    // auto-encode this field; encodeURI handles spaces and most safe URL
+    // characters in our paths (UUIDs, slashes).
+    await s3.send(new CopyObjectCommand({
+      Bucket: bucket,
+      Key: dstPath,
+      CopySource: encodeURI(`${bucket}/${srcPath}`),
+    }));
   }
 }
 
