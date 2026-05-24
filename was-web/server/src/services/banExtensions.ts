@@ -59,16 +59,12 @@ export async function banUser(
   }
 
   // ── Pre-transaction snapshots ────────────────────────────────────────
-  // We need the target's adventure ids and spritesheet ids for S3 quarantine,
-  // plus the recipient sets for post-commit notification.
-  const [ownAdventureRows, sheetRows, coMemberRows, otherAdventureRows] =
+  // We need the target's adventure ids for S3 quarantine, plus the recipient
+  // sets for post-commit notification. Spritesheet ids are read inside the tx.
+  const [ownAdventureRows, coMemberRows, otherAdventureRows] =
     await Promise.all([
       db.select({ id: adventures.id })
         .from(adventures).where(eq(adventures.ownerId, targetUid)),
-      db.select({ id: spritesheets.id })
-        .from(spritesheets)
-        .innerJoin(adventures, eq(adventures.id, spritesheets.adventureId))
-        .where(eq(adventures.ownerId, targetUid)),
       db.select({ userId: adventurePlayers.userId })
         .from(adventurePlayers)
         .innerJoin(adventures, eq(adventures.id, adventurePlayers.adventureId))
@@ -92,15 +88,26 @@ export async function banUser(
     ]);
 
   const targetAdventureIds = ownAdventureRows.map(r => r.id);
-  const sheetIds = sheetRows.map(r => r.id);
   const coMemberIds = Array.from(new Set(coMemberRows.map(r => r.userId)));
   const otherAdventureIds = otherAdventureRows.map(r => r.adventureId);
 
   // ── Transaction ──────────────────────────────────────────────────────
-  const { imagePaths, affectedSheetAdventureIds } =
+  const { imagePaths, sheetIds, affectedSheetAdventureIds } =
     await db.transaction(async (tx) => {
       const now = new Date();
       await tx.update(users).set({ bannedAt: now }).where(eq(users.id, targetUid));
+
+      // Re-read spritesheet ids after the bannedAt UPDATE so any sheet created
+      // before that statement is captured. The remaining race window — a sheet
+      // inserted between this SELECT and tx commit — leaks a single S3 blob.
+      // Fully closing it would require either a deletedAt column on
+      // spritesheets or row-locking the user, both out of scope here.
+      const inTxSheetRows = await tx.select({ id: spritesheets.id })
+        .from(spritesheets)
+        .innerJoin(adventures, eq(adventures.id, spritesheets.adventureId))
+        .where(eq(adventures.ownerId, targetUid));
+      const sheetIds = inTxSheetRows.map(r => r.id);
+
       await tx.update(adventures).set({ deletedAt: now })
         .where(eq(adventures.ownerId, targetUid));
       if (targetAdventureIds.length > 0) {
@@ -131,7 +138,7 @@ export async function banUser(
       // Scrub footprint using the ORIGINAL image paths — those are still
       // what's stored on other users' adventures/maps/spritesheets/mapImages.
       const affected = await scrubUserFootprint(tx, targetUid, imagePaths);
-      return { imagePaths, affectedSheetAdventureIds: affected };
+      return { imagePaths, sheetIds, affectedSheetAdventureIds: affected };
     });
 
   // ── Post-transaction S3 quarantine ───────────────────────────────────
