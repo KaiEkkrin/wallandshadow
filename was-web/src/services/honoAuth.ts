@@ -97,9 +97,13 @@ export class HonoAuth implements IAuth {
       const me = await this.api.getMe();
       return new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'oidc');
     } catch (e) {
-      // Keep the OIDC session so a reload re-detects suspension instead of
-      // dropping the user to the login page.
-      if (isAccountSuspendedError(e)) this.suspended = true;
+      // Keep the persisted OIDC session so a reload re-detects suspension
+      // instead of dropping the user to the login page; but drop the in-memory
+      // bearer so subsequent API/WS calls don't re-attempt as the banned user.
+      if (isAccountSuspendedError(e)) {
+        this.suspended = true;
+        this.api.setToken(null);
+      }
       return null;
     }
   }
@@ -127,9 +131,11 @@ export class HonoAuth implements IAuth {
       return new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'password');
     } catch (e) {
       if (isAccountSuspendedError(e)) {
-        // Keep the token so a reload re-detects suspension rather than
-        // dropping the user back to the login page.
+        // Keep the persisted JWT so a reload re-detects suspension rather than
+        // dropping the user back to the login page; but drop the in-memory
+        // bearer so subsequent API/WS calls don't re-attempt as the banned user.
         this.suspended = true;
+        this.api.setToken(null);
         return null;
       }
       this.clearSession();
@@ -146,11 +152,15 @@ export class HonoAuth implements IAuth {
     try {
       const me = await this.api.getMe();
       const user = new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'oidc');
+      // A successful getMe() is authoritative — clear any stale suspended flag
+      // left behind by an earlier failed session-restore.
+      this.suspended = false;
       this.fireListeners(user);
     } catch (e) {
       if (isAccountSuspendedError(e)) {
         // A banned account: surface the Suspended page rather than an error.
         this.suspended = true;
+        this.api.setToken(null);
         this.fireListeners(null);
         return;
       }
@@ -176,13 +186,18 @@ export class HonoAuth implements IAuth {
     } catch (e) {
       if (isAccountSuspendedError(e)) {
         // A banned account: surface the Suspended page rather than an error.
+        // Keep the persisted JWT so a reload re-detects suspension; drop the
+        // in-memory bearer so subsequent calls don't re-attempt as the banned user.
         this.suspended = true;
+        this.api.setToken(null);
         this.fireListeners(null);
         return null;
       }
       throw e;
     }
     const user = new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'password');
+    // A successful getMe() is authoritative — clear any stale suspended flag.
+    this.suspended = false;
     this.fireListeners(user);
     return user;
   }

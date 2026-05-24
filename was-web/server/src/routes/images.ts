@@ -18,8 +18,8 @@ imageRoutes.get('/images/download', async (c) => {
   if (!path) {
     return c.json({ error: 'path query parameter is required' }, 400);
   }
-  await assertImageDownloadAccess(db, logger, uid, path);
-  const url = await storage.ref(path).getDownloadURL();
+  const canonicalPath = await assertImageDownloadAccess(db, logger, uid, path);
+  const url = await storage.ref(canonicalPath).getDownloadURL();
   return c.json({ url });
 });
 

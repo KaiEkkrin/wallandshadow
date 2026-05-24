@@ -533,6 +533,12 @@ export async function cloneMap(
   if (!adventure) {
     throwApiError('not-found', 'Adventure not found');
   }
+  // Authorise BEFORE any side-effecting work. The route's assertAdventureMember
+  // gate lets non-owner members in; consolidateMapChanges writes a base row and
+  // broadcasts NOTIFY, so the owner check must precede it.
+  if (adventure.ownerId !== uid) {
+    throwApiError('not-found', 'Adventure not found');
+  }
 
   const mapRecord: IMap = {
     adventureName: adventure.name,
@@ -765,6 +771,17 @@ export async function deleteMap(db: Db, uid: string, adventureId: string, mapId:
     throwApiError('not-found', 'Adventure not found');
   }
 
+  // A soft-deleted map is gone for every purpose except admin views — refuse
+  // the delete explicitly so the caller doesn't get a silent 204 + spurious
+  // notifyAdventureDetail.
+  const [mapRow] = await db.select({ id: maps.id })
+    .from(maps)
+    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId), isNull(maps.deletedAt)))
+    .limit(1);
+  if (!mapRow) {
+    throwApiError('not-found', 'Map not found');
+  }
+
   // CASCADE handles map_changes and map_images. No S3 cleanup here: every
   // image referenced by a map (background, placed images, token sprites) is a
   // user-owned object in the images table that survives the map and is only
@@ -858,10 +875,20 @@ export async function updateMap(
   fields: { name?: string; description?: string; imagePath?: string; ffa?: boolean; enableGroupVision?: boolean },
 ): Promise<void> {
   await assertAdventureOwner(db, uid, adventureId);
+  // A soft-deleted map within a live adventure is gone for every purpose
+  // except admin views — refuse the mutation explicitly so the caller doesn't
+  // get a silent 204 + spurious NOTIFY.
+  const [mapRow] = await db.select({ id: maps.id })
+    .from(maps)
+    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId), isNull(maps.deletedAt)))
+    .limit(1);
+  if (!mapRow) {
+    throwApiError('not-found', 'Map not found');
+  }
   if (Object.keys(fields).length === 0) return;
   await db.update(maps)
     .set(fields)
-    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)));
+    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId), isNull(maps.deletedAt)));
 
   await notifySafe(notifyAdventureDetail(adventureId));
 }

@@ -6,7 +6,7 @@ import { MapType } from '@wallandshadow/shared';
 import type { ILogger } from '@wallandshadow/shared';
 import { createApp } from '../app.js';
 import { db } from '../db/connection.js';
-import { adventurePlayers, images } from '../db/schema.js';
+import { adventurePlayers, images, maps as mapsTable, spritesheets } from '../db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import { UserLevel, getUserPolicy } from '@wallandshadow/shared';
 import { RoomManager, type Rooms } from '../ws/rooms.js';
@@ -26,6 +26,8 @@ import {
   apiDelete,
   apiUploadImage,
   createAddToken1,
+  postMapChanges,
+  getBaseChange,
   markAdventureDeleted,
   markMapDeleted,
   markImageDeleted,
@@ -192,8 +194,9 @@ describe('soft-delete: image download access', () => {
   test('a soft-deleted image returns 404 even for its owner', async () => {
     const { token, uid } = await registerHigherUser(app);
     const image = await uploadImage(token, 'Doomed');
-    // Live: the owner can download it.
-    await expect(assertImageDownloadAccess(db, silentLogger, uid, image.path)).resolves.toBeUndefined();
+    // Live: the owner can download it; the function returns the canonical path.
+    await expect(assertImageDownloadAccess(db, silentLogger, uid, image.path))
+      .resolves.toBe(image.path);
 
     await markImageDeleted(image.id);
     await expect(assertImageDownloadAccess(db, silentLogger, uid, image.path)).rejects.toThrow();
@@ -203,14 +206,13 @@ describe('soft-delete: image download access', () => {
     const { token, uid } = await registerHigherUser(app);
     const image = await uploadImage(token, 'Slashed');
 
-    // Canonical (no leading slash) — owner shortcut returns.
+    // Both inputs resolve to the same canonical (slash-free) path.
     await expect(
       assertImageDownloadAccess(db, silentLogger, uid, image.path),
-    ).resolves.toBeUndefined();
-    // Leading slash must match the same behaviour: owner can download.
+    ).resolves.toBe(image.path);
     await expect(
       assertImageDownloadAccess(db, silentLogger, uid, `/${image.path}`),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(image.path);
   });
 
   test('a leading slash on the path still 404s a soft-deleted image', async () => {
@@ -222,6 +224,55 @@ describe('soft-delete: image download access', () => {
       assertImageDownloadAccess(db, silentLogger, uid, `/${image.path}`),
     ).rejects.toThrow();
   });
+
+  // Review #4: the download route must use the canonical (slash-free) path
+  // when signing the S3 URL — otherwise a leading-slash request passes the
+  // auth check but the presigned URL targets a non-existent key.
+  test('GET /api/images/download with a leading-slash path returns the same URL as the canonical path', async () => {
+    const { token } = await registerHigherUser(app);
+    const image = await uploadImage(token, 'Slashed-url');
+
+    const canonical = await apiGet(
+      app, `/api/images/download?path=${encodeURIComponent(image.path)}`, token,
+    );
+    expect(canonical.status).toBe(200);
+    const slashed = await apiGet(
+      app, `/api/images/download?path=${encodeURIComponent(`/${image.path}`)}`, token,
+    );
+    expect(slashed.status).toBe(200);
+
+    // Both presigned URLs must reference the same canonical S3 key. Compare
+    // the URL pathname (signature varies per call so don't compare wholesale).
+    const canonicalPath = new URL(((await canonical.json()) as { url: string }).url).pathname;
+    const slashedPath = new URL(((await slashed.json()) as { url: string }).url).pathname;
+    expect(slashedPath).toBe(canonicalPath);
+  });
+
+  // Review #5: the leading-slash normalisation should apply uniformly across
+  // the image, spritesheet and unrecognised-path branches. Locks in the
+  // intentional behaviour change so a future refactor can't silently revert it.
+  test('assertImageDownloadAccess accepts a leading-slash sprites path identically to canonical', async () => {
+    const { token, uid } = await registerHigherUser(app);
+    const adventureId = await createAdventure(token);
+    const src = await uploadImage(token, 'sprite-src');
+    await addSprites(db, silentLogger, storage, uid, adventureId, '2x2', [src.path]);
+
+    // Look up the spritesheet's id directly from the db — addSprites returns
+    // sprite records, not the sheet itself.
+    const [sheet] = await db.select({ id: spritesheets.id })
+      .from(spritesheets)
+      .where(eq(spritesheets.adventureId, adventureId))
+      .limit(1);
+    expect(sheet).toBeDefined();
+    const canonicalPath = `sprites/${sheet.id}.png`;
+
+    await expect(
+      assertImageDownloadAccess(db, silentLogger, uid, canonicalPath),
+    ).resolves.toBeDefined();
+    await expect(
+      assertImageDownloadAccess(db, silentLogger, uid, `/${canonicalPath}`),
+    ).resolves.toBeDefined();
+  }, 60000);
 });
 
 // ── Spritesheet montage ──────────────────────────────────────────────────────
@@ -359,6 +410,42 @@ describe('soft-delete: owner mutations on a soft-deleted adventure return 404', 
   });
 });
 
+// ── Live adventure + soft-deleted map: review #6 + #7 ────────────────────────
+
+describe('soft-delete: owner mutations on a soft-deleted map (live adventure) return 404', () => {
+  test('PATCH /api/adventures/:id/maps/:mapId', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const mapId = await createMap(token, adventureId, 'Original');
+    await markMapDeleted(mapId);
+
+    const res = await apiPatch(app, `/api/adventures/${adventureId}/maps/${mapId}`,
+      { name: 'Resurrected' }, token);
+    expect(res.status).toBe(404);
+
+    // The soft-deleted row's fields must be unchanged.
+    const [row] = await db.select({ name: mapsTable.name, deletedAt: mapsTable.deletedAt })
+      .from(mapsTable).where(eq(mapsTable.id, mapId)).limit(1);
+    expect(row.name).toBe('Original');
+    expect(row.deletedAt).not.toBeNull();
+  });
+
+  test('DELETE /api/adventures/:id/maps/:mapId', async () => {
+    const { token } = await registerUser(app);
+    const adventureId = await createAdventure(token);
+    const mapId = await createMap(token, adventureId, 'Doomed');
+    await markMapDeleted(mapId);
+
+    const res = await apiDelete(app, `/api/adventures/${adventureId}/maps/${mapId}`, token);
+    expect(res.status).toBe(404);
+
+    // The soft-deleted row still exists.
+    const [row] = await db.select({ id: mapsTable.id })
+      .from(mapsTable).where(eq(mapsTable.id, mapId)).limit(1);
+    expect(row).toBeDefined();
+  });
+});
+
 // ── Quota counts ignore soft-deleted rows ───────────────────────────────────
 
 describe('soft-delete: quota counts ignore soft-deleted rows', () => {
@@ -428,6 +515,42 @@ describe('soft-delete: quota counts ignore soft-deleted rows', () => {
 
     const res = await apiUploadImage(app, token, TINY_PNG, 'pic.png', 'image/png', 'after-cleanup');
     expect(res.status).toBe(201);
+  });
+});
+
+// ── cloneMap: owner check must precede side effects (review #2) ─────────────
+
+describe('cloneMap: owner check runs before any DB write or NOTIFY', () => {
+  test('a non-owner member POSTs /clone -> 404, no consolidation runs on the source map', async () => {
+    const owner = await registerUser(app);
+    const adventureId = await createAdventure(owner.token);
+    const mapId = await createMap(owner.token, adventureId, 'Source');
+
+    // Seed the source map with an incremental change so a real consolidation
+    // would write a base row. Without this the source has nothing to
+    // consolidate and the ordering bug is invisible.
+    await postMapChanges(app, owner.token, adventureId, mapId, [createAddToken1(owner.uid)]);
+
+    // Bring in a non-owner member via the invite/join flow.
+    const inviteRes = await apiPost(app, `/api/adventures/${adventureId}/invites`, {}, owner.token);
+    expect(inviteRes.status).toBe(200);
+    const { inviteId } = (await inviteRes.json()) as { inviteId: string };
+    const member = await registerUser(app);
+    const joinRes = await apiPost(app, `/api/invites/${inviteId}/join`, {}, member.token);
+    expect(joinRes.status).toBe(200);
+
+    // Snapshot the source map's consolidated base change before the call.
+    const baseBefore = await getBaseChange(mapId);
+
+    const res = await apiPost(app, `/api/adventures/${adventureId}/maps/${mapId}/clone`,
+      { name: 'Clone' }, member.token);
+    expect(res.status).toBe(404);
+
+    // Authorisation must short-circuit BEFORE consolidateMapChanges inserts
+    // a base row and broadcasts NOTIFY. If the base change appeared (or
+    // changed), the ordering bug is live.
+    const baseAfter = await getBaseChange(mapId);
+    expect(baseAfter).toEqual(baseBefore);
   });
 });
 

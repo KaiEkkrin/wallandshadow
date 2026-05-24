@@ -75,11 +75,13 @@ export async function assertImageDownloadAccess(
   logger: ILogger,
   uid: string,
   rawPath: string,
-): Promise<void> {
+): Promise<string> {
   // Normalise once: `images.path` (and the other reference columns) are stored
   // slash-free. A leading `/` from the client must not skip the soft-delete
-  // lookup or fall through the UNION's exact-match comparisons.
-  const path = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
+  // lookup or fall through the UNION's exact-match comparisons. The caller
+  // must use the returned canonical path for any storage.ref() call so it
+  // never signs a URL keyed by a non-canonical variant.
+  const path = rawPath.replace(/^\/+/, '');
   // Case 1: images/{ownerUid}/{id}
   const imageOwner = getImageUid(path);
   if (imageOwner) {
@@ -94,7 +96,7 @@ export async function assertImageDownloadAccess(
       throwApiError('not-found', 'Image not found');
     }
 
-    if (imageOwner === uid) return; // Owner can always download their own images
+    if (imageOwner === uid) return path; // Owner can always download their own images
 
     // Four grant sources: adventure background, map background, spritesheet source,
     // or an image placed onto a map (tracked in map_images junction). A soft-deleted
@@ -130,7 +132,7 @@ export async function assertImageDownloadAccess(
       logger.logWarning(`Image download denied (not referenced) for user ${uid}, path ${path}`);
       throwApiError('not-found', 'Image not found');
     }
-    return;
+    return path;
   }
 
   // Case 2: sprites/{id}.png
@@ -151,7 +153,7 @@ export async function assertImageDownloadAccess(
       logger.logWarning(`Image download denied (not adventure member) for user ${uid}, path ${path}`);
       throwApiError('not-found', 'Image not found');
     }
-    return;
+    return path;
   }
 
   // Case 3: unrecognised path — also 404 (don't reveal which paths are valid)
