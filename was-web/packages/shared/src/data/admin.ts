@@ -14,6 +14,7 @@ export interface IAdminUserSummary {
   createdAt: string;        // ISO 8601
   emailVerified: boolean;
   externalId: string | null; // OIDC provider id (Zitadel sub); null for a local account
+  bannedAt: string | null;  // ISO 8601 when banned; null for active accounts
 }
 
 // One adventure owned by the account.

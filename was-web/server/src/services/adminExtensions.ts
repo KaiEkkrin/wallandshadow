@@ -22,6 +22,7 @@ const summaryColumns = {
   createdAt: users.createdAt,
   emailVerified: users.emailVerified,
   providerSub: users.providerSub,
+  bannedAt: users.bannedAt,
 };
 
 type SummaryRow = {
@@ -32,6 +33,7 @@ type SummaryRow = {
   createdAt: Date;
   emailVerified: boolean;
   providerSub: string | null;
+  bannedAt: Date | null;
 };
 
 function toSummary(row: SummaryRow): IAdminUserSummary {
@@ -43,6 +45,7 @@ function toSummary(row: SummaryRow): IAdminUserSummary {
     createdAt: row.createdAt.toISOString(),
     emailVerified: row.emailVerified,
     externalId: row.providerSub,
+    bannedAt: row.bannedAt ? row.bannedAt.toISOString() : null,
   };
 }
 
