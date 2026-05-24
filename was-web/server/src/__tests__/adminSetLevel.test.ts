@@ -198,23 +198,21 @@ describe('PATCH /api/admin/users/:id — tier change', () => {
   });
 
   // Concurrent demotion-of-each-other: two admins racing to demote each other
-  // must not both succeed (which would leave zero active admins). The row
-  // lock inside updateUserLevel's tx serialises them; one wins, the other
-  // sees that demoting their target would leave zero active admins and
-  // returns 400.
+  // must not both succeed (which would leave zero active admins). Exactly one
+  // request must win; the loser is rejected either by the last-admin guard
+  // inside updateUserLevel's tx (400) or by adminMiddleware if its caller-level
+  // re-read happens to see the winner's commit (403) — both are race-safe
+  // outcomes. The DB-state check below is the real invariant.
   test('two admins racing to demote each other cannot both succeed', async () => {
     const a = await registerAdminUser(app, 'RaceA');
     const b = await registerAdminUser(app, 'RaceB');
-    // A asks to demote B; B asks to demote A. At the moment each tx checks
-    // the other-active-admins count, only their own demotion is visible.
-    // The row lock means one tx commits first; the second tx then observes
-    // remaining = 0 and is refused.
     const [resAtoB, resBtoA] = await Promise.all([
       apiPatch(app, `/api/admin/users/${b.uid}`, { level: 'basic' }, a.token),
       apiPatch(app, `/api/admin/users/${a.uid}`, { level: 'basic' }, b.token),
     ]);
     const statuses = [resAtoB.status, resBtoA.status].sort();
-    expect(statuses).toEqual([200, 400]);
+    expect(statuses[0]).toBe(200);
+    expect([400, 403]).toContain(statuses[1]);
 
     // Final DB state: exactly one of A, B is admin; the other is basic.
     const [rowA] = await db.select({ level: users.level })
