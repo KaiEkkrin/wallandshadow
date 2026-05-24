@@ -90,17 +90,39 @@ export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
         return;
       }
 
-      wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+      wss.handleUpgrade(request, socket, head, async (ws: WebSocket) => {
         setSocketState(ws, uid);
+
+        // Attach close/error handlers BEFORE the await below, so our own
+        // self-close (or any failure during the recheck) still runs cleanupSocket
+        // and removes the ws from userSockets.
+        ws.on('close', () => cleanupSocket(ws, rooms));
+        ws.on('error', () => cleanupSocket(ws, rooms));
+
+        // Re-read bannedAt AFTER setSocketState. Closes the race with a concurrent
+        // banUser: either the recheck sees bannedAt (and we self-close), or the
+        // ban commits later and its disconnectBannedUser finds our socket in
+        // userSockets (because setSocketState ran first). No third interleaving.
+        try {
+          const [recheck] = await db.select({ bannedAt: users.bannedAt })
+            .from(users).where(eq(users.id, uid)).limit(1);
+          if (recheck?.bannedAt) {
+            ws.close(WS_CLOSE_ACCOUNT_SUSPENDED, 'Account suspended');
+            return;
+          }
+        } catch (e) {
+          logger.logError('WS bannedAt recheck failed', e);
+          // Fail closed: an unavailable DB during recheck must not leave a socket
+          // open for what might be a banned account.
+          ws.close(WS_CLOSE_AUTH_REJECTED, 'Authorization recheck failed');
+          return;
+        }
 
         ws.on('message', (data: RawData) => {
           handleMessage(ws, rooms, data).catch(e => {
             logger.logError('WS message handler failed', e);
           });
         });
-
-        ws.on('close', () => cleanupSocket(ws, rooms));
-        ws.on('error', () => cleanupSocket(ws, rooms));
       });
     } catch (e) {
       logger.logError('WebSocket upgrade error', e);
