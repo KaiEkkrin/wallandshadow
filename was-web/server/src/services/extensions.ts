@@ -240,18 +240,16 @@ async function bestEffortDeleteS3(
   }
 }
 
-// S3 cleanup for account deletion. Unlike bestEffortDeleteS3, failures here are
-// logged at Error level: orphaned uploads left behind by a GDPR erasure are a
-// data-protection event, not a tolerable inconsistency. Each leaked path is
-// logged on its own line with a stable `ORPHANED_S3_OBJECT` marker so an
-// operator can grep the error log to recover the full path list and re-run the
-// delete manually — S3 DELETE is idempotent for missing keys, so a re-run is
-// safe. Like bestEffortDeleteS3 this never throws: the user's DB rows are
-// already gone, so the erasure itself has succeeded regardless.
+// S3 cleanup for lifecycle events that must not leave orphans (account
+// deletion, account ban). Failures log at Error level with a re-runnable
+// ORPHANED_S3_OBJECT marker so an operator can recover by re-running the
+// deletion (S3 DELETE is idempotent for missing keys). Never throws: the DB
+// rows are already committed.
 async function auditedDeleteS3(
   storage: IStorage,
   logger: ILogger,
   paths: string[],
+  context: string,
   uid: string,
 ): Promise<void> {
   if (paths.length === 0) {
@@ -261,22 +259,57 @@ async function auditedDeleteS3(
     const { failed } = await storage.deleteMany(paths);
     for (const f of failed) {
       logger.logError(
-        `ORPHANED_S3_OBJECT context=user-delete uid=${uid} path=${f.path} — ${f.message}`,
+        `ORPHANED_S3_OBJECT context=${context} uid=${uid} path=${f.path} — ${f.message}`,
       );
     }
   } catch (e) {
-    // A whole-batch throw can leave any path orphaned (deleteMany processes in
-    // chunks, and we cannot tell which chunks committed). Report every path:
-    // over-reporting is harmless because the re-run is idempotent.
     for (const path of paths) {
-      logger.logError(`ORPHANED_S3_OBJECT context=user-delete uid=${uid} path=${path}`);
+      logger.logError(`ORPHANED_S3_OBJECT context=${context} uid=${uid} path=${path}`);
     }
     logger.logError(
-      `S3 batch delete threw during account deletion for uid ${uid} ` +
+      `S3 batch delete threw during ${context} for uid ${uid} ` +
       `(${paths.length} path(s) potentially orphaned)`,
       e,
     );
   }
+}
+
+// Quarantine S3 objects: copy each source to its destination, then delete
+// the sources. Used by banUser. Per-object copy failures are logged as
+// orphan markers and the source is left in place (not deleted) so re-running
+// the ban can pick them up. Delete failures of successfully-copied sources
+// duplicate the object — still logged as orphans with a distinct phase, but
+// not data loss. Never throws.
+export async function auditedQuarantineS3(
+  storage: IStorage,
+  logger: ILogger,
+  pairs: Array<{ src: string; dst: string }>,
+  context: string,
+  uid: string,
+): Promise<void> {
+  if (pairs.length === 0) {
+    return;
+  }
+  // allSettled so one copy failure doesn't abort the others. Failed copies
+  // are dropped from the delete batch — we never delete a source whose copy
+  // didn't succeed.
+  const copyResults = await Promise.allSettled(
+    pairs.map(p => storage.copy(p.src, p.dst)),
+  );
+  const sourcesToDelete: string[] = [];
+  for (let i = 0; i < pairs.length; i++) {
+    const r = copyResults[i];
+    const p = pairs[i];
+    if (r.status === 'fulfilled') {
+      sourcesToDelete.push(p.src);
+    } else {
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      logger.logError(
+        `ORPHANED_S3_OBJECT context=${context}-copy uid=${uid} path=${p.src} — ${msg}`,
+      );
+    }
+  }
+  await auditedDeleteS3(storage, logger, sourcesToDelete, `${context}-delete`, uid);
 }
 
 // ─── Adventure ───────────────────────────────────────────────────────────────
@@ -463,7 +496,7 @@ export async function deleteUser(
     return affected;
   });
 
-  await auditedDeleteS3(storage, logger, [...imagePaths, ...sheetPaths], uid);
+  await auditedDeleteS3(storage, logger, [...imagePaths, ...sheetPaths], 'user-delete', uid);
 
   await notifySafe(
     notifyAdventuresUsers(coMemberIds),

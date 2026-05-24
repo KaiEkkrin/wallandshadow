@@ -104,7 +104,7 @@ describe('account deletion logs orphaned S3 objects at Error level', () => {
     expect(orphanLogs[0]).toContain(`uid=${uid}`);
 
     // ...and the batch-level failure is logged as well.
-    expect(logger.errors.some(e => e.includes('S3 batch delete threw during account deletion')))
+    expect(logger.errors.some(e => e.includes('S3 batch delete threw during user-delete')))
       .toBe(true);
   }, 60000);
 
