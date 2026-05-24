@@ -3,7 +3,7 @@ import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import { createLocalJWKSet } from 'jose';
 import { createApp } from '../app.js';
 import { createOidcVerifier, setOidcVerifier } from '../auth/oidc.js';
-import { apiGet, registerUser } from './helpers.js';
+import { apiGet, apiDelete, registerUser } from './helpers.js';
 import { db } from '../db/connection.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -202,6 +202,36 @@ describe('OIDC authentication', () => {
     // Separate accounts
     expect(oidcUser.uid).not.toBe(localUser.uid);
     expect(oidcUser.name).toBe('OIDC Dave');
+  });
+
+  test('OIDC user can delete their own account via DELETE /api/auth/me', async () => {
+    const token = await signOidcToken({
+      sub: 'oidc-delete-user',
+      email: 'del@example.com',
+      email_verified: true,
+      name: 'Del',
+    });
+    // GET /me auto-creates the user.
+    const getRes = await apiGet(app, '/api/auth/me', token);
+    expect(getRes.status).toBe(200);
+    const me = await getRes.json() as { uid: string };
+
+    // DELETE /me removes the row.
+    const delRes = await apiDelete(app, '/api/auth/me', token);
+    expect(delRes.status).toBe(200);
+
+    const remaining = await db.select({ id: users.id })
+      .from(users).where(eq(users.id, me.uid));
+    expect(remaining.length).toBe(0);
+
+    // Subsequent GET with the same token recreates the user with a NEW uid.
+    // The OIDC sub is still valid; the server treats it as a fresh first
+    // login. This locks in the current behaviour — change it deliberately,
+    // not by accident.
+    const recreatedRes = await apiGet(app, '/api/auth/me', token);
+    expect(recreatedRes.status).toBe(200);
+    const recreated = await recreatedRes.json() as { uid: string };
+    expect(recreated.uid).not.toBe(me.uid);
   });
 });
 
