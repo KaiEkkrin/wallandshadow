@@ -99,6 +99,22 @@ export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
         ws.on('close', () => cleanupSocket(ws, rooms));
         ws.on('error', () => cleanupSocket(ws, rooms));
 
+        // Attach the message handler immediately and buffer until the bannedAt
+        // recheck finishes — otherwise a client that sends a `subscribe` frame
+        // right after `'open'` would race the recheck await and have the frame
+        // silently dropped (Node EventEmitter drops events with no listener).
+        const pending: RawData[] = [];
+        let ready = false;
+        ws.on('message', (data: RawData) => {
+          if (!ready) {
+            pending.push(data);
+            return;
+          }
+          handleMessage(ws, rooms, data).catch(e => {
+            logger.logError('WS message handler failed', e);
+          });
+        });
+
         // Re-read bannedAt AFTER setSocketState. Closes the race with a concurrent
         // banUser: either the recheck sees bannedAt (and we self-close), or the
         // ban commits later and its disconnectBannedUser finds our socket in
@@ -118,11 +134,12 @@ export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
           return;
         }
 
-        ws.on('message', (data: RawData) => {
+        ready = true;
+        for (const data of pending) {
           handleMessage(ws, rooms, data).catch(e => {
             logger.logError('WS message handler failed', e);
           });
-        });
+        }
       });
     } catch (e) {
       logger.logError('WebSocket upgrade error', e);
