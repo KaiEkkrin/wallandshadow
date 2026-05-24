@@ -40,6 +40,10 @@ class StubStorage implements IStorage {
     throw new Error('ref() is not used by deleteUser');
   }
 
+  async copy(): Promise<void> {
+    throw new Error('copy() is not used by deleteUser');
+  }
+
   async deleteMany(): Promise<{ failed: { path: string; message: string }[] }> {
     if (this.behaviour.kind === 'throw') {
       throw this.behaviour.error;

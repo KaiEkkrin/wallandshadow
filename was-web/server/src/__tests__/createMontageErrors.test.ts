@@ -34,6 +34,7 @@ function makeStubStorage(behaviours: Record<string, DownloadBehaviour>): IStorag
   const attempts = new Map<string, number>();
   return {
     deleteMany: paths => storage.deleteMany(paths),
+    copy: (src, dst) => storage.copy(src, dst),
     ref(path: string): IStorageReference {
       const real = storage.ref(path);
       const behaviour = behaviours[path] ?? 'ok';
