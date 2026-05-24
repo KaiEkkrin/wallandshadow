@@ -96,8 +96,14 @@ describe('banUser — happy path', () => {
     // Target owns an adventure with a map and an uploaded image.
     const targetAdv = await createAdventure(target.token, 'Target Adv');
     const targetImagePath = await uploadImage(target.token, 'target');
-    const targetMapId = await createMap(target.token, targetAdv, 'M1');
-    void targetMapId; // created, but the assertion uses DB lookup by userId
+    await createMap(target.token, targetAdv, 'M1');
+
+    // Target also creates an outstanding invite — exercises the invite-deletion
+    // side of scrubUserFootprint.
+    const targetInviteRes = await apiPost(
+      app, `/api/adventures/${targetAdv}/invites`, {}, target.token,
+    );
+    expect(targetInviteRes.status).toBe(200);
 
     // Other user owns an adventure where target is a member.
     const otherAdv = await createAdventure(other.token, 'Other Adv');
