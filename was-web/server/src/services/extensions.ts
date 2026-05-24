@@ -222,8 +222,9 @@ export async function assertAdventureOwner(db: Db, uid: string, adventureId: str
 // preferable to rolling back a committed DB delete. Note that the DB rows that
 // named these paths are already gone by this point, so a failure here is not
 // automatically recoverable: the warning log is the only surviving record of
-// the leak. For the GDPR-critical account-deletion path use auditedDeleteS3
-// instead, which logs orphans at Error level with re-runnable markers.
+// the leak. For high-stakes lifecycle events (account erasure, ban) use
+// auditedDeleteS3 instead, which logs orphans at Error level with re-runnable
+// markers.
 async function bestEffortDeleteS3(
   storage: IStorage,
   logger: ILogger,
@@ -305,7 +306,7 @@ export async function auditedQuarantineS3(
     } else {
       const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
       logger.logError(
-        `ORPHANED_S3_OBJECT context=${context}-copy uid=${uid} path=${p.src} — ${msg}`,
+        `ORPHANED_S3_OBJECT context=${context}-copy uid=${uid} path=${p.src} dst=${p.dst} — ${msg}`,
       );
     }
   }
