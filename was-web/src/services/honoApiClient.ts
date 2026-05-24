@@ -1,5 +1,6 @@
 import type {
   IAdminUserDetail, IAdminUserSummary, ICharacter, IInviteExpiryPolicy, IMe, MapType,
+  UserLevel,
 } from '@wallandshadow/shared';
 
 // ── Wire-format response types (server JSON shape) ───────────────────────────
@@ -314,5 +315,13 @@ export class HonoApiClient {
 
   adminGetUser(id: string): Promise<IAdminUserDetail> {
     return this.request('GET', `/api/admin/users/${encodeURIComponent(id)}`);
+  }
+
+  adminSetUserLevel(id: string, level: UserLevel): Promise<IAdminUserSummary> {
+    return this.request('PATCH', `/api/admin/users/${encodeURIComponent(id)}`, { level });
+  }
+
+  adminBanUser(id: string): Promise<IAdminUserSummary> {
+    return this.request('POST', `/api/admin/users/${encodeURIComponent(id)}/ban`);
   }
 }

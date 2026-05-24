@@ -95,6 +95,31 @@ export async function banUser(
   const { imagePaths, sheetIds, affectedSheetAdventureIds } =
     await db.transaction(async (tx) => {
       const now = new Date();
+      // Row-locked re-read so concurrent PATCH /admin/users/:id
+      // (updateUserLevel) cannot interleave between the pre-tx snapshot above
+      // and the bannedAt write below. Without this, a racing PATCH that
+      // promotes the target to admin could land between the pre-tx level
+      // read and the tx commit, producing bannedAt != NULL AND level='admin'
+      // — the exact state the pre-tx admin guard exists to prevent. Both
+      // endpoints now hold the same row lock; whichever commits first wins.
+      const [locked] = await tx.select({
+        id: users.id,
+        level: users.level,
+        bannedAt: users.bannedAt,
+      })
+        .from(users)
+        .where(eq(users.id, targetUid))
+        .for('update')
+        .limit(1);
+      if (!locked) {
+        throwApiError('not-found', 'User not found');
+      }
+      if (locked.level === UserLevel.Admin) {
+        throwApiError('invalid-argument', 'Cannot ban an admin; demote first');
+      }
+      if (locked.bannedAt) {
+        throwApiError('already-exists', 'User is already banned');
+      }
       await tx.update(users).set({ bannedAt: now }).where(eq(users.id, targetUid));
 
       // Re-read spritesheet ids after the bannedAt UPDATE so any sheet created

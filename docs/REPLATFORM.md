@@ -94,6 +94,8 @@ database.
 | `POST /api/adventures/:id/spritesheets`         | Upload spritesheet                           |
 | `GET /api/admin/users?q=<term>`                 | Admin: account search (email / account id / external id) |
 | `GET /api/admin/users/:id`                      | Admin: full account info (summary + tables)  |
+| `PATCH /api/admin/users/:id`                    | Admin: set target's tier (`{ level }`)       |
+| `POST /api/admin/users/:id/ban`                 | Admin: ban (soft-delete + S3 quarantine)     |
 
 ---
 
@@ -149,6 +151,20 @@ looks up a `users` row on first login.
 
 In local dev (`import.meta.env.DEV`), the login page shows both the email/password form and
 the OIDC button so E2E tests and local experimentation work without a Zitadel round-trip.
+
+**Tiers and admin role**. Every account has a `level` (`basic` / `higher` / `admin`); see
+`packages/shared/src/data/policy.ts` for per-tier limits. `admin` is a tier value, not a
+separate role — its only behavioural difference is access to `/api/admin/*` (gated by
+`adminMiddleware`) and the corresponding SPA pages. A single admin is bootstrapped by hand
+after the tier migration (see `docs/DEVELOPMENT.md`); further admins are promoted from the
+account-info page.
+
+**Ban**. The admin "Ban user" action is permanent and unreversed by design. It sets
+`users.bannedAt`, soft-deletes the target's adventures / maps / images
+(`deletedAt` columns; read paths filter them out), rewrites their S3 image keys from
+`images/` to `quarantine/`, scrubs their footprint out of other users' content (shared
+helper used by both `deleteUser` and `banUser`), and immediately disconnects the target's
+live WebSocket connections. There is no unban.
 
 ---
 

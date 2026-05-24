@@ -220,6 +220,23 @@ Defined in `data/coord.ts`:
 - `GridEdge` — edge between faces (walls)
 - `GridVertex` — vertex where edges meet
 
+### Admin role
+
+Every account has a `level` (`UserLevel.Basic` / `Higher` / `Admin` — `packages/shared/src/data/policy.ts`). `Admin` is a tier value, not a separate role, and carries the most generous per-account limits in `getUserPolicy()`. There is no public admin signup; one admin is bootstrapped manually (see `docs/DEVELOPMENT.md` "Bootstrapping an admin account"), and additional admins are promoted from the admin UI.
+
+`adminMiddleware` (`server/src/auth/adminMiddleware.ts`) gates all `/api/admin/*` routes. The client-side `RequireAdmin` wrapper gates the `/admin` and `/admin/users/:id` SPA routes.
+
+Admin REST endpoints:
+
+| Route                                           | Purpose                                              |
+| ----------------------------------------------- | ---------------------------------------------------- |
+| `GET /api/admin/users?q=<term>`                 | Search by email, account id, or external (OIDC) id  |
+| `GET /api/admin/users/:id`                      | Full account info: summary + adventures/maps/images  |
+| `PATCH /api/admin/users/:id`                    | Set the target's tier (`{ level }`)                  |
+| `POST /api/admin/users/:id/ban`                 | Ban the target (soft-delete + S3 quarantine)         |
+
+Ban is permanent and irreversible from the UI: it soft-deletes the target's adventures, maps and images, rewrites their S3 image keys from `images/` to `quarantine/`, scrubs their footprint out of other users' content (via the shared `scrubUserFootprint` helper, also used by `deleteUser`), and disconnects their live WebSockets.
+
 ## Additional Documentation
 
 - @README.md — project overview, tech stack, documentation index

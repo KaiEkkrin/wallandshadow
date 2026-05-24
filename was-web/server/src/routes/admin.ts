@@ -3,7 +3,7 @@ import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { adminMiddleware } from '../auth/adminMiddleware.js';
 import { db } from '../db/connection.js';
 import { throwApiError } from '../errors.js';
-import { findUserSummary, getUserDetail } from '../services/adminExtensions.js';
+import { findUserSummary, getUserDetail, updateUserLevel } from '../services/adminExtensions.js';
 import { banUser } from '../services/banExtensions.js';
 import { storage } from '../services/storage.js';
 import { logger } from '../services/logger.js';
@@ -44,5 +44,30 @@ adminRoutes.post('/admin/users/:id/ban', async (c) => {
   // query throws cleanly for it). If a future driver change makes that throw
   // a 500 instead, add a UUID_RE guard here.
   const summary = await banUser(db, storage, logger, adminUid, targetUid);
+  return c.json(summary);
+});
+
+// ── Tier change: set a target's account level ────────────────────────────────
+
+adminRoutes.patch('/admin/users/:id', async (c) => {
+  const targetUid = c.req.param('id');
+  const adminUid = c.get('uid');
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    throwApiError('invalid-argument', 'Request body must be JSON');
+  }
+  // c.req.json() resolves with null for the literal `null` payload (and with
+  // primitives/arrays for those) — none of which carry a `.level`. Reject
+  // them as a clean 400 rather than letting the cast deref crash 500.
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    throwApiError('invalid-argument', 'Request body must be a JSON object');
+  }
+  const level = (body as { level?: unknown }).level;
+  if (typeof level !== 'string') {
+    throwApiError('invalid-argument', 'level is required');
+  }
+  const summary = await updateUserLevel(db, adminUid, targetUid, level);
   return c.json(summary);
 });

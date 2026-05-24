@@ -23,6 +23,7 @@ export interface IAdminAdventureRow {
   name: string;
   createdAt: string;        // ISO 8601
   mapCount: number;
+  deletedAt: string | null; // ISO 8601 when soft-deleted; null for live rows
 }
 
 // One map inside an adventure the account owns.
@@ -31,6 +32,7 @@ export interface IAdminMapRow {
   name: string;
   adventureName: string;
   ty: MapType;
+  deletedAt: string | null; // ISO 8601 when soft-deleted; null for live rows
 }
 
 // One image owned by the account.
@@ -39,6 +41,7 @@ export interface IAdminImageRow {
   name: string;
   path: string;
   createdAt: string;        // ISO 8601
+  deletedAt: string | null; // ISO 8601 when soft-deleted; null for live rows
 }
 
 // Full admin account-info view: summary plus the three owned-content tables.

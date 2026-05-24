@@ -103,4 +103,7 @@ export interface IApi {
   // (OIDC provider) id — the server auto-detects which.
   adminSearchUser(term: string): Promise<IAdminUserSummary | undefined>;
   adminGetUser(id: string): Promise<IAdminUserDetail>;
+  // Mutations performed from the admin account-info page.
+  adminSetUserLevel(id: string, level: UserLevel): Promise<IAdminUserSummary>;
+  adminBanUser(id: string): Promise<IAdminUserSummary>;
 }

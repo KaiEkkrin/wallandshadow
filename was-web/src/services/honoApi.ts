@@ -15,6 +15,7 @@ import type {
   ISprite,
   ISpritesheet,
   MapType,
+  UserLevel,
 } from '@wallandshadow/shared';
 import { spriteConverter } from '@wallandshadow/shared';
 import { ApiError, HonoApiClient } from './honoApiClient';
@@ -288,5 +289,13 @@ export class HonoApi implements IApi {
   async adminGetUser(id: string): Promise<IAdminUserDetail> {
     // A 404 here bubbles as an error: the caller navigated to a real id.
     return await this.client.adminGetUser(id);
+  }
+
+  async adminSetUserLevel(id: string, level: UserLevel): Promise<IAdminUserSummary> {
+    return await this.client.adminSetUserLevel(id, level);
+  }
+
+  async adminBanUser(id: string): Promise<IAdminUserSummary> {
+    return await this.client.adminBanUser(id);
   }
 }
