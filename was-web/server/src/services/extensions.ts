@@ -395,6 +395,10 @@ export async function scrubUserFootprint(
       .where(inArray(maps.imagePath, imagePaths));
     await tx.delete(mapImages).where(inArray(mapImages.path, imagePaths));
 
+    // One indexed lookup for every sheet referencing any of the user's
+    // images, rather than a containment query per path. Each `@>` clause is
+    // served by the GIN index on `spritesheets.sprites`; the planner
+    // BitmapOr's them.
     const pathSet = new Set(imagePaths);
     const sheetRowsToScrub = await tx.select({
       id: spritesheets.id,
