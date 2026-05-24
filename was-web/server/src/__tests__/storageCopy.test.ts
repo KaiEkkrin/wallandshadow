@@ -31,6 +31,6 @@ describe('storage.copy', () => {
     const dst = `test-copy/dst-missing-${Date.now()}.png`;
     cleanupKeys.push(dst);
 
-    await expect(storage.copy(src, dst)).rejects.toBeDefined();
+    await expect(storage.copy(src, dst)).rejects.toThrow();
   });
 });

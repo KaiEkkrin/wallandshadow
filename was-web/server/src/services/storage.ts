@@ -86,9 +86,11 @@ export class Storage implements IStorage {
   }
 
   async copy(srcPath: string, dstPath: string): Promise<void> {
-    // CopySource must be `bucket/key` and URL-encoded. The S3 SDK does not
-    // auto-encode this field; encodeURI handles spaces and most safe URL
-    // characters in our paths (UUIDs, slashes).
+    // CopySource must be `bucket/key`; the S3 SDK does not encode it for us.
+    // Our keys contain only UUID-safe characters (hex, hyphens) and slashes,
+    // so encodeURI is sufficient — # and ? (which encodeURI leaves alone)
+    // never appear. If the key alphabet ever broadens, switch to per-segment
+    // encodeURIComponent.
     await s3.send(new CopyObjectCommand({
       Bucket: bucket,
       Key: dstPath,
