@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { Db } from '../db/connection.js';
 import {
   adventurePlayers,
@@ -78,14 +78,19 @@ export async function banUser(
         .where(and(
           eq(adventures.ownerId, targetUid),
           // Exclude the target's own membership so we don't notify them.
-          sql`${adventurePlayers.userId} != ${targetUid}`,
+          ne(adventurePlayers.userId, targetUid),
         )),
+      // Adventures where the target is a member but NOT the owner. Unlike
+      // deleteUser (which can include self-owned because they've already
+      // been deleted), banUser soft-deletes the target's own adventures and
+      // signals their co-members via notifyAdventuresUsers, so they don't
+      // belong in this list.
       db.select({ adventureId: adventurePlayers.adventureId })
         .from(adventurePlayers)
         .innerJoin(adventures, eq(adventures.id, adventurePlayers.adventureId))
         .where(and(
           eq(adventurePlayers.userId, targetUid),
-          sql`${adventures.ownerId} != ${targetUid}`,
+          ne(adventures.ownerId, targetUid),
         )),
     ]);
 
@@ -124,10 +129,10 @@ export async function banUser(
     src,
     dst: src.replace(/^images\//, 'quarantine/'),
   }));
-  const sheetPairs = sheetIds.map(id => ({
-    src: getSpritePathFromId(id),
-    dst: `quarantine/${getSpritePathFromId(id)}`,
-  }));
+  const sheetPairs = sheetIds.map(id => {
+    const src = getSpritePathFromId(id);
+    return { src, dst: `quarantine/${src}` };
+  });
   await auditedQuarantineS3(
     storage, logger, [...imagePairs, ...sheetPairs], 'user-ban', targetUid,
   );
@@ -149,6 +154,10 @@ export async function banUser(
   // Return the updated summary. The bannedAt field reflects the ban.
   const summary = await findUserSummary(db, targetUid);
   if (!summary) {
+    // Cannot happen under normal operation — the row was just updated above.
+    // Log here so the unrecoverable case appears in the audit trail even if
+    // the route layer swallows the HTTPException.
+    logger.logError(`banUser: target uid=${targetUid} vanished between transaction commit and summary read`);
     throwApiError('internal', 'Banned user vanished');
   }
   return summary;
