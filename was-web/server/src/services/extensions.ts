@@ -35,7 +35,7 @@ import {
   getSpritePathFromId,
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
-import { Db } from '../db/connection.js';
+import { Db, DbTransaction } from '../db/connection.js';
 import {
   notifyMapChange,
   notifyAdventuresUser,
@@ -364,8 +364,6 @@ export async function deleteAdventure(
 
 // ─── User account deletion ───────────────────────────────────────────────────
 
-type DbTx = Parameters<Parameters<Db['transaction']>[0]>[0];
-
 // Shared by deleteUser and banUser. Removes every reference to `uid` that
 // other users' content holds: the user's player rows, their invites, any
 // imagePath / map_images / spritesheet entry that points at one of their
@@ -380,7 +378,7 @@ type DbTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 // rows are deleted. This is consistent: the underlying S3 objects are
 // quarantined, so leaving stale paths in place would point at moved blobs.
 export async function scrubUserFootprint(
-  tx: DbTx,
+  tx: DbTransaction,
   uid: string,
   imagePaths: string[],
 ): Promise<Set<string>> {
