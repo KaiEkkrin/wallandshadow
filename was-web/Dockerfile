@@ -57,6 +57,7 @@ ENV GIT_COMMIT=${GIT_COMMIT}
 COPY app.html landing-index.html tsconfig.json vite.config.ts ./
 COPY src/ src/
 COPY public/ public/
+COPY vite-plugins/ vite-plugins/
 COPY packages/shared/src/ packages/shared/src/
 
 RUN yarn build
