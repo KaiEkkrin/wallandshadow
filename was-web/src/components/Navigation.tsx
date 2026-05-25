@@ -22,7 +22,7 @@ import { LinkContainer } from 'react-router-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCheck } from '@fortawesome/free-solid-svg-icons';
 
-import { UserLevel } from '@wallandshadow/shared';
+import { UserLevel, getUserPolicy } from '@wallandshadow/shared';
 
 function NavPageLinks() {
   const userContext = useContext(UserContext);
@@ -199,6 +199,25 @@ function NavLogin() {
                 This is the email address associated with your Wall &amp; Shadow account. It will not be shown to other users.
               </Form.Text>
             </Form.Group>
+            {profile && (() => {
+              const policy = getUserPolicy(profile.level);
+              const tierLabel = profile.level.charAt(0).toUpperCase() + profile.level.slice(1);
+              return (
+                <Form.Group>
+                  <Form.Label htmlFor="tierInput">Tier</Form.Label>
+                  <Form.Control id="tierInput" type="text" value={tierLabel} disabled={true} />
+                  <Form.Text as="div" className="text-muted">
+                    <ul className="mb-1 ps-3">
+                      <li>Up to {policy.adventures} adventures</li>
+                      <li>Up to {policy.maps} maps per adventure</li>
+                      <li>Up to {policy.players} players per adventure</li>
+                      <li>Image uploads: {policy.images === 0 ? 'not available' : `up to ${policy.images}`}</li>
+                    </ul>
+                    {profile.level !== UserLevel.Admin && 'Contact an admin to upgrade.'}
+                  </Form.Text>
+                </Form.Group>
+              );
+            })()}
           </Form>
           <hr />
           <h6 className="text-danger">Danger zone</h6>
