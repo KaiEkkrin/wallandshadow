@@ -1,4 +1,5 @@
 import { IAdventure, IPlayer } from '../data/adventure';
+import { IAdminUserDetail, IAdminUserSummary } from '../data/admin';
 import { ICharacter } from '../data/character';
 import { IIdentified } from '../data/identified';
 import { IImage } from '../data/image';
@@ -96,4 +97,13 @@ export interface IApi {
   // ── Spritesheets ─────────────────────────────────────────────────────────
   listSpritesheets(adventureId: string): Promise<IIdentified<ISpritesheet>[]>;
   addSprites(adventureId: string, geometry: string, sources: string[]): Promise<ISprite[]>;
+
+  // ── Admin ────────────────────────────────────────────────────────────────
+  // Search by a single term: an email, an internal account id, or an external
+  // (OIDC provider) id — the server auto-detects which.
+  adminSearchUser(term: string): Promise<IAdminUserSummary | undefined>;
+  adminGetUser(id: string): Promise<IAdminUserDetail>;
+  // Mutations performed from the admin account-info page.
+  adminSetUserLevel(id: string, level: UserLevel): Promise<IAdminUserSummary>;
+  adminBanUser(id: string): Promise<IAdminUserSummary>;
 }

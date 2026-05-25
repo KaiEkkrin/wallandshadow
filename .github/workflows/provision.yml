@@ -20,8 +20,10 @@
 #   OIDC_PROD_CLIENT_ID       — Zitadel OIDC client ID (production environment)
 #   STATS_BASIC_AUTH_USER     — Username for HTTP basic auth on /stats (goaccess)
 #   STATS_BASIC_AUTH_PASSWORD — Password for HTTP basic auth on /stats (goaccess)
+#   ADMIN_USER_ID             — (optional) OIDC subject of the user to auto-promote
+#                                to admin tier on the production server
 #
-# First-time setup: see README.md "Infrastructure Bootstrap" section.
+# First-time setup: see docs/INFRASTRUCTURE_BOOTSTRAP.md.
 # =============================================================================
 
 name: Provision Infrastructure
@@ -153,7 +155,8 @@ jobs:
             -e 'oidc_test_client_id=${{ secrets.OIDC_TEST_CLIENT_ID }}' \
             -e 'oidc_prod_client_id=${{ secrets.OIDC_PROD_CLIENT_ID }}' \
             -e 'stats_basic_auth_user=${{ secrets.STATS_BASIC_AUTH_USER }}' \
-            -e 'stats_basic_auth_password=${{ secrets.STATS_BASIC_AUTH_PASSWORD }}'
+            -e 'stats_basic_auth_password=${{ secrets.STATS_BASIC_AUTH_PASSWORD }}' \
+            -e 'admin_user_id=${{ secrets.ADMIN_USER_ID }}'
 
       - name: Display VPS_KNOWN_HOST secret value
         run: |

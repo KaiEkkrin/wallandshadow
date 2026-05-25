@@ -1,5 +1,5 @@
 import { IAuth, IAuthProvider, IUser } from '@wallandshadow/shared';
-import { HonoApiClient } from './honoApiClient';
+import { HonoApiClient, isAccountSuspendedError } from './honoApiClient';
 import { isOidcEnabled, startOidcLogin, getOidcUser, getOidcBearerToken, oidcSignOut, subscribeToTokenRenewal } from './oidcAuth';
 import md5 from 'blueimp-md5';
 
@@ -34,6 +34,12 @@ export class HonoAuth implements IAuth {
   private readonly listeners = new Set<AuthListener>();
   private currentUser: IUser | null = null;
   private initialized = false;
+  // True once the initial restoreSession() has settled. Until then currentUser
+  // is the pre-restore default and must not be reported as a settled state.
+  private sessionResolved = false;
+  // Set when a /auth/me call is rejected with 403 account-suspended. The user
+  // is not signed in, but must be shown the Suspended page rather than login.
+  suspended = false;
   readonly oidcEnabled: boolean;
 
   constructor(api: HonoApiClient) {
@@ -90,7 +96,14 @@ export class HonoAuth implements IAuth {
       this.api.setToken(token);
       const me = await this.api.getMe();
       return new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'oidc');
-    } catch {
+    } catch (e) {
+      // Keep the persisted OIDC session so a reload re-detects suspension
+      // instead of dropping the user to the login page; but drop the in-memory
+      // bearer so subsequent API/WS calls don't re-attempt as the banned user.
+      if (isAccountSuspendedError(e)) {
+        this.suspended = true;
+        this.api.setToken(null);
+      }
       return null;
     }
   }
@@ -116,7 +129,15 @@ export class HonoAuth implements IAuth {
     try {
       const me = await this.api.getMe();
       return new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'password');
-    } catch {
+    } catch (e) {
+      if (isAccountSuspendedError(e)) {
+        // Keep the persisted JWT so a reload re-detects suspension rather than
+        // dropping the user back to the login page; but drop the in-memory
+        // bearer so subsequent API/WS calls don't re-attempt as the banned user.
+        this.suspended = true;
+        this.api.setToken(null);
+        return null;
+      }
       this.clearSession();
       return null;
     }
@@ -131,8 +152,18 @@ export class HonoAuth implements IAuth {
     try {
       const me = await this.api.getMe();
       const user = new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'oidc');
+      // A successful getMe() is authoritative — clear any stale suspended flag
+      // left behind by an earlier failed session-restore.
+      this.suspended = false;
       this.fireListeners(user);
     } catch (e) {
+      if (isAccountSuspendedError(e)) {
+        // A banned account: surface the Suspended page rather than an error.
+        this.suspended = true;
+        this.api.setToken(null);
+        this.fireListeners(null);
+        return;
+      }
       this.api.setToken(null);
       throw e;
     }
@@ -149,8 +180,24 @@ export class HonoAuth implements IAuth {
   async signInWithEmailAndPassword(email: string, password: string): Promise<IUser | null> {
     const { token } = await this.api.login(email, password);
     this.storeLocalToken(token);
-    const me = await this.api.getMe();
+    let me;
+    try {
+      me = await this.api.getMe();
+    } catch (e) {
+      if (isAccountSuspendedError(e)) {
+        // A banned account: surface the Suspended page rather than an error.
+        // Keep the persisted JWT so a reload re-detects suspension; drop the
+        // in-memory bearer so subsequent calls don't re-attempt as the banned user.
+        this.suspended = true;
+        this.api.setToken(null);
+        this.fireListeners(null);
+        return null;
+      }
+      throw e;
+    }
     const user = new HonoUser(me.uid, me.email, me.name, me.emailVerified, 'password');
+    // A successful getMe() is authoritative — clear any stale suspended flag.
+    this.suspended = false;
     this.fireListeners(user);
     return user;
   }
@@ -166,6 +213,7 @@ export class HonoAuth implements IAuth {
 
   async signOut(): Promise<void> {
     const wasOidcUser = this.currentUser?.providerId === 'oidc';
+    this.suspended = false;
     this.clearSession();
     this.fireListeners(null);
     if (wasOidcUser) {
@@ -183,17 +231,28 @@ export class HonoAuth implements IAuth {
   ): () => void {
     this.listeners.add(onNext);
 
-    if (this.initialized) {
-      onNext(this.currentUser);
-    } else {
+    if (!this.initialized) {
       this.initialized = true;
       this.restoreSession()
-        .then(user => this.fireListeners(user))
+        .then(user => {
+          this.sessionResolved = true;
+          this.fireListeners(user);
+        })
         .catch(e => {
+          this.sessionResolved = true;
           this.fireListeners(null);
           onError?.(e instanceof Error ? e : new Error(String(e)));
         });
+    } else if (this.sessionResolved) {
+      // The initial restore has settled — a late subscriber gets the current
+      // value immediately.
+      onNext(this.currentUser);
     }
+    // Otherwise restoreSession() is still in flight: do NOT emit currentUser.
+    // It is still the pre-restore default (null); a subscriber arriving in this
+    // window — e.g. React StrictMode re-running the effect — would mistake it
+    // for "logged out" and redirect away from a protected route. The listener
+    // is registered and will be notified when the restore resolves.
 
     return () => {
       this.listeners.delete(onNext);

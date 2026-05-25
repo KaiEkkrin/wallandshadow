@@ -7,7 +7,7 @@ import { db } from '../db/connection.js';
 import { spritesheets } from '../db/schema.js';
 import { storage, StorageObjectNotFoundError } from '../services/storage.js';
 import { addSprites } from '../services/spriteExtensions.js';
-import { registerUser, apiPost, apiUploadImage, TINY_PNG } from './helpers.js';
+import { registerHigherUser, apiPost, apiUploadImage, TINY_PNG } from './helpers.js';
 import { testS3, testBucket } from './setup.js';
 
 const app = createApp();
@@ -34,6 +34,7 @@ function makeStubStorage(behaviours: Record<string, DownloadBehaviour>): IStorag
   const attempts = new Map<string, number>();
   return {
     deleteMany: paths => storage.deleteMany(paths),
+    copy: (src, dst) => storage.copy(src, dst),
     ref(path: string): IStorageReference {
       const real = storage.ref(path);
       const behaviour = behaviours[path] ?? 'ok';
@@ -59,7 +60,7 @@ function makeStubStorage(behaviours: Record<string, DownloadBehaviour>): IStorag
 }
 
 async function setupOwnerAdventure(): Promise<{ token: string; uid: string; adventureId: string }> {
-  const { token, uid } = await registerUser(app);
+  const { token, uid } = await registerHigherUser(app);
   const res = await apiPost(app, '/api/adventures', { name: 'a1', description: '' }, token);
   expect(res.status).toBe(201);
   const { id } = await res.json() as { id: string };

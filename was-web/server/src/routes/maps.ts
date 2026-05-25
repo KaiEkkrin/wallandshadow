@@ -4,7 +4,7 @@ import type { Change, IMap } from '@wallandshadow/shared';
 import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { db } from '../db/connection.js';
 import { adventures, maps as mapsTable } from '../db/schema.js';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import {
   createMap,
   cloneMap,
@@ -39,7 +39,7 @@ mapRoutes.get('/adventures/:id/maps', async (c) => {
       imagePath: mapsTable.imagePath,
     })
     .from(mapsTable)
-    .where(eq(mapsTable.adventureId, adventureId));
+    .where(and(eq(mapsTable.adventureId, adventureId), isNull(mapsTable.deletedAt)));
 
   return c.json(rows.map(r => ({ adventureId, ...r })));
 });
@@ -64,7 +64,11 @@ mapRoutes.get('/adventures/:id/maps/:mapId', async (c) => {
       imagePath: mapsTable.imagePath,
     })
     .from(mapsTable)
-    .where(and(eq(mapsTable.id, mapId), eq(mapsTable.adventureId, adventureId)))
+    .where(and(
+      eq(mapsTable.id, mapId),
+      eq(mapsTable.adventureId, adventureId),
+      isNull(mapsTable.deletedAt),
+    ))
     .limit(1);
 
   if (!row) {
@@ -179,7 +183,12 @@ mapRoutes.post('/adventures/:id/maps/:mapId/consolidate', async (c) => {
   })
     .from(mapsTable)
     .innerJoin(adventures, eq(mapsTable.adventureId, adventures.id))
-    .where(and(eq(mapsTable.id, mapId), eq(mapsTable.adventureId, adventureId)))
+    .where(and(
+      eq(mapsTable.id, mapId),
+      eq(mapsTable.adventureId, adventureId),
+      isNull(mapsTable.deletedAt),
+      isNull(adventures.deletedAt),
+    ))
     .limit(1);
 
   if (!row) {

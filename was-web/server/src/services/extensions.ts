@@ -35,7 +35,7 @@ import {
   getSpritePathFromId,
 } from '@wallandshadow/shared';
 import { throwApiError } from '../errors.js';
-import { Db } from '../db/connection.js';
+import { Db, DbTransaction } from '../db/connection.js';
 import {
   notifyMapChange,
   notifyAdventuresUser,
@@ -160,9 +160,11 @@ async function replaceMapImages(
 // ─── Shared auth helper ───────────────────────────────────────────────────────
 
 export async function assertAdventureMember(db: Db, uid: string, adventureId: string): Promise<void> {
+  // A soft-deleted adventure is treated as non-existent: this single filter
+  // gates every adventure-scoped read (routes + WS subscribe scopes).
   const [row] = await db.select({ ownerId: adventures.ownerId })
     .from(adventures)
-    .where(eq(adventures.id, adventureId))
+    .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
     .limit(1);
 
   if (!row) {
@@ -188,7 +190,7 @@ export async function assertAdventureMember(db: Db, uid: string, adventureId: st
 export async function assertAdventureOwner(db: Db, uid: string, adventureId: string): Promise<void> {
   const [row] = await db.select({ ownerId: adventures.ownerId })
     .from(adventures)
-    .where(eq(adventures.id, adventureId))
+    .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
     .limit(1);
 
   if (!row) {
@@ -220,8 +222,9 @@ export async function assertAdventureOwner(db: Db, uid: string, adventureId: str
 // preferable to rolling back a committed DB delete. Note that the DB rows that
 // named these paths are already gone by this point, so a failure here is not
 // automatically recoverable: the warning log is the only surviving record of
-// the leak. For the GDPR-critical account-deletion path use auditedDeleteS3
-// instead, which logs orphans at Error level with re-runnable markers.
+// the leak. For high-stakes lifecycle events (account erasure, ban) use
+// auditedDeleteS3 instead, which logs orphans at Error level with re-runnable
+// markers.
 async function bestEffortDeleteS3(
   storage: IStorage,
   logger: ILogger,
@@ -238,18 +241,16 @@ async function bestEffortDeleteS3(
   }
 }
 
-// S3 cleanup for account deletion. Unlike bestEffortDeleteS3, failures here are
-// logged at Error level: orphaned uploads left behind by a GDPR erasure are a
-// data-protection event, not a tolerable inconsistency. Each leaked path is
-// logged on its own line with a stable `ORPHANED_S3_OBJECT` marker so an
-// operator can grep the error log to recover the full path list and re-run the
-// delete manually — S3 DELETE is idempotent for missing keys, so a re-run is
-// safe. Like bestEffortDeleteS3 this never throws: the user's DB rows are
-// already gone, so the erasure itself has succeeded regardless.
+// S3 cleanup for lifecycle events that must not leave orphans (account
+// deletion, account ban). Failures log at Error level with a re-runnable
+// ORPHANED_S3_OBJECT marker so an operator can recover by re-running the
+// deletion (S3 DELETE is idempotent for missing keys). Never throws: the DB
+// rows are already committed.
 async function auditedDeleteS3(
   storage: IStorage,
   logger: ILogger,
   paths: string[],
+  context: string,
   uid: string,
 ): Promise<void> {
   if (paths.length === 0) {
@@ -259,22 +260,57 @@ async function auditedDeleteS3(
     const { failed } = await storage.deleteMany(paths);
     for (const f of failed) {
       logger.logError(
-        `ORPHANED_S3_OBJECT context=user-delete uid=${uid} path=${f.path} — ${f.message}`,
+        `ORPHANED_S3_OBJECT context=${context} uid=${uid} path=${f.path} — ${f.message}`,
       );
     }
   } catch (e) {
-    // A whole-batch throw can leave any path orphaned (deleteMany processes in
-    // chunks, and we cannot tell which chunks committed). Report every path:
-    // over-reporting is harmless because the re-run is idempotent.
     for (const path of paths) {
-      logger.logError(`ORPHANED_S3_OBJECT context=user-delete uid=${uid} path=${path}`);
+      logger.logError(`ORPHANED_S3_OBJECT context=${context} uid=${uid} path=${path}`);
     }
     logger.logError(
-      `S3 batch delete threw during account deletion for uid ${uid} ` +
+      `S3 batch delete threw during ${context} for uid ${uid} ` +
       `(${paths.length} path(s) potentially orphaned)`,
       e,
     );
   }
+}
+
+// Quarantine S3 objects: copy each source to its destination, then delete
+// the sources. Used by banUser. Per-object copy failures are logged as
+// orphan markers and the source is left in place (not deleted) so re-running
+// the ban can pick them up. Delete failures of successfully-copied sources
+// duplicate the object — still logged as orphans with a distinct phase, but
+// not data loss. Never throws.
+export async function auditedQuarantineS3(
+  storage: IStorage,
+  logger: ILogger,
+  pairs: Array<{ src: string; dst: string }>,
+  context: string,
+  uid: string,
+): Promise<void> {
+  if (pairs.length === 0) {
+    return;
+  }
+  // allSettled so one copy failure doesn't abort the others. Failed copies
+  // are dropped from the delete batch — we never delete a source whose copy
+  // didn't succeed.
+  const copyResults = await Promise.allSettled(
+    pairs.map(p => storage.copy(p.src, p.dst)),
+  );
+  const sourcesToDelete: string[] = [];
+  for (let i = 0; i < pairs.length; i++) {
+    const r = copyResults[i];
+    const p = pairs[i];
+    if (r.status === 'fulfilled') {
+      sourcesToDelete.push(p.src);
+    } else {
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      logger.logError(
+        `ORPHANED_S3_OBJECT context=${context}-copy uid=${uid} path=${p.src} dst=${p.dst} — ${msg}`,
+      );
+    }
+  }
+  await auditedDeleteS3(storage, logger, sourcesToDelete, `${context}-delete`, uid);
 }
 
 // ─── Adventure ───────────────────────────────────────────────────────────────
@@ -297,7 +333,7 @@ export async function createAdventure(
     const [{ adventureCount }] = await tx
       .select({ adventureCount: count() })
       .from(adventures)
-      .where(eq(adventures.ownerId, uid));
+      .where(and(eq(adventures.ownerId, uid), isNull(adventures.deletedAt)));
 
     const policy = getUserPolicy(user.level as UserLevel);
     if (Number(adventureCount) >= policy.adventures) {
@@ -362,6 +398,69 @@ export async function deleteAdventure(
 
 // ─── User account deletion ───────────────────────────────────────────────────
 
+// Shared by deleteUser and banUser. Removes every reference to `uid` that
+// other users' content holds: the user's player rows, their invites, any
+// imagePath / map_images / spritesheet entry that points at one of their
+// images, and the userId on map_changes (NULLed to preserve history while
+// dropping the FK). Returns the set of adventure ids whose spritesheets were
+// modified, so the caller can fire spritesheet notifications. Must run
+// inside a transaction.
+//
+// Note: when this runs from banUser, the target's own adventures are
+// merely soft-deleted (still present), so the spec-mandated scrub also
+// touches them. Their imagePath columns reset to '' and their map_images
+// rows are deleted. This is consistent: the underlying S3 objects are
+// quarantined, so leaving stale paths in place would point at moved blobs.
+export async function scrubUserFootprint(
+  tx: DbTransaction,
+  uid: string,
+  imagePaths: string[],
+): Promise<Set<string>> {
+  await tx.delete(adventurePlayers).where(eq(adventurePlayers.userId, uid));
+  await tx.delete(invites).where(eq(invites.ownerId, uid));
+
+  const affectedSheetAdventureIds = new Set<string>();
+  if (imagePaths.length > 0) {
+    await tx.update(adventures).set({ imagePath: '' })
+      .where(inArray(adventures.imagePath, imagePaths));
+    await tx.update(maps).set({ imagePath: '' })
+      .where(inArray(maps.imagePath, imagePaths));
+    await tx.delete(mapImages).where(inArray(mapImages.path, imagePaths));
+
+    // One indexed lookup for every sheet referencing any of the user's
+    // images, rather than a containment query per path. Each `@>` clause is
+    // served by the GIN index on `spritesheets.sprites`; the planner
+    // BitmapOr's them.
+    const pathSet = new Set(imagePaths);
+    const sheetRowsToScrub = await tx.select({
+      id: spritesheets.id,
+      adventureId: spritesheets.adventureId,
+      sprites: spritesheets.sprites,
+      freeSpaces: spritesheets.freeSpaces,
+    })
+      .from(spritesheets)
+      .where(or(...imagePaths.map(p =>
+        sql`${spritesheets.sprites} @> ${JSON.stringify([p])}::jsonb`)));
+
+    for (const row of sheetRowsToScrub) {
+      const sprites = row.sprites as string[];
+      let freed = 0;
+      const newSprites = sprites.map(s => {
+        if (pathSet.has(s)) { freed += 1; return ''; }
+        return s;
+      });
+      if (freed === 0) continue;
+      await tx.update(spritesheets)
+        .set({ sprites: newSprites as unknown as object, freeSpaces: row.freeSpaces + freed })
+        .where(eq(spritesheets.id, row.id));
+      affectedSheetAdventureIds.add(row.adventureId);
+    }
+  }
+
+  await tx.update(mapChanges).set({ userId: null }).where(eq(mapChanges.userId, uid));
+  return affectedSheetAdventureIds;
+}
+
 export async function deleteUser(
   db: Db,
   storage: IStorage,
@@ -391,59 +490,14 @@ export async function deleteUser(
   const coMemberIds = Array.from(new Set(coMemberRows.map(r => r.userId)));
   const otherAdventureIds = otherAdventureRows.map(r => r.adventureId);
 
-  const affectedSheetAdventureIds = new Set<string>();
-  await db.transaction(async (tx) => {
+  const affectedSheetAdventureIds = await db.transaction(async (tx) => {
     await tx.delete(adventures).where(eq(adventures.ownerId, uid));
-    await tx.delete(adventurePlayers).where(eq(adventurePlayers.userId, uid));
-    await tx.delete(invites).where(eq(invites.ownerId, uid));
-    // Scrub stale references to this user's images from other adventures the
-    // user was a member of. Without this, spritesheets, map_images, and map
-    // backgrounds in those adventures keep pointing at paths whose S3 objects
-    // and images rows are about to vanish — extending a spritesheet that holds
-    // such a reference then 500s when createMontage tries to download it.
-    if (imagePaths.length > 0) {
-      await tx.update(adventures).set({ imagePath: '' })
-        .where(inArray(adventures.imagePath, imagePaths));
-      await tx.update(maps).set({ imagePath: '' })
-        .where(inArray(maps.imagePath, imagePaths));
-      await tx.delete(mapImages).where(inArray(mapImages.path, imagePaths));
-
-      // One indexed lookup for every sheet referencing any of the user's
-      // images, rather than a containment query per path. Each `@>` clause is
-      // served by the GIN index on `spritesheets.sprites`; the planner
-      // BitmapOr's them.
-      const pathSet = new Set(imagePaths);
-      const sheetRowsToScrub = await tx.select({
-        id: spritesheets.id,
-        adventureId: spritesheets.adventureId,
-        sprites: spritesheets.sprites,
-        freeSpaces: spritesheets.freeSpaces,
-      })
-        .from(spritesheets)
-        .where(or(...imagePaths.map(p =>
-          sql`${spritesheets.sprites} @> ${JSON.stringify([p])}::jsonb`)));
-
-      for (const row of sheetRowsToScrub) {
-        const sprites = row.sprites as string[];
-        let freed = 0;
-        const newSprites = sprites.map(s => {
-          if (pathSet.has(s)) { freed += 1; return ''; }
-          return s;
-        });
-        if (freed === 0) continue; // defensive — every returned row should match
-        await tx.update(spritesheets)
-          .set({ sprites: newSprites as unknown as object, freeSpaces: row.freeSpaces + freed })
-          .where(eq(spritesheets.id, row.id));
-        affectedSheetAdventureIds.add(row.adventureId);
-      }
-    }
-    // NULL preserves the change row + history while releasing the FK so the
-    // user can be deleted.
-    await tx.update(mapChanges).set({ userId: null }).where(eq(mapChanges.userId, uid));
+    const affected = await scrubUserFootprint(tx, uid, imagePaths);
     await tx.delete(users).where(eq(users.id, uid));
+    return affected;
   });
 
-  await auditedDeleteS3(storage, logger, [...imagePaths, ...sheetPaths], uid);
+  await auditedDeleteS3(storage, logger, [...imagePaths, ...sheetPaths], 'user-delete', uid);
 
   await notifySafe(
     notifyAdventuresUsers(coMemberIds),
@@ -468,9 +522,11 @@ export async function createMap(
 
   await db.transaction(async (tx) => {
     const [adventure] = await tx.select({ ownerId: adventures.ownerId })
-      .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
+      .from(adventures)
+      .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
+      .limit(1);
     if (!adventure) {
-      throwApiError('invalid-argument', 'No such adventure');
+      throwApiError('not-found', 'Adventure not found');
     }
     if (adventure.ownerId !== uid) {
       throwApiError('not-found', 'Adventure not found');
@@ -485,7 +541,7 @@ export async function createMap(
     const [{ mapCount }] = await tx
       .select({ mapCount: count() })
       .from(maps)
-      .where(eq(maps.adventureId, adventureId));
+      .where(and(eq(maps.adventureId, adventureId), isNull(maps.deletedAt)));
 
     const policy = getUserPolicy(user.level as UserLevel);
     if (Number(mapCount) >= policy.maps) {
@@ -509,9 +565,15 @@ export async function cloneMap(
 ): Promise<string> {
   const [mapResult, adventureResult] = await Promise.all([
     db.select().from(maps)
-      .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId))).limit(1),
+      .where(and(
+        eq(maps.id, mapId),
+        eq(maps.adventureId, adventureId),
+        isNull(maps.deletedAt),
+      )).limit(1),
     db.select({ name: adventures.name, ownerId: adventures.ownerId })
-      .from(adventures).where(eq(adventures.id, adventureId)).limit(1),
+      .from(adventures)
+      .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
+      .limit(1),
   ]);
 
   const [existingMap] = mapResult;
@@ -521,6 +583,12 @@ export async function cloneMap(
 
   const [adventure] = adventureResult;
   if (!adventure) {
+    throwApiError('not-found', 'Adventure not found');
+  }
+  // Authorise BEFORE any side-effecting work. The route's assertAdventureMember
+  // gate lets non-owner members in; consolidateMapChanges writes a base row and
+  // broadcasts NOTIFY, so the owner check must precede it.
+  if (adventure.ownerId !== uid) {
     throwApiError('not-found', 'Adventure not found');
   }
 
@@ -554,7 +622,7 @@ export async function cloneMap(
     const [{ mapCount }] = await tx
       .select({ mapCount: count() })
       .from(maps)
-      .where(eq(maps.adventureId, adventureId));
+      .where(and(eq(maps.adventureId, adventureId), isNull(maps.deletedAt)));
 
     const policy = getUserPolicy(user.level as UserLevel);
     if (Number(mapCount) >= policy.maps) {
@@ -640,7 +708,7 @@ async function tryConsolidateMapChanges(
 
     const [user] = await tx.select({ level: users.level })
       .from(users).where(eq(users.id, m.owner)).limit(1);
-    const ownerPolicy = getUserPolicy((user?.level ?? 'standard') as UserLevel);
+    const ownerPolicy = getUserPolicy((user?.level ?? 'basic') as UserLevel);
 
     const { tracker, tokens: tokenDict } = buildMapChangeTracker(m, ownerPolicy);
 
@@ -745,7 +813,9 @@ export async function consolidateMapChanges(
 
 export async function deleteMap(db: Db, uid: string, adventureId: string, mapId: string): Promise<void> {
   const [adventure] = await db.select({ ownerId: adventures.ownerId })
-    .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
+    .from(adventures)
+    .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
+    .limit(1);
   if (!adventure) {
     throwApiError('not-found', 'Adventure not found');
   }
@@ -753,11 +823,26 @@ export async function deleteMap(db: Db, uid: string, adventureId: string, mapId:
     throwApiError('not-found', 'Adventure not found');
   }
 
+  // A soft-deleted map is gone for every purpose except admin views — refuse
+  // the delete explicitly so the caller doesn't get a silent 204 + spurious
+  // notifyAdventureDetail.
+  const [mapRow] = await db.select({ id: maps.id })
+    .from(maps)
+    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId), isNull(maps.deletedAt)))
+    .limit(1);
+  if (!mapRow) {
+    throwApiError('not-found', 'Map not found');
+  }
+
   // CASCADE handles map_changes and map_images. No S3 cleanup here: every
   // image referenced by a map (background, placed images, token sprites) is a
   // user-owned object in the images table that survives the map and is only
   // collected when the user is deleted.
-  await db.delete(maps).where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)));
+  await db.delete(maps).where(and(
+    eq(maps.id, mapId),
+    eq(maps.adventureId, adventureId),
+    isNull(maps.deletedAt),
+  ));
 
   await notifySafe(notifyAdventureDetail(adventureId));
 }
@@ -771,7 +856,9 @@ export async function inviteToAdventure(
   policy: IInviteExpiryPolicy = defaultInviteExpiryPolicy,
 ): Promise<string> {
   const [adventure] = await db.select({ ownerId: adventures.ownerId })
-    .from(adventures).where(eq(adventures.id, adventureId)).limit(1);
+    .from(adventures)
+    .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
+    .limit(1);
   if (!adventure) {
     throwApiError('not-found', 'Adventure not found');
   }
@@ -840,10 +927,20 @@ export async function updateMap(
   fields: { name?: string; description?: string; imagePath?: string; ffa?: boolean; enableGroupVision?: boolean },
 ): Promise<void> {
   await assertAdventureOwner(db, uid, adventureId);
+  // A soft-deleted map within a live adventure is gone for every purpose
+  // except admin views — refuse the mutation explicitly so the caller doesn't
+  // get a silent 204 + spurious NOTIFY.
+  const [mapRow] = await db.select({ id: maps.id })
+    .from(maps)
+    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId), isNull(maps.deletedAt)))
+    .limit(1);
+  if (!mapRow) {
+    throwApiError('not-found', 'Map not found');
+  }
   if (Object.keys(fields).length === 0) return;
   await db.update(maps)
     .set(fields)
-    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)));
+    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId), isNull(maps.deletedAt)));
 
   await notifySafe(notifyAdventureDetail(adventureId));
 }
@@ -1071,7 +1168,7 @@ export async function addMapChanges(
 
   const [mapRow] = await db.select({ id: maps.id })
     .from(maps)
-    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId)))
+    .where(and(eq(maps.id, mapId), eq(maps.adventureId, adventureId), isNull(maps.deletedAt)))
     .limit(1);
   if (!mapRow) {
     throwApiError('not-found', 'Map not found');
@@ -1184,7 +1281,10 @@ export async function joinAdventure(
     // FOR UPDATE serialises concurrent joins to this adventure: without it,
     // two joiners can both pass the cap check at READ COMMITTED and both insert.
     const [adventure] = await tx.select({ ownerId: adventures.ownerId, name: adventures.name })
-      .from(adventures).where(eq(adventures.id, adventureId)).for('update').limit(1);
+      .from(adventures)
+      .where(and(eq(adventures.id, adventureId), isNull(adventures.deletedAt)))
+      .for('update')
+      .limit(1);
     if (!adventure) {
       throwApiError('not-found', 'No such adventure');
     }
@@ -1200,7 +1300,7 @@ export async function joinAdventure(
     ]);
 
     const [ownerUser] = ownerResult;
-    const ownerPolicy = getUserPolicy((ownerUser?.level ?? 'standard') as UserLevel);
+    const ownerPolicy = getUserPolicy((ownerUser?.level ?? 'basic') as UserLevel);
     const [{ playerCount }] = countResult;
     if (Number(playerCount) >= ownerPolicy.players) {
       throwApiError('permission-denied', 'This adventure already has the maximum number of players');

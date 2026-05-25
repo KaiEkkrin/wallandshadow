@@ -36,8 +36,9 @@ export const maxProfileEntries = 7;
 
 // Describes what permissions, caps different kinds of user have.
 export enum UserLevel {
-  Standard = "standard",
-  Gold = "gold"
+  Basic = "basic",
+  Higher = "higher",
+  Admin = "admin"
 }
 
 export interface IUserPolicy { // one per user level
@@ -49,27 +50,51 @@ export interface IUserPolicy { // one per user level
   objectsWarning: number, // soft-cap on objects per map
 }
 
-export const standardUser: IUserPolicy = {
-  adventures: 3,
-  images: 50,
-  maps: 12,
-  players: 8,
+// The Basic tier has the lowest entity and object limits and cannot upload
+// images at all (images: 0). New accounts start here; an admin promotes them.
+export const basicUser: IUserPolicy = {
+  adventures: 2,
+  images: 0,
+  maps: 6,
+  players: 6,
+  objects: 4000,
+  objectsWarning: 3600
+};
+
+export const higherUser: IUserPolicy = {
+  adventures: 8,
+  images: 200,
+  maps: 24,
+  players: 12,
   objects: 10000,
   objectsWarning: 9000
 };
 
-export const goldUser: IUserPolicy = {
-  adventures: 15,
-  images: 500,
+export const adminUser: IUserPolicy = {
+  adventures: 50,
+  images: 2000,
   maps: 100,
-  players: 16,
+  players: 24,
   objects: 10000,
   objectsWarning: 9000
 };
 
 export function getUserPolicy(level: UserLevel): IUserPolicy {
   switch (level) {
-    case UserLevel.Gold: return goldUser;
-    default: return standardUser;
+    case UserLevel.Higher: return higherUser;
+    case UserLevel.Admin: return adminUser;
+    case UserLevel.Basic: return basicUser;
+    // An unrecognised level (e.g. a legacy DB value) degrades to least-privilege.
+    default: return basicUser;
   }
+}
+
+// True if the user's tier permits uploading images at all.
+export function canUploadImages(level: UserLevel): boolean {
+  return getUserPolicy(level).images > 0;
+}
+
+// True if the user is an administrator.
+export function isAdmin(level: UserLevel): boolean {
+  return level === UserLevel.Admin;
 }

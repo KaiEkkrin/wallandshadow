@@ -440,7 +440,7 @@ export class MapUi {
     this.changeState({ ...this._state, keysDown: newKeysDown });
   }
 
-  keyUp(e: KeyboardEvent, canDoAnything: boolean) {
+  keyUp(e: KeyboardEvent, canDoAnything: boolean, canUploadImages: boolean) {
     const newState = {
       ...this._state,
       keysDown: keysDownReducer(this._state.keysDown, { key: e.key, down: false })
@@ -475,7 +475,7 @@ export class MapUi {
       newState.layer = Layer.Object;
       newState.editMode = canDoAnything ? EditMode.Area : EditMode.PlayerArea;
     } else if (e.key === 'i' || e.key === 'I') {
-      if (canDoAnything) {
+      if (canDoAnything && canUploadImages) {
         newState.layer = Layer.Image;
         newState.editMode = EditMode.Image;
       }

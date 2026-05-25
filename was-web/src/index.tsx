@@ -6,6 +6,11 @@ import * as serviceWorker from './serviceWorker';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 
+// Self-hosted brand display font (SIL OFL 1.1) — used by the nav-bar logo.
+// Self-hosting keeps it out of Google's CDN and under the build-time licence
+// notice generator.
+import '@fontsource/princess-sofia';
+
 // Delete the static banner made to appease non-React-aware search engines
 const staticBanner = document.getElementById('static_banner');
 staticBanner?.remove();

@@ -1,4 +1,6 @@
 import type {
+  IAdminUserDetail,
+  IAdminUserSummary,
   IAdventure,
   IAdventureSummary,
   IApi,
@@ -13,6 +15,7 @@ import type {
   ISprite,
   ISpritesheet,
   MapType,
+  UserLevel,
 } from '@wallandshadow/shared';
 import { spriteConverter } from '@wallandshadow/shared';
 import { ApiError, HonoApiClient } from './honoApiClient';
@@ -269,5 +272,30 @@ export class HonoApi implements IApi {
       }
     }
     return sprites;
+  }
+
+  // ── Admin ──────────────────────────────────────────────────────────────────
+
+  async adminSearchUser(term: string): Promise<IAdminUserSummary | undefined> {
+    try {
+      return await this.client.adminSearchUser(term);
+    } catch (e) {
+      // A 404 means "no such account" — a normal search miss, not an error.
+      if (isNotFound(e)) return undefined;
+      throw e;
+    }
+  }
+
+  async adminGetUser(id: string): Promise<IAdminUserDetail> {
+    // A 404 here bubbles as an error: the caller navigated to a real id.
+    return await this.client.adminGetUser(id);
+  }
+
+  async adminSetUserLevel(id: string, level: UserLevel): Promise<IAdminUserSummary> {
+    return await this.client.adminSetUserLevel(id, level);
+  }
+
+  async adminBanUser(id: string): Promise<IAdminUserSummary> {
+    return await this.client.adminBanUser(id);
   }
 }

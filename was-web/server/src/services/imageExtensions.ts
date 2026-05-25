@@ -2,7 +2,7 @@ import { ICharacter, IStorage, ILogger, getUserPolicy, UserLevel } from '@wallan
 import { throwApiError } from '../errors.js';
 import { Db } from '../db/connection.js';
 import { adventures, adventurePlayers, mapChanges, maps, mapImages, images, spritesheets, users } from '../db/schema.js';
-import { eq, and, sql, count } from 'drizzle-orm';
+import { eq, and, sql, count, isNull } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { assertAdventureMember, scrubMapSpriteReferences } from './extensions.js';
 import {
@@ -34,9 +34,14 @@ export async function addImage(
       throwApiError('permission-denied', 'No profile available');
     }
 
-    const [{ imageCount }] = await tx.select({ imageCount: count() })
-      .from(images).where(eq(images.userId, uid));
     const policy = getUserPolicy(user.level as UserLevel);
+    if (policy.images === 0) {
+      throwApiError('permission-denied', 'Your account tier does not permit image uploads.');
+    }
+
+    const [{ imageCount }] = await tx.select({ imageCount: count() })
+      .from(images)
+      .where(and(eq(images.userId, uid), isNull(images.deletedAt)));
     if (imageCount >= policy.images) {
       throwApiError('resource-exhausted', 'You have too many images; delete one to upload another.');
     }
@@ -69,37 +74,55 @@ export async function assertImageDownloadAccess(
   db: Db,
   logger: ILogger,
   uid: string,
-  path: string,
-): Promise<void> {
+  rawPath: string,
+): Promise<string> {
+  // Normalise once: `images.path` (and the other reference columns) are stored
+  // slash-free. A leading `/` from the client must not skip the soft-delete
+  // lookup or fall through the UNION's exact-match comparisons. The caller
+  // must use the returned canonical path for any storage.ref() call so it
+  // never signs a URL keyed by a non-canonical variant.
+  const path = rawPath.replace(/^\/+/, '');
   // Case 1: images/{ownerUid}/{id}
   const imageOwner = getImageUid(path);
   if (imageOwner) {
-    if (imageOwner === uid) return; // Owner can always download their own images
+    // A soft-deleted image is treated as gone for everyone, the owner included —
+    // this check runs before the owner shortcut and the reference scan below.
+    const [imageRow] = await db.select({ deletedAt: images.deletedAt })
+      .from(images)
+      .where(eq(images.path, path))
+      .limit(1);
+    if (imageRow?.deletedAt) {
+      logger.logWarning(`Image download denied (soft-deleted) for user ${uid}, path ${path}`);
+      throwApiError('not-found', 'Image not found');
+    }
+
+    if (imageOwner === uid) return path; // Owner can always download their own images
 
     // Four grant sources: adventure background, map background, spritesheet source,
-    // or an image placed onto a map (tracked in map_images junction).
+    // or an image placed onto a map (tracked in map_images junction). A soft-deleted
+    // adventure or map grants nothing, so each branch also filters deleted_at.
     const memberOfAdventure = sql`(${adventures.ownerId} = ${uid} OR (${adventurePlayers.userId} = ${uid} AND ${adventurePlayers.allowed} = true))`;
     const result = await db.execute<{ found: boolean }>(sql`
       SELECT EXISTS (
         SELECT 1 FROM ${adventures}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${adventures.imagePath} = ${path} AND ${memberOfAdventure}
+        WHERE ${adventures.imagePath} = ${path} AND ${adventures.deletedAt} IS NULL AND ${memberOfAdventure}
         UNION ALL
         SELECT 1 FROM ${maps}
           JOIN ${adventures} ON ${adventures.id} = ${maps.adventureId}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${maps.imagePath} = ${path} AND ${memberOfAdventure}
+        WHERE ${maps.imagePath} = ${path} AND ${maps.deletedAt} IS NULL AND ${adventures.deletedAt} IS NULL AND ${memberOfAdventure}
         UNION ALL
         SELECT 1 FROM ${spritesheets}
           JOIN ${adventures} ON ${adventures.id} = ${spritesheets.adventureId}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${spritesheets.sprites}::jsonb @> ${JSON.stringify([path])}::jsonb AND ${memberOfAdventure}
+        WHERE ${spritesheets.sprites}::jsonb @> ${JSON.stringify([path])}::jsonb AND ${adventures.deletedAt} IS NULL AND ${memberOfAdventure}
         UNION ALL
         SELECT 1 FROM ${mapImages}
           JOIN ${maps} ON ${maps.id} = ${mapImages.mapId}
           JOIN ${adventures} ON ${adventures.id} = ${maps.adventureId}
           LEFT JOIN ${adventurePlayers} ON ${adventurePlayers.adventureId} = ${adventures.id}
-        WHERE ${mapImages.path} = ${path} AND ${memberOfAdventure}
+        WHERE ${mapImages.path} = ${path} AND ${maps.deletedAt} IS NULL AND ${adventures.deletedAt} IS NULL AND ${memberOfAdventure}
       ) AS found
     `);
     // Return 404 rather than 403 to avoid leaking whether the image exists (RFC 9110 §15.5.4).
@@ -109,7 +132,7 @@ export async function assertImageDownloadAccess(
       logger.logWarning(`Image download denied (not referenced) for user ${uid}, path ${path}`);
       throwApiError('not-found', 'Image not found');
     }
-    return;
+    return path;
   }
 
   // Case 2: sprites/{id}.png
@@ -130,7 +153,7 @@ export async function assertImageDownloadAccess(
       logger.logWarning(`Image download denied (not adventure member) for user ${uid}, path ${path}`);
       throwApiError('not-found', 'Image not found');
     }
-    return;
+    return path;
   }
 
   // Case 3: unrecognised path — also 404 (don't reveal which paths are valid)

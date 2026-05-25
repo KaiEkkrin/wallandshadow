@@ -13,7 +13,7 @@ import { images, spritesheets } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { storage } from '../services/storage.js';
 import {
-  registerUser,
+  registerHigherUser,
   apiGet,
   apiPost,
   apiPatch,
@@ -93,7 +93,7 @@ function spriteCharacter(source: string): ICharacter {
 
 describe('image upload (POST /api/images)', () => {
   test('successful upload returns 201 with correct shape', async () => {
-    const { token, uid } = await registerUser(app);
+    const { token, uid } = await registerHigherUser(app);
     const res = await apiUploadImage(app, token, TINY_PNG, 'photo.png', 'image/png', 'My Photo');
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: string; name: string; path: string };
@@ -103,13 +103,13 @@ describe('image upload (POST /api/images)', () => {
   });
 
   test('uploaded object exists in S3', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const { path } = await uploadImage(token, 'Test');
     expect(await s3ObjectExists(path)).toBe(true);
   });
 
   test('upload appears in GET /api/images', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const { id } = await uploadImage(token, 'My Image');
     const list = await listImages(token);
     expect(list).toHaveLength(1);
@@ -118,7 +118,7 @@ describe('image upload (POST /api/images)', () => {
   });
 
   test('name defaults to filename when not provided', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const res = await apiUploadImage(app, token, TINY_PNG, 'photo.png', 'image/png');
     expect(res.status).toBe(201);
     const { name } = (await res.json()) as { name: string };
@@ -126,7 +126,7 @@ describe('image upload (POST /api/images)', () => {
   });
 
   test('rejects non-image MIME type with 400', async () => {
-    const { token, uid } = await registerUser(app);
+    const { token, uid } = await registerHigherUser(app);
     const res = await apiUploadImage(app, token, Buffer.from('hello'), 'data.txt', 'text/plain');
     expect(res.status).toBe(400);
     // Verify no image row in DB
@@ -135,7 +135,7 @@ describe('image upload (POST /api/images)', () => {
   });
 
   test('rejects request without file field with 400', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const res = await app.request('/api/images', {
       method: 'POST',
       headers: {
@@ -155,7 +155,7 @@ describe('image upload (POST /api/images)', () => {
   });
 
   test('multiple uploads accumulate in image list', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     await uploadImage(token, 'First');
     await uploadImage(token, 'Second');
     const list = await listImages(token);
@@ -163,18 +163,18 @@ describe('image upload (POST /api/images)', () => {
   });
 
   test('image list is scoped to the authenticated user', async () => {
-    const { token: tokenA } = await registerUser(app);
-    const { token: tokenB } = await registerUser(app);
+    const { token: tokenA } = await registerHigherUser(app);
+    const { token: tokenB } = await registerHigherUser(app);
     await uploadImage(tokenA, 'A image');
     const listB = await listImages(tokenB);
     expect(listB).toHaveLength(0);
   });
 
   test('enforces image quota', async () => {
-    const { token, uid } = await registerUser(app);
+    const { token, uid } = await registerHigherUser(app);
 
-    // Insert images directly up to one below the standard quota (50)
-    const quota = 50;
+    // Insert images directly up to one below the Higher-tier quota (200)
+    const quota = 200;
     await db.insert(images).values(
       Array.from({ length: quota - 1 }, (_, i) => ({
         id: `00000000-0000-0000-0000-${String(i).padStart(12, '0')}`,
@@ -184,11 +184,11 @@ describe('image upload (POST /api/images)', () => {
       }))
     );
 
-    // 50th upload should succeed
+    // The upload that fills the last quota slot should succeed
     const penultimate = await apiUploadImage(app, token, TINY_PNG, 'ok.png', 'image/png');
     expect(penultimate.status).toBe(201);
 
-    // 51st should be rejected
+    // The next upload, now over quota, should be rejected
     const over = await apiUploadImage(app, token, TINY_PNG, 'over.png', 'image/png');
     expect(over.status).toBe(429);
   });
@@ -198,7 +198,7 @@ describe('image upload (POST /api/images)', () => {
 
 describe('image list (GET /api/images)', () => {
   test('returns empty list when user has no images', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const list = await listImages(token);
     expect(list).toEqual([]);
   });
@@ -213,7 +213,7 @@ describe('image list (GET /api/images)', () => {
 
 describe('image deletion (DELETE /api/images/*)', () => {
   test('successful deletion returns 204 and removes S3 object and DB row', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const { path } = await uploadImage(token, 'To delete');
     expect(await s3ObjectExists(path)).toBe(true);
 
@@ -228,8 +228,8 @@ describe('image deletion (DELETE /api/images/*)', () => {
   });
 
   test('cannot delete another user\'s image', async () => {
-    const { token: tokenA } = await registerUser(app);
-    const { token: tokenB } = await registerUser(app);
+    const { token: tokenA } = await registerHigherUser(app);
+    const { token: tokenB } = await registerHigherUser(app);
     const { path } = await uploadImage(tokenA, 'Protected');
 
     const apiPath = path.replace(/^images\//, '');
@@ -243,7 +243,7 @@ describe('image deletion (DELETE /api/images/*)', () => {
   });
 
   test('deletion clears imagePath on adventure', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const { path } = await uploadImage(token, 'Adventure image');
 
@@ -262,7 +262,7 @@ describe('image deletion (DELETE /api/images/*)', () => {
   });
 
   test('deletion clears imagePath on map', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const mapId = await createMap(token, adventureId);
     const { path } = await uploadImage(token, 'Map image');
@@ -291,7 +291,7 @@ describe('image deletion (DELETE /api/images/*)', () => {
 
 describe('spritesheet creation (POST /api/adventures/:id/spritesheets)', () => {
   test('creates sprites from uploaded images and returns them', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const img1 = await uploadImage(token, 'Sprite 1');
     const img2 = await uploadImage(token, 'Sprite 2');
@@ -311,7 +311,7 @@ describe('spritesheet creation (POST /api/adventures/:id/spritesheets)', () => {
   }, 30000);
 
   test('creates S3 spritesheet object', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const img = await uploadImage(token, 'Sprite');
 
@@ -324,7 +324,7 @@ describe('spritesheet creation (POST /api/adventures/:id/spritesheets)', () => {
   }, 30000);
 
   test('second identical request returns existing sprites without creating a new sheet', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const img = await uploadImage(token, 'Sprite');
 
@@ -343,8 +343,8 @@ describe('spritesheet creation (POST /api/adventures/:id/spritesheets)', () => {
   }, 60000);
 
   test('non-member cannot create sprites', async () => {
-    const { token: ownerToken } = await registerUser(app);
-    const { token: strangerToken } = await registerUser(app);
+    const { token: ownerToken } = await registerHigherUser(app);
+    const { token: strangerToken } = await registerHigherUser(app);
     const adventureId = await createAdventure(ownerToken);
     const img = await uploadImage(ownerToken, 'Sprite');
 
@@ -357,7 +357,7 @@ describe('spritesheet creation (POST /api/adventures/:id/spritesheets)', () => {
   });
 
   test('rejects more than 10 sources with 400', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const sources = Array.from({ length: 11 }, (_, i) => `images/uid/fake-${i}`);
 
@@ -378,7 +378,7 @@ describe('spritesheet creation (POST /api/adventures/:id/spritesheets)', () => {
   });
 
   test('gap-filling: deleted image slot is reused for new sprite', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
 
     // Upload 2 images and create a 2-slot sheet
@@ -416,7 +416,7 @@ describe('spritesheet creation (POST /api/adventures/:id/spritesheets)', () => {
 
 describe('end-to-end storage flow', () => {
   test('upload → set paths → create sprites → delete → verify cascade → new upload → gap fill', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const mapId = await createMap(token, adventureId);
 
@@ -466,7 +466,7 @@ describe('end-to-end storage flow', () => {
 
 describe('sprite reference cleanup on image deletion', () => {
   test('deletion scrubs the sprite from any token that referenced it', async () => {
-    const { token, uid } = await registerUser(app);
+    const { token, uid } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const mapId = await createMap(token, adventureId);
     const img = await uploadImage(token, 'Tokened');
@@ -498,7 +498,7 @@ describe('sprite reference cleanup on image deletion', () => {
   }, 60000);
 
   test('deletion scrubs the sprite from characters in adventure_players', async () => {
-    const { token, uid } = await registerUser(app);
+    const { token, uid } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const img = await uploadImage(token, 'Charactered');
 
@@ -533,7 +533,7 @@ describe('sprite reference cleanup on image deletion', () => {
   test('deletion scrubs a token even when no spritesheet references the sprite', async () => {
     // Guards the token scrub against being skipped when the deleted image is
     // still referenced by a map but no current spritesheet points at it.
-    const { token, uid } = await registerUser(app);
+    const { token, uid } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const mapId = await createMap(token, adventureId);
     const img = await uploadImage(token, 'Tokened');
@@ -574,7 +574,7 @@ describe('sprite reference cleanup on image deletion', () => {
   test('deletion scrubs a character even when no spritesheet references the sprite', async () => {
     // A character can hold a sprite reference with no spritesheet at all, so
     // the character scrub must not depend on the affected-spritesheet set.
-    const { token, uid } = await registerUser(app);
+    const { token, uid } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const img = await uploadImage(token, 'Sheetless character');
 
@@ -602,7 +602,7 @@ describe('sprite reference cleanup on image deletion', () => {
     // Guards against emitting cleanup batches for maps where the deleted
     // image was never referenced — the JSONB EXISTS pre-filter must catch
     // those before scrubMapSpriteReferences runs.
-    const { token, uid } = await registerUser(app);
+    const { token, uid } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const mapId = await createMap(token, adventureId);
     const img = await uploadImage(token, 'Unused');
@@ -644,7 +644,7 @@ describe('sprite reference cleanup on image deletion', () => {
 
 describe('Storage.deleteMany', () => {
   test('removes multiple existing objects in one call', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const a = await uploadImage(token, 'A');
     const b = await uploadImage(token, 'B');
     expect(await s3ObjectExists(a.path)).toBe(true);
@@ -661,7 +661,7 @@ describe('Storage.deleteMany', () => {
     // The user's stated requirement: if a deletion fails part way through, a
     // second attempt with the same path list must succeed. S3 DELETE returns
     // success for missing keys, so the second pass is a no-op.
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const a = await uploadImage(token, 'A');
     const b = await uploadImage(token, 'B');
 
@@ -675,7 +675,7 @@ describe('Storage.deleteMany', () => {
   });
 
   test('tolerates a mix of present and never-existed keys', async () => {
-    const { token, uid } = await registerUser(app);
+    const { token, uid } = await registerHigherUser(app);
     const real = await uploadImage(token, 'Real');
     const phantom = `images/${uid}/never-existed`;
 
@@ -695,7 +695,7 @@ describe('Storage.deleteMany', () => {
 
 describe('adventure deletion cleans up spritesheet PNGs', () => {
   test('DELETE /api/adventures/:id removes spritesheet objects but leaves user images', async () => {
-    const { token, uid } = await registerUser(app);
+    const { token, uid } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const img1 = await uploadImage(token, 'Sprite 1');
     const img2 = await uploadImage(token, 'Sprite 2');
@@ -731,7 +731,7 @@ describe('adventure deletion cleans up spritesheet PNGs', () => {
   }, 60000);
 
   test('adventure with no spritesheet deletes cleanly', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
 
     const delRes = await apiDelete(app, `/api/adventures/${adventureId}`, token);
@@ -743,7 +743,7 @@ describe('adventure deletion cleans up spritesheet PNGs', () => {
 
 describe('user deletion cleans up images and spritesheets', () => {
   test('DELETE /api/auth/me removes the user\'s images AND their adventures\' spritesheets', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
     const adventureId = await createAdventure(token);
     const img1 = await uploadImage(token, 'Sprite 1');
     const img2 = await uploadImage(token, 'Sprite 2');
@@ -767,7 +767,7 @@ describe('user deletion cleans up images and spritesheets', () => {
   }, 60000);
 
   test('user with no images and no adventures deletes cleanly', async () => {
-    const { token } = await registerUser(app);
+    const { token } = await registerHigherUser(app);
 
     const delRes = await apiDelete(app, '/api/auth/me', token);
     expect(delRes.status).toBe(200);

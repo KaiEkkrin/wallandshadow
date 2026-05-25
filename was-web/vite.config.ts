@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import { readFileSync, writeFileSync, copyFileSync } from 'fs';
 import { execSync } from 'child_process';
 import packageJson from './package.json';
+import { thirdPartyNotices } from './vite-plugins/third-party-notices';
 
 // Get Git commit hash (first 8 characters)
 const getGitCommitHash = (): string => {
@@ -126,7 +127,7 @@ const processAppHtml = () => ({
 });
 
 export default defineConfig({
-  plugins: [react(), copyLandingPage(), processAppHtml(), copyRobotsTxt()],
+  plugins: [react(), thirdPartyNotices(), copyLandingPage(), processAppHtml(), copyRobotsTxt()],
   resolve: {
     alias: {
       '@wallandshadow/shared': resolve(__dirname, 'packages/shared/src/index.ts'),

@@ -5,7 +5,7 @@ import { createApp } from '../app.js';
 import { db } from '../db/connection.js';
 import { users } from '../db/schema.js';
 import { deleteUser } from '../services/extensions.js';
-import { registerUser, apiUploadImage, deleteS3Object, TINY_PNG } from './helpers.js';
+import { registerHigherUser, apiUploadImage, deleteS3Object, TINY_PNG } from './helpers.js';
 
 const app = createApp();
 
@@ -40,6 +40,10 @@ class StubStorage implements IStorage {
     throw new Error('ref() is not used by deleteUser');
   }
 
+  async copy(): Promise<void> {
+    throw new Error('copy() is not used by deleteUser');
+  }
+
   async deleteMany(): Promise<{ failed: { path: string; message: string }[] }> {
     if (this.behaviour.kind === 'throw') {
       throw this.behaviour.error;
@@ -51,7 +55,7 @@ class StubStorage implements IStorage {
 // Registers a user and uploads one image, returning the user id and the stored
 // image path — deleteUser will try to clean that path out of S3.
 async function userWithImage(): Promise<{ uid: string; imagePath: string }> {
-  const { token, uid } = await registerUser(app);
+  const { token, uid } = await registerHigherUser(app);
   const res = await apiUploadImage(app, token, TINY_PNG, 'photo.png', 'image/png', 'sprite');
   expect(res.status).toBe(201);
   const { path } = await res.json() as { path: string };
@@ -100,7 +104,7 @@ describe('account deletion logs orphaned S3 objects at Error level', () => {
     expect(orphanLogs[0]).toContain(`uid=${uid}`);
 
     // ...and the batch-level failure is logged as well.
-    expect(logger.errors.some(e => e.includes('S3 batch delete threw during account deletion')))
+    expect(logger.errors.some(e => e.includes('S3 batch delete threw during user-delete')))
       .toBe(true);
   }, 60000);
 

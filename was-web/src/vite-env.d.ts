@@ -13,3 +13,10 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// Third-party licence notices, generated at build time by the
+// `thirdPartyNotices` plugin in vite-plugins/third-party-notices.ts.
+declare module 'virtual:third-party-notices' {
+  const notices: string;
+  export default notices;
+}

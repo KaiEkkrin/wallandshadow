@@ -1,4 +1,7 @@
-import type { ICharacter, IInviteExpiryPolicy, IMe, MapType } from '@wallandshadow/shared';
+import type {
+  IAdminUserDetail, IAdminUserSummary, ICharacter, IInviteExpiryPolicy, IMe, MapType,
+  UserLevel,
+} from '@wallandshadow/shared';
 
 // ── Wire-format response types (server JSON shape) ───────────────────────────
 
@@ -80,6 +83,13 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
   }
+}
+
+// True when an API call failed because the account is suspended (banned). The
+// server returns 403 with body `{ error: 'account-suspended' }`, which
+// `throwIfNotOk` surfaces as the ApiError message.
+export function isAccountSuspendedError(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 403 && e.message === 'account-suspended';
 }
 
 // ── Raw HTTP client (transport-only; consumers should depend on HonoApi instead) ──
@@ -295,5 +305,23 @@ export class HonoApiClient {
 
   addSprites(adventureId: string, geometry: string, sources: string[]): Promise<{ sprites: unknown[] }> {
     return this.request('POST', `/api/adventures/${adventureId}/spritesheets`, { geometry, sources });
+  }
+
+  // ── Admin ─────────────────────────────────────────────────────────────────
+
+  adminSearchUser(term: string): Promise<IAdminUserSummary> {
+    return this.request('GET', `/api/admin/users?q=${encodeURIComponent(term)}`);
+  }
+
+  adminGetUser(id: string): Promise<IAdminUserDetail> {
+    return this.request('GET', `/api/admin/users/${encodeURIComponent(id)}`);
+  }
+
+  adminSetUserLevel(id: string, level: UserLevel): Promise<IAdminUserSummary> {
+    return this.request('PATCH', `/api/admin/users/${encodeURIComponent(id)}`, { level });
+  }
+
+  adminBanUser(id: string): Promise<IAdminUserSummary> {
+    return this.request('POST', `/api/admin/users/${encodeURIComponent(id)}/ban`);
   }
 }

@@ -1,5 +1,6 @@
 import {
   S3Client,
+  CopyObjectCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
@@ -82,6 +83,19 @@ export class Storage implements IStorage {
       }
     }
     return { failed };
+  }
+
+  async copy(srcPath: string, dstPath: string): Promise<void> {
+    // CopySource must be `bucket/key`; the S3 SDK does not encode it for us.
+    // Our keys contain only UUID-safe characters (hex, hyphens) and slashes,
+    // so encodeURI is sufficient — # and ? (which encodeURI leaves alone)
+    // never appear. If the key alphabet ever broadens, switch to per-segment
+    // encodeURIComponent.
+    await s3.send(new CopyObjectCommand({
+      Bucket: bucket,
+      Key: dstPath,
+      CopySource: encodeURI(`${bucket}/${srcPath}`),
+    }));
   }
 }
 

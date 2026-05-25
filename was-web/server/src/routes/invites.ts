@@ -3,7 +3,7 @@ import { authMiddleware, type AuthVariables } from '../auth/middleware.js';
 import { inviteJoinRateLimiter } from '../middleware/rateLimiters.js';
 import { db } from '../db/connection.js';
 import { invites, adventures, users } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { inviteToAdventure, joinAdventure } from '../services/extensions.js';
 import { IInviteExpiryPolicy } from '@wallandshadow/shared';
 
@@ -27,7 +27,7 @@ inviteRoutes.get('/invites/:id', async (c) => {
     .from(invites)
     .innerJoin(adventures, eq(invites.adventureId, adventures.id))
     .innerJoin(users, eq(invites.ownerId, users.id))
-    .where(eq(invites.id, inviteId))
+    .where(and(eq(invites.id, inviteId), isNull(adventures.deletedAt)))
     .limit(1);
 
   if (!row) {

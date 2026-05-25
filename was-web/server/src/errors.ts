@@ -8,6 +8,7 @@ const statusMap: Record<string, HttpStatus> = {
   'permission-denied': 403,
   'not-found': 404,
   'deadline-exceeded': 408,
+  'already-exists': 409,
   'resource-exhausted': 429,
   'internal': 500,
 };

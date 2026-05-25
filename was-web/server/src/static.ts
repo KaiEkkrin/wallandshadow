@@ -10,6 +10,8 @@ import path from 'path';
 const SPA_ROUTES = [
   '/app',
   '/app/*',
+  '/about',
+  '/about/*',
   '/adventure/*',
   '/map/*',
   '/invite/*',

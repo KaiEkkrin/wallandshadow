@@ -4,7 +4,7 @@
 # Manages Hetzner Cloud resources: VPS, volume, static IP, firewall.
 #
 # State is stored in a Hetzner Object Storage bucket (S3-compatible).
-# See README.md "Infrastructure Bootstrap" for first-time setup.
+# See docs/INFRASTRUCTURE_BOOTSTRAP.md for first-time setup.
 #
 # Authentication:
 #   HCLOUD_TOKEN          — Hetzner Cloud API token (env var)

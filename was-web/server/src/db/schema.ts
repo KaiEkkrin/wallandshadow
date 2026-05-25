@@ -23,15 +23,20 @@ export const users = pgTable('users', {
   email: text('email'),                                     // Required for local users, cached for OIDC
   emailVerified: boolean('email_verified').notNull().default(false),
   name: text('name').notNull(),
-  level: text('level').notNull().default('standard'),
+  level: text('level').notNull().default('basic'),
   passwordHash: text('password_hash'),                      // Local auth only — NULL for OIDC users
+  bannedAt: tstz('banned_at'),                              // Set when an admin bans the account — NULL for active accounts
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
   uniqueIndex('users_provider_sub_idx').on(t.providerSub).where(sql`provider_sub IS NOT NULL`),
   // Email uniqueness only for local accounts (provider_sub IS NULL).
   // OIDC users are identified by provider_sub; their email is a cached display field.
   uniqueIndex('users_email_local_idx').on(t.email).where(sql`email IS NOT NULL AND provider_sub IS NULL`),
+  // Functional index backing the admin account search's case-insensitive
+  // email lookup (`WHERE lower(email) = …`), across local and OIDC accounts.
+  index('users_email_lower_idx').on(sql`lower(${t.email})`).where(sql`email IS NOT NULL`),
   check('users_identity_check', sql`provider_sub IS NOT NULL OR email IS NOT NULL`),
+  check('users_level_check', sql`level IN ('basic', 'higher', 'admin')`),
 ]);
 
 export const adventures = pgTable('adventures', {
@@ -40,8 +45,10 @@ export const adventures = pgTable('adventures', {
   description: text('description').notNull().default(''),
   ownerId: uuid('owner_id').notNull().references(() => users.id),
   imagePath: text('image_path').notNull().default(''),
+  deletedAt: tstz('deleted_at'),                            // Soft-delete marker (e.g. owner banned) — NULL for live rows
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
+  // Full index — admin and cleanup paths need to find soft-deleted rows.
   index('adventures_owner_id_idx').on(t.ownerId),
   index('adventures_image_path_idx').on(t.imagePath).where(sql`image_path != ''`),
 ]);
@@ -66,8 +73,10 @@ export const maps = pgTable('maps', {
   ffa: boolean('ffa').notNull().default(false),
   enableGroupVision: boolean('enable_group_vision').notNull().default(false),
   imagePath: text('image_path').notNull().default(''),
+  deletedAt: tstz('deleted_at'),                            // Soft-delete marker (e.g. owner banned) — NULL for live rows
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
+  // Full index — admin and cleanup paths need to find soft-deleted rows.
   index('maps_adventure_id_idx').on(t.adventureId),
   index('maps_image_path_idx').on(t.imagePath).where(sql`image_path != ''`),
 ]);
@@ -108,8 +117,10 @@ export const images = pgTable('images', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   path: text('path').notNull(),
+  deletedAt: tstz('deleted_at'),                            // Soft-delete marker (e.g. owner banned) — NULL for live rows
   createdAt: tstz('created_at').notNull().defaultNow(),
 }, (t) => [
+  // Full index — admin and cleanup paths need to find soft-deleted rows.
   index('images_user_id_idx').on(t.userId),
 ]);
 

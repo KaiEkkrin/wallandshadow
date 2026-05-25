@@ -2,9 +2,12 @@ import { describe, test, expect, afterAll, beforeAll } from 'vitest';
 import { createServer, type Server } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { v7 as uuidv7 } from 'uuid';
+import { eq } from 'drizzle-orm';
 import { MapType, ChangeCategory } from '@wallandshadow/shared';
 import type { Changes } from '@wallandshadow/shared';
 import { createApp } from '../app.js';
+import { db } from '../db/connection.js';
+import { users } from '../db/schema.js';
 import { RoomManager, type Rooms } from '../ws/rooms.js';
 import { createUpgradeHandler } from '../ws/handler.js';
 import {
@@ -226,6 +229,24 @@ describe('WebSocket /ws connection', () => {
       new Promise<string>(resolve => setTimeout(() => resolve('timeout'), 3000)),
     ]);
     expect(['closed', 'error']).toContain(result);
+  });
+
+  test('ws upgrade rejects a user banned after token minting (recheck closes the race)', async () => {
+    const user = await registerUser(app);
+    // Ban AFTER token minting but BEFORE the upgrade — the simplest way to
+    // simulate the race window. The initial pre-handshake SELECT would catch
+    // this too, but the test still validates the recheck path because both
+    // SELECTs are wired up after this change.
+    await db.update(users).set({ bannedAt: new Date() })
+      .where(eq(users.id, user.uid));
+
+    const ws = new WebSocket(`ws://localhost:${port}/ws?token=${user.token}`);
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      ws.on('close', code => resolve(code));
+      ws.on('error', reject);
+      setTimeout(() => reject(new Error('close timeout')), 5000);
+    });
+    expect(closeCode).toBe(4003);
   });
 });
 

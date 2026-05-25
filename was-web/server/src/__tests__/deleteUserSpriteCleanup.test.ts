@@ -4,7 +4,7 @@ import { createApp } from '../app.js';
 import { db } from '../db/connection.js';
 import { spritesheets } from '../db/schema.js';
 import {
-  registerUser,
+  registerHigherUser,
   apiPost,
   apiDelete,
   apiUploadImage,
@@ -70,12 +70,12 @@ async function inviteAndJoin(ownerToken: string, joinerToken: string, adventureI
 describe('user deletion clears references to the user\'s sprites', () => {
   test('owner can extend a spritesheet after a player whose sprite is in it is deleted', async () => {
     // Owner creates the adventure
-    const { token: ownerToken } = await registerUser(app);
+    const { token: ownerToken } = await registerHigherUser(app);
     const adventureId = await createAdventure(ownerToken);
 
     // Player joins, uploads an image, and adds it as a sprite (creates the
     // spritesheet)
-    const { token: playerToken } = await registerUser(app);
+    const { token: playerToken } = await registerHigherUser(app);
     await inviteAndJoin(ownerToken, playerToken, adventureId);
     const playerImg = await uploadImage(playerToken, 'player sprite');
     const playerSpriteRes = await apiPost(
@@ -108,9 +108,9 @@ describe('user deletion clears references to the user\'s sprites', () => {
 
   test('deletion scrubs the user\'s images from every spritesheet that references them, in one batch', async () => {
     // Owner creates the adventure; the player joins it
-    const { token: ownerToken } = await registerUser(app);
+    const { token: ownerToken } = await registerHigherUser(app);
     const adventureId = await createAdventure(ownerToken);
-    const { token: playerToken } = await registerUser(app);
+    const { token: playerToken } = await registerHigherUser(app);
     await inviteAndJoin(ownerToken, playerToken, adventureId);
 
     // Player uploads three images

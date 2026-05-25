@@ -2,6 +2,7 @@ import type { Hono } from 'hono';
 import {
   ChangeType,
   ChangeCategory,
+  UserLevel,
   type Changes,
   type Change,
   type ImageAdd,
@@ -10,9 +11,10 @@ import {
   type WallAdd,
 } from '@wallandshadow/shared';
 import { db } from '../db/connection.js';
-import { mapChanges } from '../db/schema.js';
+import { adventures, images, mapChanges, maps, users } from '../db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { v7 as uuidv7 } from 'uuid';
 import { testS3, testBucket } from './setup.js';
 
 // ─── Test fixtures ─────────────────────────────────────────────────────────────
@@ -65,6 +67,85 @@ export async function registerUser(
     throw new Error(`registerUser failed: ${res.status} ${await res.text()}`);
   }
   return res.json();
+}
+
+// Directly sets a user's account tier. New accounts default to Basic; tests
+// that need higher caps (e.g. image upload) promote past it. Runtime tier
+// changes via the admin API arrive in a later session — tests reach past it.
+export async function promoteUser(uid: string, level: UserLevel): Promise<void> {
+  await db.update(users).set({ level }).where(eq(users.id, uid));
+}
+
+// Registers a user and immediately promotes them to the Higher tier — the
+// common case for tests that upload images or exceed Basic-tier caps.
+export async function registerHigherUser(
+  app: Hono,
+  name?: string,
+  email?: string,
+  password?: string,
+): Promise<{ token: string; uid: string }> {
+  const u = await registerUser(app, name, email, password);
+  await promoteUser(u.uid, UserLevel.Higher);
+  return u;
+}
+
+// Registers a user and immediately promotes them to the Admin tier — for tests
+// exercising the /api/admin/* routes. Runtime tier changes via an admin API
+// arrive in a later session; tests reach past it, like registerHigherUser.
+export async function registerAdminUser(
+  app: Hono,
+  name?: string,
+  email?: string,
+  password?: string,
+): Promise<{ token: string; uid: string }> {
+  const u = await registerUser(app, name, email, password);
+  await promoteUser(u.uid, UserLevel.Admin);
+  return u;
+}
+
+// Inserts a user row with an OIDC provider_sub set (no local password) — for
+// tests of external-id search and shared-email de-confliction. The register
+// endpoint only creates local accounts, so OIDC rows are inserted directly.
+// `createdAt` is settable so "oldest wins" ordering is deterministic.
+export async function createOidcUser(opts: {
+  providerSub: string;
+  email?: string;
+  name?: string;
+  createdAt?: Date;
+}): Promise<{ uid: string }> {
+  const uid = uuidv7();
+  await db.insert(users).values({
+    id: uid,
+    providerSub: opts.providerSub,
+    email: opts.email ?? null,
+    emailVerified: true,
+    name: opts.name ?? 'OIDC User',
+    level: 'basic',
+    ...(opts.createdAt ? { createdAt: opts.createdAt } : {}),
+  });
+  return { uid };
+}
+
+// ─── Soft-delete / ban helpers ────────────────────────────────────────────────
+
+// Session 3 adds the soft-delete columns (deletedAt / bannedAt) but nothing
+// that writes them — banUser() arrives in Session 4. Tests set the columns
+// directly through these helpers.
+
+export async function markAdventureDeleted(adventureId: string): Promise<void> {
+  await db.update(adventures).set({ deletedAt: new Date() }).where(eq(adventures.id, adventureId));
+}
+
+export async function markMapDeleted(mapId: string): Promise<void> {
+  await db.update(maps).set({ deletedAt: new Date() }).where(eq(maps.id, mapId));
+}
+
+export async function markImageDeleted(imageId: string): Promise<void> {
+  await db.update(images).set({ deletedAt: new Date() }).where(eq(images.id, imageId));
+}
+
+export async function markUserBanned(uid: string): Promise<void> {
+  await db.update(users).set({ bannedAt: new Date() }).where(eq(users.id, uid));
 }
 
 // ─── Request helpers ──────────────────────────────────────────────────────────

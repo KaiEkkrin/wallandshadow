@@ -96,7 +96,6 @@ authRoutes.post('/register', registerRateLimiter, async (c) => {
     id,
     email,
     name: name.trim(),
-    level: 'standard',
     passwordHash,
   });
 

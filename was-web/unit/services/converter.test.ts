@@ -285,7 +285,7 @@ test('The adventures in a profile get converted', () => {
 
   const a = Convert.profileConverter.convert(raw);
   expect(a.name).toBe('A User');
-  expect(a.level).toBe(UserLevel.Standard);
+  expect(a.level).toBe(UserLevel.Basic);
 
   expect(a.adventures).toHaveLength(1);
 

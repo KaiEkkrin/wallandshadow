@@ -17,3 +17,4 @@ ansible/secrets/
 
 # misc stuff
 *.log
+.playwright-mcp/

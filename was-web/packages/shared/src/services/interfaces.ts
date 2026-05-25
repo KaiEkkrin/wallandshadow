@@ -82,6 +82,11 @@ export interface IStorage {
   // completes the cleanup. Per-key S3 errors are returned in `failed`; only
   // transport-level errors throw.
   deleteMany(paths: string[]): Promise<{ failed: { path: string; message: string }[] }>;
+
+  // Copies an object from srcPath to dstPath. The source is unchanged.
+  // Throws on transport failure or missing source. Used by the ban service
+  // to quarantine objects (copy + then delete the source).
+  copy(srcPath: string, dstPath: string): Promise<void>;
 }
 
 export interface IStorageReference {

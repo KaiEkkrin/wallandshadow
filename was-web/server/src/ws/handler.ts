@@ -3,8 +3,8 @@ import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import { resolveTokenToUid } from '../auth/resolveToken.js';
 import { db } from '../db/connection.js';
-import { maps } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { maps, users } from '../db/schema.js';
+import { and, eq, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { assertAdventureMember, addMapChanges } from '../services/extensions.js';
 import { logger } from '../services/logger.js';
@@ -25,12 +25,10 @@ import {
   type SocketState,
 } from './socketState.js';
 import { onPresenceSubscribe, onPresenceUnsubscribe, onPresenceUpdate } from './presence.js';
+import { WS_CLOSE_ACCOUNT_SUSPENDED, WS_CLOSE_AUTH_REJECTED } from './closeCodes.js';
 import type { Change, UpdateScope } from '@wallandshadow/shared';
 
 const WS_PATH = '/ws';
-// Application-specific close code: token verification failed.
-// Kept in sync with the client constant in honoWebSocket.ts.
-const WS_CLOSE_AUTH_REJECTED = 4001;
 
 // Which manager each scope lives in. `players` and `spritesheets` share the
 // adventure rooms — they always concern the same adventureId, and messages
@@ -80,17 +78,68 @@ export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
         return;
       }
 
-      wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+      // Reject suspended (banned) accounts — same handshake-then-close pattern
+      // so the client receives a typed close code rather than a bare drop.
+      const [userRow] = await db.select({ bannedAt: users.bannedAt })
+        .from(users).where(eq(users.id, uid)).limit(1);
+      if (userRow?.bannedAt) {
+        logger.logWarning(`WebSocket rejected: account suspended (${uid})`);
+        wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+          ws.close(WS_CLOSE_ACCOUNT_SUSPENDED, 'Account suspended');
+        });
+        return;
+      }
+
+      wss.handleUpgrade(request, socket, head, async (ws: WebSocket) => {
         setSocketState(ws, uid);
 
+        // Attach close/error handlers BEFORE the await below, so our own
+        // self-close (or any failure during the recheck) still runs cleanupSocket
+        // and removes the ws from userSockets.
+        ws.on('close', () => cleanupSocket(ws, rooms));
+        ws.on('error', () => cleanupSocket(ws, rooms));
+
+        // Attach the message handler immediately and buffer until the bannedAt
+        // recheck finishes — otherwise a client that sends a `subscribe` frame
+        // right after `'open'` would race the recheck await and have the frame
+        // silently dropped (Node EventEmitter drops events with no listener).
+        const pending: RawData[] = [];
+        let ready = false;
         ws.on('message', (data: RawData) => {
+          if (!ready) {
+            pending.push(data);
+            return;
+          }
           handleMessage(ws, rooms, data).catch(e => {
             logger.logError('WS message handler failed', e);
           });
         });
 
-        ws.on('close', () => cleanupSocket(ws, rooms));
-        ws.on('error', () => cleanupSocket(ws, rooms));
+        // Re-read bannedAt AFTER setSocketState. Closes the race with a concurrent
+        // banUser: either the recheck sees bannedAt (and we self-close), or the
+        // ban commits later and its disconnectBannedUser finds our socket in
+        // userSockets (because setSocketState ran first). No third interleaving.
+        try {
+          const [recheck] = await db.select({ bannedAt: users.bannedAt })
+            .from(users).where(eq(users.id, uid)).limit(1);
+          if (recheck?.bannedAt) {
+            ws.close(WS_CLOSE_ACCOUNT_SUSPENDED, 'Account suspended');
+            return;
+          }
+        } catch (e) {
+          logger.logError('WS bannedAt recheck failed', e);
+          // Fail closed: an unavailable DB during recheck must not leave a socket
+          // open for what might be a banned account.
+          ws.close(WS_CLOSE_AUTH_REJECTED, 'Authorization recheck failed');
+          return;
+        }
+
+        ready = true;
+        for (const data of pending) {
+          handleMessage(ws, rooms, data).catch(e => {
+            logger.logError('WS message handler failed', e);
+          });
+        }
       });
     } catch (e) {
       logger.logError('WebSocket upgrade error', e);
@@ -312,7 +361,7 @@ async function resolveSubscribe(
     case 'map': {
       const mapId = requireId(frame);
       const [mapRow] = await db.select({ adventureId: maps.adventureId })
-        .from(maps).where(eq(maps.id, mapId)).limit(1);
+        .from(maps).where(and(eq(maps.id, mapId), isNull(maps.deletedAt))).limit(1);
       if (!mapRow) throw new Error('Map not found');
       const [, pair] = await Promise.all([
         assertAdventureMember(db, uid, mapRow.adventureId),
@@ -328,7 +377,7 @@ async function resolveSubscribe(
     case 'mapChanges': {
       const mapId = requireId(frame);
       const [mapRow] = await db.select({ adventureId: maps.adventureId })
-        .from(maps).where(eq(maps.id, mapId)).limit(1);
+        .from(maps).where(and(eq(maps.id, mapId), isNull(maps.deletedAt))).limit(1);
       if (!mapRow) throw new Error('Map not found');
       await assertAdventureMember(db, uid, mapRow.adventureId);
       return { key: mapId, entityKey: mapId, data: await snapshotMapChanges(db, mapId, frame.lastSeq) };

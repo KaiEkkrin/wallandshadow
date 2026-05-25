@@ -6,7 +6,7 @@ import { IMap, MapType } from './map';
 import { IAnnotation } from './annotation';
 import { IdDictionary } from './identified';
 import { createPixelAnchor, createVertexAnchor, IMapImage } from './image';
-import { IUserPolicy, standardUser } from './policy';
+import { IUserPolicy, higherUser } from './policy';
 import { getTokenGeometry } from './tokenGeometry';
 import { SimpleTokenDrawing, Tokens } from './tokens';
 
@@ -1600,7 +1600,7 @@ test('In FFA mode, a non-owner can do all token operations', () => {
 test('Policy blocks us from adding too many objects', () => {
   let map = createTestMap(false);
   let tracker = createChangeTracker(map.ty, {
-    ...standardUser,
+    ...higherUser,
     objects: 3 // a low limit makes it easy to test :)
   });
 

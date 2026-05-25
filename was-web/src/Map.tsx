@@ -27,7 +27,7 @@ import TokenDeletionModal from './components/TokenDeletionModal';
 import TokenEditorModal from './components/TokenEditorModal';
 import { UserContext } from './components/UserContext';
 
-import { ITokenProperties, IImage, IMapImageProperties, createTokenSizes, IMap, MAP_CONTAINER_CLASS, getUserPolicy } from '@wallandshadow/shared';
+import { ITokenProperties, IImage, IMapImageProperties, canUploadImages, createTokenSizes, IMap, MAP_CONTAINER_CLASS, getUserPolicy } from '@wallandshadow/shared';
 
 import { zoomMax, zoomMin } from './models/mapStateMachine';
 import { createDefaultUiState, isAnEditorOpen, MapUi } from './models/mapUi';
@@ -61,6 +61,17 @@ function Map() {
 
     return getUserPolicy(profile.level);
   }, [map, profile, user]);
+
+  // True if the signed-in user's tier permits uploading images at all. Tiers
+  // with images cap = 0 (Basic) get every image-related affordance hidden on
+  // the map: the layer button, the edit-mode button, and the right-click
+  // "Add image" context-menu item. This is independent of owner/FFA — those
+  // existing checks still decide who *could* edit images; this gates whether
+  // the affordance shows up for the current viewer at all.
+  const canUploadImagesHere = useMemo(
+    () => profile !== undefined && canUploadImages(profile.level),
+    [profile]
+  );
 
   // Create a suitable title
   const title = useMemo(() => {
@@ -353,8 +364,8 @@ function Map() {
       return;
     }
 
-    ui.keyUp(e, mapState.seeEverything);
-  }, [anEditorIsOpen, mapState.seeEverything, ui]);
+    ui.keyUp(e, mapState.seeEverything, canUploadImagesHere);
+  }, [anEditorIsOpen, canUploadImagesHere, mapState.seeEverything, ui]);
 
   // *** Mouse and touch specific handlers ***
 
@@ -446,6 +457,7 @@ function Map() {
             addGroupVisionColourRange={addGroupVisionColourRange}
             removeGroupVisionColourRange={removeGroupVisionColourRange}
             canDoAnything={mapState.seeEverything}
+            canUploadImages={canUploadImagesHere}
             isOwner={mapState.isOwner}
             openMapEditor={() => ui?.showMapEditor()}
             setShowAnnotationFlags={cycleShowAnnotationFlags} />
@@ -512,7 +524,8 @@ function Map() {
           editNote={editNoteFromMenu}
           editImage={editImageFromMenu}
           editMode={uiState.editMode}
-          setEditMode={m => ui?.setEditMode(m)} />
+          setEditMode={m => ui?.setEditMode(m)}
+          canUploadImages={canUploadImagesHere} />
       </div>
     </RequireLoggedIn>
   );

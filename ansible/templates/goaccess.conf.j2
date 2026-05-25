@@ -20,3 +20,7 @@ real-time-html false
 persist true
 restore true
 db-path /var/lib/goaccess
+
+# Bound the persisted database to the last 30 days so it does not retain
+# visitor-IP data longer than the documented retention period.
+keep-last 30

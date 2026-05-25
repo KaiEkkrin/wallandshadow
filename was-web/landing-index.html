@@ -2,7 +2,7 @@
 <html lang="en" data-bs-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <link rel="canonical" href="https://wallandshadow.io" />
+  <link rel="canonical" href="https://wallandshadow.com" />
   <link rel="icon" href="/favicon.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#000000" />
@@ -20,6 +20,17 @@
 
   <!-- Inline critical CSS for immediate rendering -->
   <style>
+    /* Self-hosted brand display font (SIL OFL 1.1 — see /fonts/princess-sofia-OFL.txt).
+       Self-hosted rather than loaded from Google Fonts: no third-party request,
+       and the licence travels with the font file. */
+    @font-face {
+      font-family: 'Princess Sofia';
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url('/fonts/princess-sofia-latin-400.woff2') format('woff2');
+    }
+
     :root {
       /* Environment-specific background color (set by script above) */
       --env-background: #282c34;
@@ -136,6 +147,22 @@
       transform: translateY(-1px);
     }
 
+    .about-link {
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    .about-link a {
+      color: #adb5bd;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .about-link a:hover {
+      color: #dee2e6;
+      text-decoration: underline;
+    }
+
     .version-badge {
       position: fixed;
       bottom: 1rem;
@@ -192,9 +219,6 @@
       }
     }
   </style>
-
-  <!-- Load Google Font for logo -->
-  <link href="https://fonts.googleapis.com/css?family=Princess+Sofia" rel="stylesheet">
 </head>
 <body>
   <div class="container">
@@ -210,6 +234,10 @@
 
     <div class="cta-container">
       <a href="/app" class="cta-button cta-button-primary">Get Started</a>
+    </div>
+
+    <div class="about-link">
+      <a href="/about">About Wall &amp; Shadow</a>
     </div>
   </div>
 

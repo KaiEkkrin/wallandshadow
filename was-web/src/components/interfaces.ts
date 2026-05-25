@@ -15,6 +15,11 @@ export interface IUserContext {
   user: IUser | null | undefined; // This is the field to query for "is a user logged in?"
                                   // undefined means "I don't know yet, wait"
                                   // null means "Not logged in"
+
+  // True when the account is suspended (banned). The user is not logged in
+  // (`user` is null) but must be shown the Suspended page, not the login flow.
+  suspended?: boolean | undefined;
+
   api?: IApi | undefined;
   live?: ILiveData | undefined;
 
