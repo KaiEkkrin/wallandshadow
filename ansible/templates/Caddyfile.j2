@@ -21,8 +21,8 @@
 {% set csp_policy %}
 default-src 'self';
 script-src 'self';
-style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-font-src 'self' https://fonts.gstatic.com data:;
+style-src 'self' 'unsafe-inline';
+font-src 'self' data:;
 {# img-src: robohash.org serves robot avatars and 302-redirects to
    secure.gravatar.com when the user has a Gravatar — both hosts are
    required because CSP applies to redirect targets. #}
