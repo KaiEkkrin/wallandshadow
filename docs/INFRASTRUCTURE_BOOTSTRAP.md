@@ -53,6 +53,18 @@ GoAccess renders an HTML traffic report from Caddy's access log. Caddy serves it
 
 To rotate the password later, change the GitHub Secret value and re-run the provision workflow — Caddy reload is graceful.
 
+**8. Bootstrap admin user (optional)**
+
+The Hono server can auto-promote one OIDC account to admin tier on startup
+and on first sign-in. Set `ADMIN_USER_ID` to that user's Zitadel user ID
+(the OIDC `sub` claim — visible in the Zitadel admin UI on the user's
+detail page).
+
+- Save as GitHub Secret: `ADMIN_USER_ID`
+
+To change later: update the secret and re-run the provision workflow,
+then restart the prod systemd unit so the new env-file is sourced.
+
 ## GitHub Secrets summary
 
 | Secret                      | Source                     | Used by                                      |
@@ -66,6 +78,7 @@ To rotate the password later, change the GitHub Secret value and re-run the prov
 | `OIDC_CLIENT_ID`            | Zitadel application        | Deploy workflows                             |
 | `STATS_BASIC_AUTH_USER`     | You choose                 | Provision workflow (Caddy basic auth on /stats) |
 | `STATS_BASIC_AUTH_PASSWORD` | You choose                 | Provision workflow (Caddy basic auth on /stats) |
+| `ADMIN_USER_ID`             | Zitadel user (optional)    | Provision workflow (Hono auto-promotes to admin) |
 
 `DATABASE_URL`, `JWT_SECRET`, and `S3_ACCESS_KEY`/`S3_SECRET_KEY` are **not** GitHub Secrets — they live on the VPS (written by Ansible) and are fetched by deploy workflows via SSH.
 

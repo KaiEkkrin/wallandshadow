@@ -543,6 +543,10 @@
         db_name: "{{ pg_db_prod }}"
         s3_bucket: "{{ s3_bucket_prod }}"
         oidc_client_id: "{{ oidc_prod_client_id | mandatory }}"
+        # Optional — when set, the Hono server auto-promotes the named OIDC
+        # user to admin tier at startup and on first sign-in. Test deploys
+        # deliberately have no equivalent.
+        admin_user_id: "{{ admin_user_id | default('') }}"
 
     - name: Render systemd unit for each application environment
       ansible.builtin.template:

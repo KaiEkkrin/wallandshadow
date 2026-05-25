@@ -1,9 +1,12 @@
 import { eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
+import { UserLevel } from '@wallandshadow/shared';
 import { db } from '../db/connection.js';
 import { users } from '../db/schema.js';
 import { verifyJwt } from './jwt.js';
 import { getOidcVerifier } from './oidc.js';
+import { getConfiguredAdminSub } from '../services/adminBootstrap.js';
+import { notifyUserProfile, notifySafe } from '../ws/notify.js';
 
 /**
  * Peek at a JWT's payload without verifying the signature.
@@ -66,33 +69,50 @@ async function upsertOidcUser(
   name: string | undefined,
 ): Promise<string> {
   const displayName = name || email || 'User';
+  const shouldBeAdmin = getConfiguredAdminSub() === sub;
 
-  return db.transaction(async (tx) => {
+  // promotedExistingUserId is set only when the upsert flipped an existing,
+  // not-yet-admin row up to admin. New rows inserted at level=admin do not
+  // need a NOTIFY (no open clients yet).
+  let promotedExistingUserId: string | undefined;
+
+  const id = await db.transaction(async (tx) => {
     // Look up by provider_sub, locking the row to prevent concurrent upserts
-    const subResult = await tx.execute<{ id: string }>(
-      sql`SELECT id FROM users WHERE provider_sub = ${sub} LIMIT 1 FOR UPDATE`
+    const subResult = await tx.execute<{ id: string; level: string }>(
+      sql`SELECT id, level FROM users WHERE provider_sub = ${sub} LIMIT 1 FOR UPDATE`
     );
     const existing = subResult.rows[0];
 
     if (existing) {
-      // Returning user — sync cached claims from the token
+      // Returning user — sync cached claims from the token. If ADMIN_USER_ID
+      // names this user and they aren't admin yet, lift them.
+      const shouldPromote = shouldBeAdmin && existing.level !== UserLevel.Admin;
       await tx.update(users).set({
         email: email ?? null,
         emailVerified,
         name: displayName,
+        ...(shouldPromote ? { level: UserLevel.Admin } : {}),
       }).where(eq(users.id, existing.id));
+      if (shouldPromote) promotedExistingUserId = existing.id;
       return existing.id;
     }
 
-    // New OIDC user
-    const id = uuidv7();
+    // New OIDC user. If ADMIN_USER_ID names this sub, create them at admin
+    // tier directly — no need for a follow-up update or NOTIFY.
+    const newId = uuidv7();
     await tx.insert(users).values({
-      id,
+      id: newId,
       providerSub: sub,
       email: email ?? null,
       emailVerified,
       name: displayName,
+      ...(shouldBeAdmin ? { level: UserLevel.Admin } : {}),
     });
-    return id;
+    return newId;
   });
+
+  if (promotedExistingUserId) {
+    await notifySafe(notifyUserProfile(promotedExistingUserId));
+  }
+  return id;
 }

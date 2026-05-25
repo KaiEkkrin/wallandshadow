@@ -124,17 +124,29 @@ Limits live in `getUserPolicy()` (`packages/shared/src/data/policy.ts`).
 
 ### Bootstrapping an admin account
 
-The migration that introduces the tiers sets *every* account to `basic`, so a
-freshly migrated deployment has no admin. Promote one account once, by hand,
-after deploying that migration:
+Set the `ADMIN_USER_ID` env var to the Zitadel user ID (the OIDC `sub`
+claim) of the account that should be admin. The Hono server reads this on
+startup and on every OIDC sign-in:
+
+- If a `users` row already exists with that `provider_sub`, it is promoted
+  to `admin` immediately on the next server start.
+- If no such user exists yet, the server logs a warning. The user is then
+  promoted automatically when they first sign in via OIDC.
+- If the env var is unset, nothing happens — the bootstrap is a no-op.
+
+In dev, set it in `.devcontainer/.env`; the dev container sources that file
+on launch. In production, set the `ADMIN_USER_ID` GitHub Secret and re-run
+the provision workflow — see [INFRASTRUCTURE_BOOTSTRAP.md](INFRASTRUCTURE_BOOTSTRAP.md).
+Changes to the value require a Hono server restart.
+
+If you need to promote an account manually instead (e.g. a local-only
+account, which has no OIDC `sub`):
 
 ```bash
 psql "$DATABASE_URL" -c "UPDATE users SET level = 'admin' WHERE email = '<owner-email>';"
 ```
 
-Use the account's cached `email` (local accounts, and OIDC accounts whose email
-Zitadel supplied). Once one admin exists, further tier changes are made through
-the admin UI (a later piece of work).
+Once one admin exists, further tier changes are made through the admin UI.
 
 ## Running tests
 

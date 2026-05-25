@@ -1,14 +1,19 @@
 import { serve } from '@hono/node-server';
 import { WebSocketServer } from 'ws';
-import { pool } from './db/connection.js';
+import { db, pool } from './db/connection.js';
 import { createApp } from './app.js';
 import { RoomManager, type Rooms } from './ws/rooms.js';
 import { createUpgradeHandler } from './ws/handler.js';
 import { startNotifyListener } from './ws/notify.js';
 import { validateAuthEnv } from './auth/validateEnv.js';
+import { ensureAdminUser } from './services/adminBootstrap.js';
 
 // Fail fast if production auth config is invalid
 validateAuthEnv();
+
+// Promote the user named by ADMIN_USER_ID (if set and the user exists). Logs
+// internally on success/warning/failure and never throws.
+await ensureAdminUser(db);
 
 const app = createApp();
 const port = parseInt(process.env.PORT ?? '3000', 10);
