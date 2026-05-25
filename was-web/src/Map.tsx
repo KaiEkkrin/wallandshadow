@@ -364,8 +364,8 @@ function Map() {
       return;
     }
 
-    ui.keyUp(e, mapState.seeEverything);
-  }, [anEditorIsOpen, mapState.seeEverything, ui]);
+    ui.keyUp(e, mapState.seeEverything, canUploadImagesHere);
+  }, [anEditorIsOpen, canUploadImagesHere, mapState.seeEverything, ui]);
 
   // *** Mouse and touch specific handlers ***
 
