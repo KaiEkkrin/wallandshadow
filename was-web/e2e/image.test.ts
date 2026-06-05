@@ -1,19 +1,27 @@
 import { test, expect } from '@playwright/test';
 
 import * as Util from './util';
+import { setUserLevel } from './dbAdmin';
 import { TINY_PNG } from './testImage';
 
 test.describe('Image management tests', () => {
-  test.beforeEach(async ({ page }) => {
+  // All tests in this describe block exercise image-upload UI, which is gated
+  // behind the Higher tier (Basic caps images at 0 — see policy.ts). The
+  // beforeEach signs up a fresh user, then promotes them in the DB and reloads
+  // so the client picks up the new tier from /api/auth/me. This mirrors the
+  // pattern used by admin.test.ts.
+  test.beforeEach(async ({ page }, testInfo) => {
+    const deviceName = Util.getDeviceNameFromProject(testInfo.project.name);
     await page.goto('/');
     await expect(page.locator('.App-login-text').first()).toBeVisible();
+    const user = await Util.signUp(page, deviceName);
+    await setUserLevel(user.email, 'higher');
+    await page.reload();
+    await expect(page.locator('h5 >> text="Latest maps"')).toBeVisible();
   });
 
-  test('upload image and assign to adventure', async ({ page }, testInfo) => {
-    const deviceName = Util.getDeviceNameFromProject(testInfo.project.name);
-
-    // Sign up and create an adventure
-    await Util.signUp(page, deviceName);
+  test('upload image and assign to adventure', async ({ page }) => {
+    // Create an adventure
     await Util.createNewAdventure(page, 'Image test', 'Testing images');
     await expect(page).toHaveURL(/\/adventure\//);
 
@@ -36,11 +44,8 @@ test.describe('Image management tests', () => {
     await expect(page.locator('.card img.App-image-collection-image, .card img[alt="Image test"]')).toBeVisible({ timeout: 5000 });
   });
 
-  test('remove image from adventure', async ({ page }, testInfo) => {
-    const deviceName = Util.getDeviceNameFromProject(testInfo.project.name);
-
-    // Sign up and create an adventure
-    await Util.signUp(page, deviceName);
+  test('remove image from adventure', async ({ page }) => {
+    // Create an adventure
     await Util.createNewAdventure(page, 'Remove image test', 'Will remove image');
     await expect(page).toHaveURL(/\/adventure\//);
 
@@ -70,11 +75,8 @@ test.describe('Image management tests', () => {
     await expect(page.locator('.card img')).not.toBeVisible({ timeout: 5000 });
   });
 
-  test('delete an image', async ({ page }, testInfo) => {
-    const deviceName = Util.getDeviceNameFromProject(testInfo.project.name);
-
-    // Sign up and create an adventure
-    await Util.signUp(page, deviceName);
+  test('delete an image', async ({ page }) => {
+    // Create an adventure
     await Util.createNewAdventure(page, 'Delete image test', 'Will delete image');
     await expect(page).toHaveURL(/\/adventure\//);
 
@@ -106,8 +108,7 @@ test.describe('Image management tests', () => {
   test('assign image to map', async ({ page }, testInfo) => {
     const deviceName = Util.getDeviceNameFromProject(testInfo.project.name);
 
-    // Sign up and create an adventure
-    await Util.signUp(page, deviceName);
+    // Create an adventure
     await Util.createNewAdventure(page, 'Map image test', 'Testing map images');
     await expect(page).toHaveURL(/\/adventure\//);
 
