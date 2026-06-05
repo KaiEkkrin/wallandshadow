@@ -10,8 +10,8 @@ tool — it lets a group draw maps, place tokens, and share what everyone can se
 in real time.
 
 It deliberately does not try to be a full virtual tabletop: there is no dice
-roller and no character-sheet system. Groups typically pair it with a Discord
-bot or similar for those. Wall & Shadow is aimed at small groups playing
+roller and no character-sheet system. I recommend Discord bots as a flexible
+solution for those. Wall & Shadow is aimed at small groups playing
 homebrew or improvised games, where the map needs to keep up with whatever the
 players decide to do.
 
@@ -28,7 +28,7 @@ times.
 
 ## Contact us
 
-For general enquiries, email **info@wallandshadow.com**.
+For general enquiries, email **<info@wallandshadow.com>**.
 
 Requests about your personal data — access, deletion, and so on — are covered in
 the [Privacy Notice](privacy.md).
@@ -39,7 +39,7 @@ If you come across content or behaviour on Wall & Shadow that is illegal, or
 that breaks the rules in our [Acceptable Use Policy](terms.md#acceptable-use),
 please tell us. **You do not need an account to make a report.**
 
-Email **abuse@wallandshadow.com** with:
+Email **<abuse@wallandshadow.com>** with:
 
 - a link to, or description of, the content, adventure, or map involved — if you
   can identify it;
