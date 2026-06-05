@@ -73,11 +73,11 @@ function App(props: IRoutingProps) {
                   </Suspense>
                 </MapContextProvider>
               </AdventureContextProvider>
+              <VersionBadge />
             </Routing>
             <Status />
             <ToastCollection />
             <ChunkErrorHandler />
-            <VersionBadge />
           </StatusContextProvider>
         </ProfileContextProvider>
       </HonoContextProvider>
