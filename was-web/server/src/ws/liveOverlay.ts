@@ -8,6 +8,22 @@ import { getSocketSubs } from './socketState.js';
 // coexist (one fading while another is drawn), so this is > 1.
 const MAX_ITEMS_PER_AUTHOR = 5;
 
+// Per-kind expiry policy. Mutable so tests can shorten them; read via the
+// locals below so a test setter takes effect immediately.
+let SCRIBBLE_FADE_MS = 10_000; // scribble lingers ~10s after release, then fades
+let RULER_FADE_MS = 1_000;     // ruler fades ~1s after release
+let ACTIVE_STALE_MS = 5_000;   // active item with no updates (author went away)
+
+export function setOverlayTimingForTesting(opts: {
+  scribbleFadeMs: number;
+  rulerFadeMs: number;
+  activeStaleMs: number;
+}): void {
+  SCRIBBLE_FADE_MS = opts.scribbleFadeMs;
+  RULER_FADE_MS = opts.rulerFadeMs;
+  ACTIVE_STALE_MS = opts.activeStaleMs;
+}
+
 interface MapOverlayState {
   items: Map<string, OverlayItem>;        // itemKey → item
   timers: Map<string, NodeJS.Timeout>;    // itemKey → pending expiry timer
@@ -26,6 +42,40 @@ function getOrCreate(mapId: string): MapOverlayState {
     mapsState.set(mapId, state);
   }
   return state;
+}
+
+function expiryMsFor(item: OverlayItem): number {
+  if (item.phase === 'released') {
+    return item.payload.kind === 'ruler' ? RULER_FADE_MS : SCRIBBLE_FADE_MS;
+  }
+  return ACTIVE_STALE_MS;
+}
+
+// (Re)arm the expiry timer for an item. Any previous timer for the same key is
+// cleared first, so a continuation (a fresh 'active' update after 'released')
+// cancels a pending fade.
+function armTimer(mapRooms: RoomManager, mapId: string, key: string, item: OverlayItem): void {
+  const state = mapsState.get(mapId);
+  if (!state) return;
+  const prev = state.timers.get(key);
+  if (prev) clearTimeout(prev);
+  const timer = setTimeout(() => expire(mapRooms, mapId, key), expiryMsFor(item));
+  if (typeof timer.unref === 'function') timer.unref();
+  state.timers.set(key, timer);
+}
+
+function expire(mapRooms: RoomManager, mapId: string, key: string): void {
+  const state = mapsState.get(mapId);
+  if (!state) return;
+  const item = state.items.get(key);
+  state.timers.delete(key);
+  state.items.delete(key);
+  if (state.items.size === 0 && state.timers.size === 0) {
+    mapsState.delete(mapId);
+  }
+  if (item) {
+    broadcastToMap(mapRooms, mapId, { removed: { authorId: item.authorId, itemId: item.itemId } }, null);
+  }
 }
 
 /** Test probe: true iff the registry holds any state for the map. */
@@ -104,6 +154,7 @@ export function applyOverlayUpdate(
     releasedAt: outgoing.phase === 'released' ? now : undefined,
   };
   state.items.set(key, item);
+  armTimer(mapRooms, mapId, key, item);
 
   broadcastToMap(mapRooms, mapId, item, ws);
 }

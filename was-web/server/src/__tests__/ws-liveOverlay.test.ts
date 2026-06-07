@@ -5,7 +5,11 @@ import type { OverlayItem } from '@wallandshadow/shared';
 import { createApp } from '../app.js';
 import { RoomManager, type Rooms } from '../ws/rooms.js';
 import { createUpgradeHandler } from '../ws/handler.js';
-import { resetLiveOverlayForTesting, hasMapOverlayState } from '../ws/liveOverlay.js';
+import {
+  resetLiveOverlayForTesting,
+  hasMapOverlayState,
+  setOverlayTimingForTesting,
+} from '../ws/liveOverlay.js';
 import { registerUser } from './helpers.js';
 import {
   connectWs,
@@ -87,6 +91,10 @@ async function subscribeOverlay(ws: WebSocket, mapId: string, subId = 1): Promis
 
 function scribble(itemId: string, phase: 'active' | 'released' = 'active') {
   return { itemId, phase, payload: { kind: 'scribble', points: [{ x: 1, y: 2 }] } };
+}
+
+function ruler(itemId: string, phase: 'active' | 'released' = 'active') {
+  return { itemId, phase, payload: { kind: 'ruler', nodes: [{ x: 0, y: 0 }, { x: 1, y: 1 }] } };
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -213,5 +221,105 @@ describe('liveOverlay core', () => {
 
     ownerWs.close();
     lateWs.close();
+  });
+});
+
+describe('liveOverlay lifecycle', () => {
+  // Short, well-separated timings so tests are fast but unambiguous.
+  beforeEach(() => {
+    setOverlayTimingForTesting({ scribbleFadeMs: 400, rulerFadeMs: 300, activeStaleMs: 2000 });
+  });
+
+  afterAll(() => {
+    setOverlayTimingForTesting({ scribbleFadeMs: 10_000, rulerFadeMs: 1_000, activeStaleMs: 5_000 });
+  });
+
+  test('a released item is removed after its fade timer and peers are told', async () => {
+    const owner = await registerUser(app, 'OverlayFadeA');
+    const peer = await registerUser(app, 'OverlayFadeB');
+    const aId = await createAdventure(app, owner.token);
+    const mId = await createMap(app, owner.token, aId);
+    await joinAdventure(app, owner.token, peer.token, aId);
+
+    const ownerWs = await connectWs(port, owner.token);
+    const peerWs = await connectWs(port, peer.token);
+    await subscribeOverlay(ownerWs, mId);
+    await subscribeOverlay(peerWs, mId);
+
+    const removal = waitForFrame(
+      peerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'liveOverlay'
+        && !!(f.data as { removed?: unknown }).removed,
+    );
+    send(ownerWs, { type: 'overlayUpdate', mapId: mId, item: ruler('r1', 'released') });
+    const frame = await removal;
+    const removed = (frame.data as { removed: { authorId: string; itemId: string } }).removed;
+    expect(removed.itemId).toBe('r1');
+    expect(removed.authorId).toBe(owner.uid);
+
+    await new Promise(r => setTimeout(r, 50));
+    expect(hasMapOverlayState(mId)).toBe(false);
+
+    ownerWs.close();
+    peerWs.close();
+  });
+
+  test('a re-grab within the fade window cancels removal (continuation)', async () => {
+    const owner = await registerUser(app, 'OverlayContA');
+    const peer = await registerUser(app, 'OverlayContB');
+    const aId = await createAdventure(app, owner.token);
+    const mId = await createMap(app, owner.token, aId);
+    await joinAdventure(app, owner.token, peer.token, aId);
+
+    const ownerWs = await connectWs(port, owner.token);
+    const peerWs = await connectWs(port, peer.token);
+    await subscribeOverlay(ownerWs, mId);
+    await subscribeOverlay(peerWs, mId);
+
+    send(ownerWs, { type: 'overlayUpdate', mapId: mId, item: ruler('r2', 'released') });
+    await new Promise(r => setTimeout(r, 100));
+    send(ownerWs, { type: 'overlayUpdate', mapId: mId, item: ruler('r2', 'active') });
+
+    const noRemoval = noFrameWithin(
+      peerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'liveOverlay'
+        && !!(f.data as { removed?: unknown }).removed,
+      400,
+    );
+    expect(await noRemoval).toBe(true);
+    // The item must still be alive (continuation re-armed the timer), not
+    // removed-and-recreated.
+    expect(hasMapOverlayState(mId)).toBe(true);
+
+    ownerWs.close();
+    peerWs.close();
+  });
+
+  test('an active item expires after the staleness timeout', async () => {
+    setOverlayTimingForTesting({ scribbleFadeMs: 400, rulerFadeMs: 150, activeStaleMs: 200 });
+
+    const owner = await registerUser(app, 'OverlayStaleA');
+    const peer = await registerUser(app, 'OverlayStaleB');
+    const aId = await createAdventure(app, owner.token);
+    const mId = await createMap(app, owner.token, aId);
+    await joinAdventure(app, owner.token, peer.token, aId);
+
+    const ownerWs = await connectWs(port, owner.token);
+    const peerWs = await connectWs(port, peer.token);
+    await subscribeOverlay(ownerWs, mId);
+    await subscribeOverlay(peerWs, mId);
+
+    const removal = waitForFrame(
+      peerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'liveOverlay'
+        && !!(f.data as { removed?: unknown }).removed,
+      1000,
+    );
+    send(ownerWs, { type: 'overlayUpdate', mapId: mId, item: scribble('s5', 'active') });
+    const removed = (await removal).data as { removed: { itemId: string } };
+    expect(removed.removed.itemId).toBe('s5');
+
+    ownerWs.close();
+    peerWs.close();
   });
 });
