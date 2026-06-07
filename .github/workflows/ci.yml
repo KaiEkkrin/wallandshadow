@@ -42,3 +42,7 @@ jobs:
       - name: Unit tests
         working-directory: was-web
         run: yarn test
+
+      - name: Shared unit tests
+        working-directory: was-web
+        run: yarn test:shared
