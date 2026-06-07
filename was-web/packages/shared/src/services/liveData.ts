@@ -4,6 +4,7 @@ import { Change, Changes } from '../data/change';
 import { IIdentified } from '../data/identified';
 import { IMap } from '../data/map';
 import { PresenceSubscription, PresenceUserState } from '../data/presence';
+import { OutgoingOverlayItem, OverlayItem } from '../data/overlay';
 import { IProfile } from '../data/profile';
 import { ISpritesheet } from '../data/sprite';
 
@@ -73,6 +74,18 @@ export interface ILiveData {
 
   // Send an incremental map change. Goes over the WS, not REST.
   sendMapChange(adventureId: string, mapId: string, changes: Change[]): Promise<void>;
+
+  // Send a fire-and-forget ephemeral overlay item (scribble/ruler) over the WS.
+  // Not acked; dropped if the socket is down. The server stamps authorId.
+  sendOverlayUpdate(mapId: string, item: OutgoingOverlayItem): void;
+
+  // Subscribe to ephemeral overlay items for a map. `onNext` receives the full
+  // current set, reconciled client-side from snapshot + update + removal frames.
+  watchLiveOverlays(
+    mapId: string,
+    onNext: (items: OverlayItem[]) => void,
+    onError?: (error: Error) => void,
+  ): () => void;
 
   // Connection observables and control.
   readonly isConnected$: Observable<boolean>;

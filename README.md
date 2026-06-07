@@ -48,6 +48,7 @@ Full setup and the day-to-day workflow — database schema, auth modes, tests, a
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local development setup and the day-to-day workflow |
 | [docs/ZITADEL_OIDC_SETUP.md](docs/ZITADEL_OIDC_SETUP.md) | First-time Zitadel OIDC provider configuration |
 | [docs/REPLATFORM.md](docs/REPLATFORM.md) | Current architecture and the Firebase → Hetzner migration |
+| [docs/architecture/](docs/architecture/README.md) | System-level subsystem overviews (e.g. ephemeral state & live overlays) |
 | [docs/INFRASTRUCTURE_BOOTSTRAP.md](docs/INFRASTRUCTURE_BOOTSTRAP.md) | First-time Hetzner VPS provisioning |
 | [docs/ANALYTICS.md](docs/ANALYTICS.md) | Analytics approach for the self-hosted stack |
 | [docs/EPHEMERAL_WS.md](docs/EPHEMERAL_WS.md) | Design notes for the unimplemented ephemeral WebSocket messages |
