@@ -8,6 +8,9 @@ import type {
   IPlayer,
   IProfile,
   ISpritesheet,
+  OutgoingOverlayItem,
+  OverlayItem,
+  OverlayRemoval,
   PresenceSubscription,
   PresenceUserState,
   UpdateScope,
@@ -280,6 +283,59 @@ export class HonoLiveData implements ILiveData {
 
   async sendMapChange(adventureId: string, mapId: string, changes: Change[]): Promise<void> {
     await this.getSocket().sendMapChange(adventureId, mapId, changes);
+  }
+
+  sendOverlayUpdate(mapId: string, item: OutgoingOverlayItem): void {
+    try {
+      this.getSocket().sendOverlayUpdate(mapId, item);
+    } catch (e) {
+      logError('sendOverlayUpdate failed', e);
+    }
+  }
+
+  watchLiveOverlays(
+    mapId: string,
+    onNext: (items: OverlayItem[]) => void,
+    onError?: (error: Error) => void,
+  ): () => void {
+    try {
+      // Reconcile snapshot + update + removal frames into the current item set.
+      // Keyed by authorId:itemId so multiple authors / items coexist.
+      const items = new Map<string, OverlayItem>();
+      const keyOf = (authorId: string, itemId: string) => `${authorId}:${itemId}`;
+      const emit = () => onNext([...items.values()]);
+      const handlers: SubscriptionHandlers = {
+        onSnapshot: (data: unknown) => {
+          if (!Array.isArray(data)) {
+            logError('liveOverlay snapshot was not an array', data);
+            return;
+          }
+          items.clear();
+          for (const it of data as OverlayItem[]) items.set(keyOf(it.authorId, it.itemId), it);
+          emit();
+        },
+        onUpdate: (data: unknown) => {
+          if (typeof data !== 'object' || data === null) {
+            logError('liveOverlay update was malformed', data);
+            return;
+          }
+          const d = data as OverlayItem | OverlayRemoval;
+          if ('removed' in d) {
+            items.delete(keyOf(d.removed.authorId, d.removed.itemId));
+          } else {
+            items.set(keyOf(d.authorId, d.itemId), d);
+          }
+          emit();
+        },
+        onError,
+      };
+      const sub = this.getSocket().subscribe('liveOverlay', mapId, handlers);
+      return () => sub.unsubscribe();
+    } catch (e) {
+      logError('liveOverlay subscribe failed', e);
+      onError?.(e instanceof Error ? e : new Error(String(e)));
+      return () => {};
+    }
   }
 
   // ── WS subscription plumbing ────────────────────────────────────────────

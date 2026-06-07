@@ -1,6 +1,6 @@
 import { v7 as uuidv7 } from 'uuid';
 
-import { Change, UpdateScope, createChangesConverter } from '@wallandshadow/shared';
+import { Change, OutgoingOverlayItem, UpdateScope, createChangesConverter } from '@wallandshadow/shared';
 import { HEARTBEAT_INTERVAL_MS } from '../models/networkQualityConstants';
 
 // Wire-compatible with was-web/server/src/ws/{handler,notify,subscriptions}.ts.
@@ -51,7 +51,7 @@ export interface SubscriptionHandlers {
 }
 
 interface OutgoingFrame {
-  type: 'subscribe' | 'unsubscribe' | 'mapChange' | 'ping' | 'presenceUpdate';
+  type: 'subscribe' | 'unsubscribe' | 'mapChange' | 'ping' | 'presenceUpdate' | 'overlayUpdate';
   [key: string]: unknown;
 }
 
@@ -183,6 +183,13 @@ export class HonoWebSocket {
       this.pendingAcks.set(ackId, { resolve, reject });
       this.sendFrame({ type: 'mapChange', ackId, adventureId, mapId, chs, idempotencyKey });
     });
+  }
+
+  // Fire-and-forget ephemeral overlay update. Uses writeFrame (NOT sendFrame)
+  // so it is dropped when the socket is down rather than queued — stale
+  // scribbles/rulers should not be replayed on reconnect.
+  sendOverlayUpdate(mapId: string, item: OutgoingOverlayItem): void {
+    this.writeFrame({ type: 'overlayUpdate', mapId, item });
   }
 
   close(): void {
@@ -331,6 +338,7 @@ export class HonoWebSocket {
     // Subscribe frames are re-sent from this.subs below; any subscribe /
     // unsubscribe / presenceUpdate frames queued before reconnect are
     // redundant — the subscribe re-send carries the latest currentMapId.
+    // (overlayUpdate frames use writeFrame and never enter the queue.)
     for (let i = this.sendQueue.length - 1; i >= 0; i--) {
       const t = this.sendQueue[i].type;
       if (t === 'subscribe' || t === 'unsubscribe' || t === 'presenceUpdate') {
