@@ -14,7 +14,7 @@ import OverlayTrigger from 'react-bootstrap/OverlayTrigger';
 import ToggleButton from 'react-bootstrap/ToggleButton';
 import Tooltip from 'react-bootstrap/Tooltip';
 
-import { faDotCircle, faDrawPolygon, faMousePointer, faPlus, faSquare, faCog, faSuitcase, faMapMarker, faSearchPlus, faSearchMinus, faUser, faImage, faImages, faCubes, faBezierCurve, faEye } from '@fortawesome/free-solid-svg-icons';
+import { faDotCircle, faDrawPolygon, faMousePointer, faPlus, faSquare, faCog, faSuitcase, faMapMarker, faSearchPlus, faSearchMinus, faUser, faImage, faImages, faCubes, faBezierCurve, faEye, faPencil } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 
 // We make the children the tooltip contents, to allow for convenient formatting
@@ -151,6 +151,15 @@ function MapControls({
         <u>S</u>elect and move tokens
       </ModeButton>
     ];
+
+    buttons.push(
+      <ModeButton key={EditMode.Scribble} value={EditMode.Scribble}
+        icon={<FontAwesomeIcon icon={faPencil} color="white" />}
+        mode={editMode} setMode={setEditMode} name={editModeRadioName}
+      >
+        Scribble on the map. Hold the left button and draw; scribbles fade after a few seconds.
+      </ModeButton>
+    );
 
     if (canDoAnything) {
       if (layer === Layer.Image && canUploadImages) {
