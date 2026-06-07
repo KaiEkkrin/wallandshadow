@@ -25,7 +25,9 @@ import {
   type SocketState,
 } from './socketState.js';
 import { onPresenceSubscribe, onPresenceUnsubscribe, onPresenceUpdate } from './presence.js';
+import { onLiveOverlaySubscribe, applyOverlayUpdate } from './liveOverlay.js';
 import { WS_CLOSE_ACCOUNT_SUSPENDED, WS_CLOSE_AUTH_REJECTED } from './closeCodes.js';
+import { validateOutgoingOverlayItem } from '@wallandshadow/shared';
 import type { Change, UpdateScope } from '@wallandshadow/shared';
 
 const WS_PATH = '/ws';
@@ -47,6 +49,9 @@ const SCOPE_ROOMS: Record<UpdateScope, 'mapRooms' | 'adventureRooms' | 'userRoom
   // Presence shares the adventure room — there's no separate room manager.
   // Filtering on subscribe/unsubscribe events is by ws's active subs.
   presence: 'adventureRooms',
+  // Live overlays (scribbles, rulers) are map-scoped and ephemeral; they share
+  // mapRooms with mapChanges and filter by scope on broadcast.
+  liveOverlay: 'mapRooms',
 };
 
 export function createUpgradeHandler(wss: WebSocketServer, rooms: Rooms) {
@@ -179,8 +184,19 @@ interface PresenceUpdateFrame {
   subId: number;             // identifies the existing presence subscription
   currentMapId?: string;     // undefined ⇒ adventure overview
 }
+interface OverlayUpdateFrame {
+  type: 'overlayUpdate';
+  mapId: string;
+  item: unknown;  // validated via validateOutgoingOverlayItem before use
+}
 
-type ClientFrame = SubscribeFrame | UnsubscribeFrame | MapChangeFrame | PingFrame | PresenceUpdateFrame;
+type ClientFrame =
+  | SubscribeFrame
+  | UnsubscribeFrame
+  | MapChangeFrame
+  | PingFrame
+  | PresenceUpdateFrame
+  | OverlayUpdateFrame;
 
 async function handleMessage(ws: WebSocket, rooms: Rooms, data: RawData): Promise<void> {
   const state = getSocketState(ws);
@@ -209,6 +225,9 @@ async function handleMessage(ws: WebSocket, rooms: Rooms, data: RawData): Promis
       return;
     case 'presenceUpdate':
       handlePresenceUpdate(ws, state, rooms, frame);
+      return;
+    case 'overlayUpdate':
+      handleOverlayUpdate(ws, state, rooms, frame);
       return;
   }
 }
@@ -239,6 +258,8 @@ async function handleSubscribe(
       snapshotData = onPresenceSubscribe(
         rooms.adventureRooms, ws, state.uid, entityKey, frame.currentMapId,
       );
+    } else if (frame.scope === 'liveOverlay') {
+      snapshotData = onLiveOverlaySubscribe(entityKey);
     }
 
     sendIfOpen(ws, {
@@ -286,6 +307,32 @@ function handlePresenceUpdate(
   const sub = state.subs.get(frame.subId);
   if (!sub || sub.scope !== 'presence') return;
   onPresenceUpdate(rooms.adventureRooms, ws, state.uid, sub.entityKey, frame.currentMapId);
+}
+
+function handleOverlayUpdate(
+  ws: WebSocket,
+  state: SocketState,
+  rooms: Rooms,
+  frame: OverlayUpdateFrame,
+): void {
+  if (typeof frame.mapId !== 'string') return;
+  // The socket must already hold a liveOverlay subscription for this map —
+  // that's where membership was authorized and the room joined.
+  let subscribed = false;
+  for (const sub of state.subs.values()) {
+    if (sub.scope === 'liveOverlay' && sub.entityKey === frame.mapId) {
+      subscribed = true;
+      break;
+    }
+  }
+  if (!subscribed) return;
+
+  const item = validateOutgoingOverlayItem(frame.item);
+  if (!item) {
+    logger.logWarning('Dropping invalid overlayUpdate frame');
+    return;
+  }
+  applyOverlayUpdate(rooms.mapRooms, ws, state.uid, frame.mapId, item);
 }
 
 async function handleMapChange(
@@ -381,6 +428,17 @@ async function resolveSubscribe(
       if (!mapRow) throw new Error('Map not found');
       await assertAdventureMember(db, uid, mapRow.adventureId);
       return { key: mapId, entityKey: mapId, data: await snapshotMapChanges(db, mapId, frame.lastSeq) };
+    }
+
+    case 'liveOverlay': {
+      // Map-scoped ephemeral overlays. Authorize membership here; the snapshot
+      // is computed by handleSubscribe from the in-memory registry.
+      const mapId = requireId(frame);
+      const [mapRow] = await db.select({ adventureId: maps.adventureId })
+        .from(maps).where(and(eq(maps.id, mapId), isNull(maps.deletedAt))).limit(1);
+      if (!mapRow) throw new Error('Map not found');
+      await assertAdventureMember(db, uid, mapRow.adventureId);
+      return { key: mapId, entityKey: mapId, data: null };
     }
 
     case 'presence': {
