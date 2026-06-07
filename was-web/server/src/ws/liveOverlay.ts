@@ -24,6 +24,45 @@ export function setOverlayTimingForTesting(opts: {
   ACTIVE_STALE_MS = opts.activeStaleMs;
 }
 
+// ── Rate limiting ───────────────────────────────────────────────────────────
+// Token-bucket per socket. Pure `consumeToken` is unit-tested with injected
+// timestamps; `allowOverlayFrame` applies it with the real clock.
+
+export interface TokenBucket {
+  tokens: number;
+  last: number; // ms timestamp of the last refill
+}
+
+const RATE_CAPACITY = 60;       // burst allowance
+const RATE_REFILL_PER_SEC = 60; // sustained frames/sec
+
+export function consumeToken(
+  bucket: TokenBucket,
+  nowMs: number,
+  capacity: number,
+  refillPerSec: number,
+): boolean {
+  const elapsedSec = Math.max(0, (nowMs - bucket.last) / 1000);
+  bucket.last = nowMs;
+  bucket.tokens = Math.min(capacity, bucket.tokens + elapsedSec * refillPerSec);
+  if (bucket.tokens < 1) return false;
+  bucket.tokens -= 1;
+  return true;
+}
+
+const buckets = new WeakMap<WebSocket, TokenBucket>();
+
+/** True iff this socket may send another overlay frame now. */
+export function allowOverlayFrame(ws: WebSocket): boolean {
+  const now = Date.now();
+  let bucket = buckets.get(ws);
+  if (!bucket) {
+    bucket = { tokens: RATE_CAPACITY, last: now };
+    buckets.set(ws, bucket);
+  }
+  return consumeToken(bucket, now, RATE_CAPACITY, RATE_REFILL_PER_SEC);
+}
+
 interface MapOverlayState {
   items: Map<string, OverlayItem>;        // itemKey → item
   timers: Map<string, NodeJS.Timeout>;    // itemKey → pending expiry timer

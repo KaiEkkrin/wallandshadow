@@ -323,3 +323,96 @@ describe('liveOverlay lifecycle', () => {
     peerWs.close();
   });
 });
+
+describe('liveOverlay hardening', () => {
+  test('a malformed item is dropped and the socket stays open', async () => {
+    const owner = await registerUser(app, 'OverlayBadA');
+    const peer = await registerUser(app, 'OverlayBadB');
+    const aId = await createAdventure(app, owner.token);
+    const mId = await createMap(app, owner.token, aId);
+    await joinAdventure(app, owner.token, peer.token, aId);
+
+    const ownerWs = await connectWs(port, owner.token);
+    const peerWs = await connectWs(port, peer.token);
+    await subscribeOverlay(ownerWs, mId);
+    await subscribeOverlay(peerWs, mId);
+
+    // Bad payload: unknown kind. Peer must see nothing for it.
+    const peerQuiet = noFrameWithin(
+      peerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'liveOverlay',
+      250,
+    );
+    send(ownerWs, {
+      type: 'overlayUpdate',
+      mapId: mId,
+      item: { itemId: 'bad', phase: 'active', payload: { kind: 'arrow', points: [] } },
+    });
+    expect(await peerQuiet).toBe(true);
+
+    // Socket still works: a valid item afterwards is delivered.
+    const peerGot = waitForFrame(peerWs, f => f.type === 'roomUpdate' && f.scope === 'liveOverlay');
+    send(ownerWs, { type: 'overlayUpdate', mapId: mId, item: scribble('ok') });
+    expect((await peerGot.then(f => f.data as OverlayItem)).itemId).toBe('ok');
+
+    ownerWs.close();
+    peerWs.close();
+  });
+
+  test('an overlayUpdate without a subscription is ignored', async () => {
+    const owner = await registerUser(app, 'OverlayNoSubA');
+    const peer = await registerUser(app, 'OverlayNoSubB');
+    const aId = await createAdventure(app, owner.token);
+    const mId = await createMap(app, owner.token, aId);
+    await joinAdventure(app, owner.token, peer.token, aId);
+
+    const ownerWs = await connectWs(port, owner.token);
+    const peerWs = await connectWs(port, peer.token);
+    await subscribeOverlay(peerWs, mId);
+    // ownerWs deliberately does NOT subscribe.
+
+    const peerQuiet = noFrameWithin(
+      peerWs,
+      f => f.type === 'roomUpdate' && f.scope === 'liveOverlay',
+      250,
+    );
+    send(ownerWs, { type: 'overlayUpdate', mapId: mId, item: scribble('nope') });
+    expect(await peerQuiet).toBe(true);
+
+    ownerWs.close();
+    peerWs.close();
+  });
+
+  test('per-author item cap drops excess new items', async () => {
+    const owner = await registerUser(app, 'OverlayCapA');
+    const peer = await registerUser(app, 'OverlayCapB');
+    const aId = await createAdventure(app, owner.token);
+    const mId = await createMap(app, owner.token, aId);
+    await joinAdventure(app, owner.token, peer.token, aId);
+    // Keep active items alive long enough to accumulate.
+    setOverlayTimingForTesting({ scribbleFadeMs: 10_000, rulerFadeMs: 1_000, activeStaleMs: 10_000 });
+
+    const ownerWs = await connectWs(port, owner.token);
+    const peerWs = await connectWs(port, peer.token);
+    await subscribeOverlay(ownerWs, mId);
+    await subscribeOverlay(peerWs, mId);
+
+    const seen = new Set<string>();
+    peerWs.on('message', (raw) => {
+      const f = JSON.parse(raw.toString());
+      if (f.type === 'roomUpdate' && f.scope === 'liveOverlay' && f.data?.itemId) seen.add(f.data.itemId);
+    });
+
+    // Send 6 distinct items; the cap is 5, so the 6th must be dropped.
+    for (let i = 0; i < 6; i++) {
+      send(ownerWs, { type: 'overlayUpdate', mapId: mId, item: scribble(`cap-${i}`) });
+    }
+    await new Promise(r => setTimeout(r, 300));
+    expect(seen.size).toBe(5);
+    expect(seen.has('cap-5')).toBe(false);
+
+    setOverlayTimingForTesting({ scribbleFadeMs: 10_000, rulerFadeMs: 1_000, activeStaleMs: 5_000 });
+    ownerWs.close();
+    peerWs.close();
+  });
+});

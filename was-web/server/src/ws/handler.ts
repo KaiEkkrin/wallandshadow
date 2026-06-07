@@ -25,7 +25,7 @@ import {
   type SocketState,
 } from './socketState.js';
 import { onPresenceSubscribe, onPresenceUnsubscribe, onPresenceUpdate } from './presence.js';
-import { onLiveOverlaySubscribe, applyOverlayUpdate } from './liveOverlay.js';
+import { onLiveOverlaySubscribe, applyOverlayUpdate, allowOverlayFrame } from './liveOverlay.js';
 import { WS_CLOSE_ACCOUNT_SUSPENDED, WS_CLOSE_AUTH_REJECTED } from './closeCodes.js';
 import { validateOutgoingOverlayItem } from '@wallandshadow/shared';
 import type { Change, UpdateScope } from '@wallandshadow/shared';
@@ -326,6 +326,7 @@ function handleOverlayUpdate(
     }
   }
   if (!subscribed) return;
+  if (!allowOverlayFrame(ws)) return;
 
   const item = validateOutgoingOverlayItem(frame.item);
   if (!item) {
