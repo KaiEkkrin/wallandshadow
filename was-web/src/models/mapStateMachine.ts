@@ -9,7 +9,8 @@ import { MapChangeTracker } from './mapChangeTracker';
 import { RedrawFlag } from './redrawFlag';
 import { WallHighlighter, WallRectangleHighlighter, RoomHighlighter } from './wallHighlighter';
 
-import { IAnnotation, IPositionedAnnotation, Change, createTokenRemove, createTokenAdd, createNoteRemove, createNoteAdd, createTokenMove, createImageAdd, createImageRemove, netObjectCount, trackChanges, GridCoord, coordString, coordsEqual, coordSub, coordAdd, GridVertex, vertexAdd, FeatureDictionary, flipToken, IToken, ITokenDictionary, ITokenProperties, TokenSize, defaultToken, IAdventureIdentified, Anchor, anchorsEqual, anchorString, IMapImage, IMapImageProperties, LoSPosition, IMap, IUserPolicy, getTokenLoSPosition, ITokenGeometry, Tokens, ISpriteManager, IGridGeometry } from '@wallandshadow/shared';
+import { IAnnotation, IPositionedAnnotation, Change, createTokenRemove, createTokenAdd, createNoteRemove, createNoteAdd, createTokenMove, createImageAdd, createImageRemove, netObjectCount, trackChanges, GridCoord, coordString, coordsEqual, coordSub, coordAdd, GridVertex, vertexAdd, FeatureDictionary, flipToken, IToken, ITokenDictionary, ITokenProperties, TokenSize, defaultToken, IAdventureIdentified, Anchor, anchorsEqual, anchorString, IMapImage, IMapImageProperties, LoSPosition, IMap, IUserPolicy, getTokenLoSPosition, ITokenGeometry, Tokens, ISpriteManager, IGridGeometry, ILiveData } from '@wallandshadow/shared';
+import { ScribbleController } from './scribbleController';
 import { TokensWithObservableText } from '../data/tokenTexts';
 import { chooseLoSSourceTokens } from './groupVision';
 import { MapColourVisualisationMode } from './displayMode';
@@ -147,6 +148,8 @@ export class MapStateMachine {
   private _imageMoveDragMode: 'vertex' | 'pixel' = 'vertex';
   private _inImageMoveDrag = false;
 
+  private readonly _scribbleController: ScribbleController;
+
   private _isDisposed = false;
 
   private _displayMode: MapColourVisualisationMode = MapColourVisualisationMode.Areas;
@@ -155,6 +158,7 @@ export class MapStateMachine {
 
   constructor(
     sendChanges: (adventureId: string, mapId: string, changes: Change[]) => Promise<void>,
+    live: ILiveData,
     map: IAdventureIdentified<IMap>,
     uid: string,
     gridGeometry: IGridGeometry,
@@ -186,6 +190,24 @@ export class MapStateMachine {
       this._gridGeometry, this._tokenGeometry, colours, this.seeEverything, logError, spriteManager,
       resolveImageUrl
     );
+
+    // Dedicated scratch objects for the scribble toWorld closure -- avoids
+    // aliasing with the class-level _scratchMatrix1/_scratchVector1 fields that
+    // other methods pass to getClientToWorld during the same frame. (Safe because
+    // these calls are always synchronous and single-threaded.)
+    const scribbleScratchM = new THREE.Matrix4();
+    const scribbleScratchV = new THREE.Vector3();
+    this._scribbleController = new ScribbleController({
+      live,
+      toWorld: cp => {
+        const m = getClientToWorld(scribbleScratchM, this._drawing);
+        const v = scribbleScratchV.set(cp.x, cp.y, 0).applyMatrix4(m);
+        return { x: v.x, y: v.y };
+      },
+      setScribbles: segs => this._drawing.setScribbles(segs),
+      now: () => Date.now(),
+    });
+    this._scribbleController.setMap(map.adventureId, map.id);
 
     this._mapColouring = new MapColouring(this._gridGeometry);
 
@@ -1121,6 +1143,7 @@ export class MapStateMachine {
 
     // Switch ourselves to the new map
     this._map = map;
+    this._scribbleController.setMap(map.adventureId, map.id);
     this._userPolicy = userPolicy;
     this._changeTracker = this.createChangeTracker();
     this._tokens.setObserveCharacter(t => spriteManager.lookupCharacter(t));
@@ -1704,10 +1727,23 @@ export class MapStateMachine {
     this.resize();
   }
 
+  scribbleStart(cp: THREE.Vector3) {
+    this._scribbleController.start({ x: cp.x, y: cp.y });
+  }
+
+  scribbleMove(cp: THREE.Vector3) {
+    this._scribbleController.move({ x: cp.x, y: cp.y });
+  }
+
+  scribbleEnd(cp: THREE.Vector3) {
+    this._scribbleController.end({ x: cp.x, y: cp.y });
+  }
+
   dispose() {
     if (this._isDisposed === false) {
       console.debug("disposing map state machine");
       this._stateSubj.complete();
+      this._scribbleController.dispose();
       this._drawing.dispose();
       this._isDisposed = true;
     }
