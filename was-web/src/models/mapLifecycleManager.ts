@@ -56,6 +56,7 @@ export class MapLifecycleManager {
     const live = this._live;
     const newStateMachine = new MapStateMachine(
       (adventureId, mapId, changes) => live.sendMapChange(adventureId, mapId, changes),
+      live,
       map,
       this._uid,
       map.record.ty === MapType.Hex ? hexGridGeometry : squareGridGeometry,
