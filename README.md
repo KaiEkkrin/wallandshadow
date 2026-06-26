@@ -29,8 +29,6 @@ Wall & Shadow should work well in any modern browser that supports [WebGL 2](htt
 - **Zitadel** OIDC for authentication
 - **Caddy** + systemd-supervised Docker containers on a Hetzner VPS
 
-The original Firebase stack (Firestore, Cloud Functions, Firebase Auth, Firebase Hosting, Firebase Storage) lives on the `legacy-firebase` branch. See [docs/REPLATFORM.md](docs/REPLATFORM.md) for the migration story.
-
 ## Getting started
 
 The easiest way to get started is the VS Code dev container:
@@ -47,19 +45,18 @@ Full setup and the day-to-day workflow — database schema, auth modes, tests, a
 | --- | --- |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local development setup and the day-to-day workflow |
 | [docs/ZITADEL_OIDC_SETUP.md](docs/ZITADEL_OIDC_SETUP.md) | First-time Zitadel OIDC provider configuration |
-| [docs/REPLATFORM.md](docs/REPLATFORM.md) | Current architecture and the Firebase → Hetzner migration |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Current architecture and deployment |
 | [docs/architecture/](docs/architecture/README.md) | System-level subsystem overviews (e.g. ephemeral state & live overlays) |
 | [docs/INFRASTRUCTURE_BOOTSTRAP.md](docs/INFRASTRUCTURE_BOOTSTRAP.md) | First-time Hetzner VPS provisioning |
 | [docs/ANALYTICS.md](docs/ANALYTICS.md) | Analytics approach for the self-hosted stack |
 | [docs/EPHEMERAL_WS.md](docs/EPHEMERAL_WS.md) | Design notes for the unimplemented ephemeral WebSocket messages |
 | [.devcontainer/README.md](.devcontainer/README.md) | Dev container internals, GPU configuration, troubleshooting |
-| [docs/LEGACY_FIREBASE_DEPLOY.md](docs/LEGACY_FIREBASE_DEPLOY.md) | Retired Firebase deployment (`legacy-firebase` branch only) |
 
 ## Deployment
 
 Production and test deploys run through `.github/workflows/deploy-server-production.yml` and `deploy-server-test.yml` — they build a multi-arch Docker image, push it to GHCR, and SSH to the Hetzner VPS to restart the systemd unit with the new image tag. Infrastructure is provisioned by `.github/workflows/provision.yml` (OpenTofu + Ansible).
 
-See [docs/REPLATFORM.md](docs/REPLATFORM.md) for the deployment architecture and [docs/INFRASTRUCTURE_BOOTSTRAP.md](docs/INFRASTRUCTURE_BOOTSTRAP.md) for first-time VPS bootstrap.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deployment architecture and [docs/INFRASTRUCTURE_BOOTSTRAP.md](docs/INFRASTRUCTURE_BOOTSTRAP.md) for first-time VPS bootstrap.
 
 ## Contributing
 
