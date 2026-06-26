@@ -16,5 +16,7 @@ ansible/secrets/
 /.usercache/.yarnrc
 
 # misc stuff
+.claude/settings.local.json
 *.log
 .playwright-mcp/
+
