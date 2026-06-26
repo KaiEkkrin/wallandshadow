@@ -2,7 +2,7 @@
 
 How to set up a local development environment for Wall & Shadow and the
 day-to-day workflow. For the project overview and architecture, start with the
-[README](../README.md) and [REPLATFORM.md](REPLATFORM.md). For first-time setup
+[README](../README.md) and [ARCHITECTURE.md](ARCHITECTURE.md). For first-time setup
 of the external OIDC provider, see
 [ZITADEL_OIDC_SETUP.md](ZITADEL_OIDC_SETUP.md).
 
