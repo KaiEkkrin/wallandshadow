@@ -6,9 +6,6 @@ current architecture and the key decisions behind it.
 **Stack**: Hono + Node.js (TypeScript) · PostgreSQL 17 · Hetzner Object Storage (S3) ·
 Zitadel OIDC · Caddy · systemd-supervised Docker containers
 
-The original Firebase codebase lives on the `legacy-firebase` branch and is not described
-here. See `docs/LEGACY_FIREBASE_DEPLOY.md` for its deployment guide.
-
 ---
 
 ## Architecture Decisions
