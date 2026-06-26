@@ -31,7 +31,7 @@
     "sharp": "^0.34.0",
     "unstorage": "^1.17.5",
     "uuid": "^14.0.0",
-    "ws": "^8.18.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.0",
