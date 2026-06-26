@@ -6,7 +6,7 @@ User-agent: *
 Disallow: /
 
 # Note: This file works in conjunction with:
-# 1. X-Robots-Tag HTTP header (set in firebase.test.json)
+# 1. X-Robots-Tag HTTP header (set by the web server)
 # 2. <meta name="robots" content="noindex, nofollow"> tags in HTML
 #
 # Defense in depth: Multiple layers ensure test environment is never indexed
