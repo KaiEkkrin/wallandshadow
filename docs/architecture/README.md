@@ -18,6 +18,6 @@ doesn't).
 | --- | --- |
 | [ephemeral-state.md](ephemeral-state.md) | The ephemeral (in-memory, never-persisted) collaboration layer: presence and live overlays (scribbles / rulers) |
 
-See also `docs/REPLATFORM.md` for the overall stack and deployment
+See also `docs/ARCHITECTURE.md` for the overall stack and deployment
 architecture, and `docs/EPHEMERAL_WS.md` for the original (now partly
 superseded) design notes on ephemeral WebSocket messages.

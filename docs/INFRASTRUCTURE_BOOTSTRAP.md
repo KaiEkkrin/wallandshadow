@@ -142,7 +142,7 @@ The wildcard null DKIM record asserts that no DKIM selector is valid, completing
 | ---- | ---- | ----------------- | ---- | -------------------------------------------------------- |
 | `@`  | MX   | `<mail provider>` | 3600 | Adding MX means revisiting the SPF/DKIM/DMARC records too |
 
-We do not send email from the application today (password reset is admin-only — see @docs/REPLATFORM.md), so MX is omitted.
+We do not send email from the application today (password reset is admin-only — see @docs/ARCHITECTURE.md), so MX is omitted.
 
 ### Verifying
 
