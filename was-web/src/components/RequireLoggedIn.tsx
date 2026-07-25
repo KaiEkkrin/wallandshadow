@@ -1,7 +1,7 @@
 import { useContext, useEffect } from 'react';
 import * as React from 'react';
 import { UserContext } from './UserContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router';
 
 // This is a simple helper component that requires you to be logged in
 // and bounces you to the login page if you're not.

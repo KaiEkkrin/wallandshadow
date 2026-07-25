@@ -9,7 +9,7 @@ import { UserContext } from './UserContext';
 import { IAdventureSummary } from '@wallandshadow/shared';
 import { logError } from '../services/consoleLogger';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { v7 as uuidv7 } from 'uuid';
 
 interface IAdventureCollectionProps {

@@ -20,7 +20,7 @@ import VersionBadge from './components/VersionBadge';
 import ChunkErrorHandler from './components/ChunkErrorHandler';
 import { getEnvironmentColors } from './utils/environment';
 
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router';
 
 // Lazy-loaded route components for code splitting
 const About = lazy(() => import('./About'));

@@ -1,5 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { v7 as uuidv7 } from 'uuid';
 
 import Badge from 'react-bootstrap/Badge';

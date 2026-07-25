@@ -1,5 +1,5 @@
 import { useEffect, useContext, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { handleOidcCallback, getOidcBearerToken } from './services/oidcAuth';
 import { AuthContext } from './components/AuthContext';
 import { HonoAuth } from './services/honoAuth';

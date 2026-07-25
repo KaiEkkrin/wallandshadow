@@ -15,7 +15,7 @@ import { ProfileContext } from './ProfileContext';
 import { StatusContext } from './StatusContext';
 import { UserContext } from './UserContext';
 
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { from, Observable } from 'rxjs';
 import { first, map, scan, share, switchMap } from 'rxjs/operators';
 import { v7 as uuidv7 } from 'uuid';

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import Markdown, { type Components } from 'react-markdown';
 
 import './About.css';

@@ -13,7 +13,7 @@ import OverlayTrigger from 'react-bootstrap/OverlayTrigger';
 import Tooltip from 'react-bootstrap/Tooltip';
 
 import useMeasure from 'react-use-measure';
-import { LinkContainer } from 'react-router-bootstrap';
+import { Link } from 'react-router';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCopy, faImage, faTimes } from '@fortawesome/free-solid-svg-icons';
@@ -116,9 +116,7 @@ function MapCard({ collapsing, adventures, map, cloneMap, deleteMap, pickImage }
         <Card.Subtitle className="text-muted">{map.ty} map</Card.Subtitle>
         <Card.Text>{map.description}</Card.Text>
         <div className="card-row-spaced">
-          <LinkContainer to={"/adventure/" + map.adventureId + "/map/" + map.id}>
-            <Card.Link>Open map</Card.Link>
-          </LinkContainer>
+          <Card.Link as={Link} to={"/adventure/" + map.adventureId + "/map/" + map.id}>Open map</Card.Link>
           {manageButtons}
         </div>
       </Fragment>

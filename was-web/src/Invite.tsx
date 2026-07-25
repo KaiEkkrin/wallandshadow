@@ -15,7 +15,7 @@ import { logError } from './services/consoleLogger';
 
 import Button from 'react-bootstrap/Button';
 
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { v7 as uuidv7 } from 'uuid';
 
 interface IInvitePageProps {

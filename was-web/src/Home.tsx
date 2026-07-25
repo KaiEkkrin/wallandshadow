@@ -12,7 +12,7 @@ import { useRecentMaps } from './hooks/useRecentMaps';
 import Col from 'react-bootstrap/Col';
 import Container from 'react-bootstrap/Container';
 import Row from 'react-bootstrap/Row';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 function Home() {
   const { user } = useContext(UserContext);
