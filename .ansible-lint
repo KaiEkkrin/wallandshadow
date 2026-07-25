@@ -1,12 +1,10 @@
 # ansible-lint configuration — see https://ansible.readthedocs.io/projects/lint/
 #
-# Only the VPS provisioning playbook is linted. Templates under
-# ansible/templates/ are Jinja2 and are checked as part of the playbook that
-# renders them, not standalone.
-exclude_paths:
-  - .github/
-  - docs/
-  - was-web/
+# The CI job runs ansible-lint with working-directory: ansible, so only the VPS
+# provisioning playbook is in scope already and no exclude_paths are needed.
+# ansible-lint still finds this file, because it searches upward to the git root.
+# Templates under ansible/templates/ are Jinja2 and are checked as part of the
+# playbook that renders them, not standalone.
 
 # Rules deliberately not enforced. Add entries here only with a reason.
 skip_list:

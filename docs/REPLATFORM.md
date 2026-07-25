@@ -246,8 +246,9 @@ Hetzner credentials.
 Deploys are separate workflows. `deploy-server-test.yml` (push to `main`) and
 `deploy-server-production.yml` (manual) build the multi-arch image, push it to
 `ghcr.io/OWNER/wallandshadow:SHA`, and SSH to the VPS to flip the image tag and
-restart the systemd unit. The test deploy calls `ci.yml` with `force_all: true`
-first, so every verification runs before anything ships.
+restart the systemd unit. Both call `ci.yml` with `force_all: true` first, so
+every verification runs before anything ships — including on a manual production
+dispatch from a ref that branch protection never saw.
 
 ### Hosting (Hetzner Cloud)
 
