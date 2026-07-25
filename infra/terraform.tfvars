@@ -11,3 +11,6 @@ location     = "hel1"
 server_type  = "cx23"
 server_image = "ubuntu-24.04"
 volume_size  = 10
+
+# smoke test
+smoke_test_value=99
