@@ -21,7 +21,7 @@ set -euo pipefail
 NEW_PG_PASSWORD=$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-32)
 NEW_JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')
 
-cp /etc/wallandshadow/secrets /etc/wallandshadow/secrets.bak.$(date +%s)
+cp /etc/wallandshadow/secrets "/etc/wallandshadow/secrets.bak.$(date +%s)"
 
 sudo -u postgres psql -c "ALTER USER was WITH PASSWORD '$NEW_PG_PASSWORD';"
 

@@ -268,12 +268,44 @@ jobs:
           docker run --rm -v "$PWD:/repo" -w /repo \
             rhysd/actionlint:1.7.7 -color
 
+  # ── Ansible provisioning ────────────────────────────────────────────────────
+  ansible:
+    name: Ansible checks
+    needs: changes
+    if: ${{ needs.changes.outputs.ansible == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The full `ansible` distribution, not `ansible-core`: the playbook uses
+      # modules from ansible.posix, community.general and community.postgresql,
+      # which --syntax-check needs to be able to resolve.
+      - name: Install Ansible and ansible-lint
+        run: pip install --disable-pip-version-check ansible ansible-lint
+
+      - name: Playbook syntax check
+        working-directory: ansible
+        run: ansible-playbook playbook.yml -i inventory.yml --syntax-check
+
+      - name: Lint playbook
+        working-directory: ansible
+        run: ansible-lint
+
+      - name: ShellCheck ansible scripts
+        run: shellcheck ansible/*.sh
+
   # ── Terminal gate: the single required status check ─────────────────────────
   # Set branch protection on main to require "CI gate". It succeeds when every
   # job above either succeeded or was skipped, and fails otherwise.
   ci-gate:
     name: CI gate
-    needs: [changes, web, server, dockerfile, workflows]
+    needs: [changes, web, server, dockerfile, workflows, ansible]
     if: always()
     runs-on: ubuntu-latest
 

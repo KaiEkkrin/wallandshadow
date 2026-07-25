@@ -1,0 +1,12 @@
+# ansible-lint configuration — see https://ansible.readthedocs.io/projects/lint/
+#
+# Only the VPS provisioning playbook is linted. Templates under
+# ansible/templates/ are Jinja2 and are checked as part of the playbook that
+# renders them, not standalone.
+exclude_paths:
+  - .github/
+  - docs/
+  - was-web/
+
+# Rules deliberately not enforced. Add entries here only with a reason.
+skip_list: []
