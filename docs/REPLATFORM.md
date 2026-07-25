@@ -212,15 +212,42 @@ Caddy and PostgreSQL run natively on the VPS (managed by Ansible), not as contai
 
 ### CI Pipeline
 
+`.github/workflows/ci.yml` is the single CI workflow. It runs on **every** pull
+request into `main` with no `paths:` filter, so it always reports — which is what
+lets `CI gate` be a required status check in branch protection.
+
+Path filtering happens *inside* the workflow. A leading `changes` job
+(`dorny/paths-filter`) emits one boolean per area; each verification job is
+skipped when its files are untouched. The terminal `ci-gate` job depends on all
+of them with `if: always()` and fails only on `failure` or `cancelled` — a
+skipped job counts as a pass.
+
 ```
-on: push to main / pull_request
+on: pull_request → main   (always runs)
+    workflow_call         (force_all: true — used by the deploy workflows)
 
 jobs:
-  ci:           lint · test:unit · test:server (against real PostgreSQL + MinIO)
-  ci-server:    server lint · tsc · test
-  build:        multi-arch image (amd64 + arm64) → ghcr.io/OWNER/wallandshadow:SHA
-  deploy:       SSH → flip image tag → systemctl restart  (push to main only)
+  changes      always      →  web / server / dockerfile / workflows / ansible / infra booleans
+  web          if web      →  yarn build · yarn lint · yarn test · yarn test:shared
+  server       if server   →  tsc --noEmit · lint · drizzle-kit push · test
+                              (against real PostgreSQL 17 + MinIO service containers)
+  dockerfile   if docker   →  hadolint · BuildKit build checks · shellcheck entrypoint
+  workflows    if wf       →  actionlint (with shellcheck on inline run: blocks)
+  ansible      if ansible  →  ansible-playbook --syntax-check · ansible-lint · shellcheck
+  infra        if infra    →  tofu fmt -check · tofu validate (-backend=false)
+  ci-gate      always      →  REQUIRED CHECK — fails if any job above failed
 ```
+
+The deployment jobs are statically validated only: **no image is built or pushed
+by CI**, and no job requires a secret, so the whole workflow runs on fork pull
+requests. `tofu init -backend=false` is what keeps the OpenTofu check free of
+Hetzner credentials.
+
+Deploys are separate workflows. `deploy-server-test.yml` (push to `main`) and
+`deploy-server-production.yml` (manual) build the multi-arch image, push it to
+`ghcr.io/OWNER/wallandshadow:SHA`, and SSH to the VPS to flip the image tag and
+restart the systemd unit. The test deploy calls `ci.yml` with `force_all: true`
+first, so every verification runs before anything ships.
 
 ### Hosting (Hetzner Cloud)
 

@@ -91,9 +91,11 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.HCLOUD_S3_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HCLOUD_S3_SECRET_KEY }}
         run: |
-          echo "vps_ip=$(tofu output -raw vps_ip)" >> "$GITHUB_OUTPUT"
-          echo "vps_ipv6=$(tofu output -raw vps_ipv6)" >> "$GITHUB_OUTPUT"
-          echo "volume_id=$(tofu output -raw volume_id)" >> "$GITHUB_OUTPUT"
+          {
+            echo "vps_ip=$(tofu output -raw vps_ip)"
+            echo "vps_ipv6=$(tofu output -raw vps_ipv6)"
+            echo "volume_id=$(tofu output -raw volume_id)"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Display VPS IP
         run: |

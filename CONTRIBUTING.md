@@ -13,6 +13,11 @@ dev container details.
 Run `yarn lint`, `yarn build`, and the test suites in both `was-web/` and
 `was-web/server/` — they must pass.
 
+Every pull request into `main` runs the `CI` workflow, which must report a
+passing **CI gate** check before the PR can be merged. CI skips the checks whose
+files you did not touch, so a docs-only PR will show most jobs as skipped — that
+is expected, and the gate still passes.
+
 ## Generative AI
 
 AI-assisted contributions are acceptable. You remain responsible for

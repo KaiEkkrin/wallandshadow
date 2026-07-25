@@ -1,0 +1,8 @@
+# hadolint configuration — see https://github.com/hadolint/hadolint
+#
+# DL3060 (`yarn cache clean` missing after `yarn install`) fires on the deps
+# stage, whose filesystem never reaches the shipped image: the production stage
+# runs its own `yarn install --frozen-lockfile --production && yarn cache clean`.
+# Cleaning the cache in a build-only stage would just slow the build down.
+ignored:
+  - DL3060

@@ -162,6 +162,10 @@
 
     - name: Install AWS CLI v2
       ansible.builtin.command: /tmp/aws/install
+      # Gated by aws_cli_check.rc above, so this only ever runs when the CLI
+      # is genuinely absent — every execution installs it, hence always
+      # changed.
+      changed_when: true
       when: aws_cli_check.rc != 0
 
     - name: Clean up AWS CLI installer
@@ -378,6 +382,10 @@
     - name: Copy PostgreSQL data to volume
       ansible.builtin.command:
         cmd: "rsync -av /var/lib/postgresql/{{ pg_version }}/main/ {{ pgdata_mount }}/main/"
+      # Gated by pgdata_on_volume.stat.exists above, so this only ever runs
+      # on the one-shot migration to a fresh volume — every execution copies
+      # data, hence always changed.
+      changed_when: true
       when:
         - volume_id is defined and volume_id != ''
         - not (pgdata_on_volume.stat.exists | default(false))
@@ -409,6 +417,7 @@
     # ── PostgreSQL configuration ────────────────────────────────────────────
 
     - name: Create PostgreSQL role
+      become: true
       become_user: postgres
       community.postgresql.postgresql_user:
         name: "{{ pg_user }}"
@@ -416,12 +425,14 @@
         role_attr_flags: CREATEDB
 
     - name: Create production database
+      become: true
       become_user: postgres
       community.postgresql.postgresql_db:
         name: "{{ pg_db_prod }}"
         owner: "{{ pg_user }}"
 
     - name: Create test database
+      become: true
       become_user: postgres
       community.postgresql.postgresql_db:
         name: "{{ pg_db_test }}"
@@ -453,8 +464,8 @@
         group: "{{ item.owner }}"
         mode: "{{ item.mode }}"
       loop:
-        - { path: /var/log/caddy,    owner: caddy, mode: "0750" }
-        - { path: /var/www/stats,    owner: caddy, mode: "0755" }
+        - { path: /var/log/caddy, owner: caddy, mode: "0750" }
+        - { path: /var/www/stats, owner: caddy, mode: "0755" }
         - { path: /var/lib/goaccess, owner: caddy, mode: "0750" }
 
     # Seed the bcrypt salt from the password itself so the hash is
