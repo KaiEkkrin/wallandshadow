@@ -47,6 +47,18 @@ export function isPhone(deviceName: string) {
   return /(iPhone)|(Pixel)/.test(deviceName);
 }
 
+/**
+ * Wait for the Bootstrap navbar's collapse transition to finish. The links
+ * become visible as soon as the height animation starts, so asserting
+ * visibility alone is not enough: clicking one mid-animation fails with
+ * "element is not stable", and Playwright's retry can then land after the
+ * navbar has closed again. `.collapsing` is present only while the transition
+ * runs, so its absence is the settled signal.
+ */
+async function awaitNavbarSettled(page: Page) {
+  await expect(page.locator('#basic-navbar-nav.collapsing')).toHaveCount(0, { timeout: 5000 });
+}
+
 export async function ensureNavbarExpanded(page: Page, deviceName: string) {
   // On phones we'll get the collapsed hamburger thingy
   if (!isPhone(deviceName)) return;
@@ -58,6 +70,7 @@ export async function ensureNavbarExpanded(page: Page, deviceName: string) {
 
   await page.click('[aria-controls="basic-navbar-nav"]');
   await expect(firstLink).toBeVisible({ timeout: 5000 });
+  await awaitNavbarSettled(page);
 }
 
 export async function whileNavbarExpanded(page: Page, deviceName: string, fn: () => Promise<void>) {
@@ -71,6 +84,7 @@ export async function whileNavbarExpanded(page: Page, deviceName: string, fn: ()
   if (!wasExpanded) {
     await page.click('[aria-controls="basic-navbar-nav"]');
     await expect(firstLink).toBeVisible({ timeout: 5000 });
+    await awaitNavbarSettled(page);
   }
 
   await fn();

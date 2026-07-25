@@ -1484,7 +1484,7 @@ export class MapStateMachine {
       } else if (this._inImageMoveDrag === true) {
         this.imageMoveDragEnd(cp, chs);
       } else if (layer === Layer.Image) {
-        let image: IMapImage | undefined = undefined;
+        let image: IMapImage | undefined;
         if (this._imageResizer.inDrag) {
           // Complete the image resize operation
           image = this._imageResizer.dragEnd(mode => this.getAnchor(cp, mode), chs);
