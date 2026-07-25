@@ -527,12 +527,18 @@ Insert immediately before the `ci-gate` job:
     steps:
       - uses: actions/checkout@v4
 
+      # Run via `docker run` rather than `uses: docker://…`. This repo restricts
+      # Actions to an allowlist (Settings → Actions → Allow select actions), and
+      # that policy governs `uses:` references — including docker:// ones, whose
+      # pattern syntax is awkward at best. A shell command is outside the policy
+      # entirely, so this needs no allowlist entry and pins the image explicitly.
+      #
       # The actionlint image bundles shellcheck and pyflakes, so inline `run:`
       # scripts are linted too — which a bare actionlint binary would skip.
       - name: Run actionlint
-        uses: docker://rhysd/actionlint:1.7.7
-        with:
-          args: -color
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            rhysd/actionlint:1.7.7 -color
 ```
 
 - [ ] **Step 5: Add it to the gate**
@@ -1193,7 +1199,15 @@ gh pr checks --watch
 
 Expected: only `Detect changed areas` and `CI gate` run — a docs-only commit matches no filter. This is the end-to-end proof that skip-as-pass works.
 
-- [ ] **Step 4: Merge, then enable the required check**
+### Steps 4 and 5 are the repo owner's to run — not an implementer's
+
+Execution of this plan stops after Step 3. Merging to `main` and editing branch
+protection are hard to reverse on a live repository, so they are handed back
+rather than automated. **An implementer subagent must not run `gh pr merge`, must
+not call the branch-protection API, and must not open the smoke-test PR.** The
+remaining steps are written for the repo owner.
+
+- [ ] **Step 4 (owner): Merge, then enable the required check**
 
 Branch protection can only require a check name GitHub has already observed, so this must happen **after** the PR merges and `ci.yml` exists on `main`.
 
@@ -1203,25 +1217,38 @@ gh pr merge --squash
 
 Then, in the repository settings:
 
-1. **Settings → Branches → Branch protection rules →** edit (or add) the rule for `main`.
-2. Tick **Require status checks to pass before merging**.
-3. In the search box, type `CI gate` and select it. Select *only* this check — the individual jobs must not be required, because a legitimately skipped job would then block the merge.
-4. Tick **Require branches to be up to date before merging** if you want the gate evaluated against the post-merge tree.
-5. Save.
+`main` **already has a protection rule** with `CodeQL` as a required status check
+and `strict: true`. You are adding to that list, not replacing it.
+
+1. **Settings → Branches → Branch protection rules →** edit the existing rule for `main`.
+2. Under **Require status checks to pass before merging**, leave `CodeQL` selected.
+3. In the search box, type `CI gate` and add it. Add *only* the gate — the
+   individual CI jobs must not be required, because a legitimately skipped job
+   would then block the merge forever.
+4. Save.
 
 The UI is the reliable route here. If you prefer the CLI, note that the
-sub-resource takes `PATCH` (not `PUT`), a protection rule must already exist on
-`main`, and the payload has to be real JSON — so pipe it in rather than trying to
-express nested objects with `-f`/`-F`:
+sub-resource takes `PATCH` (not `PUT`), that the payload has to be real JSON —
+so pipe it in rather than trying to express nested objects with `-f`/`-F` — and
+above all that **`checks` replaces the whole list**. Enumerate the existing
+checks alongside the new one or you will silently drop CodeQL:
 
 ```bash
-echo '{"strict": true, "checks": [{"context": "CI gate"}]}' | \
+# Confirm what is currently required before changing anything.
+gh api repos/KaiEkkrin/wallandshadow/branches/main/protection/required_status_checks \
+  --jq '{strict, checks}'
+
+echo '{"strict": true, "checks": [{"context": "CodeQL"}, {"context": "CI gate"}]}' | \
   gh api -X PATCH \
     repos/KaiEkkrin/wallandshadow/branches/main/protection/required_status_checks \
     --input -
 ```
 
-- [ ] **Step 5: Verify the gate actually gates**
+Note that CodeQL is configured through GitHub's default setup rather than a
+workflow file in `.github/workflows/`, which is why it does not appear in this
+plan's file inventory. It is unaffected by everything else here.
+
+- [ ] **Step 5 (owner): Verify the gate actually gates**
 
 Open a throwaway PR that deliberately fails one job and confirm merge is blocked, then close it.
 
