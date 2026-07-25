@@ -69,7 +69,9 @@ COPY server/src/ server/src/
 COPY server/tsconfig.json server/tsup.config.ts server/
 COPY packages/shared/src/ packages/shared/src/
 
-RUN cd server && yarn build
+WORKDIR /app/server
+
+RUN yarn build
 
 # ── Stage 4: Production image ─────────────────────────────────────────────────
 FROM node:22-slim AS production

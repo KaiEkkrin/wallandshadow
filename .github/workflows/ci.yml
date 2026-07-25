@@ -208,6 +208,43 @@ jobs:
         working-directory: was-web/server
         run: yarn test
 
+  # ── Container image definition: static checks only, no image build ──────────
+  dockerfile:
+    name: Dockerfile checks
+    needs: changes
+    if: ${{ needs.changes.outputs.dockerfile == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Dockerfile (hadolint)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: was-web/Dockerfile
+          config: .hadolint.yaml
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # `call: check` runs BuildKit's own Dockerfile checks and resolves the
+      # build graph without executing any stage — no image is built or pushed.
+      # The build-arg values are placeholders: they only need to be non-empty
+      # for ARG resolution, and nothing is compiled with them.
+      - name: BuildKit build checks
+        uses: docker/build-push-action@v6
+        with:
+          context: was-web/
+          call: check
+          build-args: |
+            VITE_DEPLOY_ENV=test
+            VITE_OIDC_ISSUER=https://oidc.invalid
+            VITE_OIDC_CLIENT_ID=ci-static-check
+            GIT_COMMIT=${{ github.sha }}
+
+      - name: ShellCheck the container entrypoint
+        run: shellcheck was-web/server/docker-entrypoint.sh
+
   # ── GitHub Actions workflow definitions ─────────────────────────────────────
   workflows:
     name: Workflow lint
@@ -236,7 +273,7 @@ jobs:
   # job above either succeeded or was skipped, and fails otherwise.
   ci-gate:
     name: CI gate
-    needs: [changes, web, server, workflows]
+    needs: [changes, web, server, dockerfile, workflows]
     if: always()
     runs-on: ubuntu-latest
 
