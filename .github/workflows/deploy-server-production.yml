@@ -84,4 +84,12 @@ jobs:
           sleep 5
           systemctl is-active --quiet wallandshadow-prod.service
           systemctl --no-pager --lines=20 status wallandshadow-prod.service
+          # Reap superseded images. Each deploy pulls a fresh per-SHA image
+          # whose node_modules layer holds tens of thousands of tiny files, so
+          # the root filesystem exhausts its *inodes* long before its bytes --
+          # 59 accumulated images broke test on 2026-07-25 with 9GB still free.
+          # Images referenced by a running container are never candidates, so
+          # this cannot remove the image started above or the live test one.
+          docker image prune -af --filter 'until=168h'
+          df -i /
           EOF
