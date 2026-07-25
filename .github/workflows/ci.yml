@@ -1,12 +1,28 @@
+# =============================================================================
+# CI — the single required status check for pull requests into main
+# =============================================================================
+# This workflow always runs on every PR to main so that it can be configured as
+# a required status check in branch protection. Which *verifications* run is
+# decided per-job by the `changes` job below, which diffs the PR against its
+# merge base. Jobs whose files did not change are skipped, and the terminal
+# `ci-gate` job treats "skipped" as a pass.
+#
+# Deploy workflows call this workflow with `force_all: true` so that every
+# verification runs regardless of the diff.
+# =============================================================================
+
 name: CI
 
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'was-web/**'
-      - '.github/workflows/ci.yml'
   workflow_call:
+    inputs:
+      force_all:
+        description: "Run every verification regardless of which files changed"
+        required: false
+        default: false
+        type: boolean
 
 # Least-privilege permissions: only read access to repository contents
 # See: https://docs.github.com/en/actions/security-guides/automatic-token-authentication
@@ -14,7 +30,59 @@ permissions:
   contents: read
 
 jobs:
-  build-lint-test:
+  # ── Which areas of the repository changed? ──────────────────────────────────
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ inputs.force_all && 'true' || steps.filter.outputs.web }}
+      server: ${{ inputs.force_all && 'true' || steps.filter.outputs.server }}
+      dockerfile: ${{ inputs.force_all && 'true' || steps.filter.outputs.dockerfile }}
+      workflows: ${{ inputs.force_all && 'true' || steps.filter.outputs.workflows }}
+      ansible: ${{ inputs.force_all && 'true' || steps.filter.outputs.ansible }}
+      infra: ${{ inputs.force_all && 'true' || steps.filter.outputs.infra }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Filter changed paths
+        id: filter
+        if: ${{ !inputs.force_all }}
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            web:
+              - 'was-web/**'
+              - '!was-web/server/**'
+              - '!was-web/Dockerfile'
+              - '!was-web/.dockerignore'
+              - '.github/workflows/ci.yml'
+            server:
+              - 'was-web/server/**'
+              - 'was-web/packages/shared/**'
+              - 'was-web/package.json'
+              - 'was-web/yarn.lock'
+              - '.github/workflows/ci.yml'
+            dockerfile:
+              - 'was-web/Dockerfile'
+              - 'was-web/.dockerignore'
+              - 'was-web/server/docker-entrypoint.sh'
+              - '.hadolint.yaml'
+              - '.github/workflows/ci.yml'
+            workflows:
+              - '.github/workflows/**'
+            ansible:
+              - 'ansible/**'
+              - '.github/workflows/ci.yml'
+            infra:
+              - 'infra/**'
+              - '.github/workflows/ci.yml'
+
+  # ── Web client: build, lint, unit tests ─────────────────────────────────────
+  web:
+    name: Web build / lint / test
+    needs: changes
+    if: ${{ needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -46,3 +114,115 @@ jobs:
       - name: Shared unit tests
         working-directory: was-web
         run: yarn test:shared
+
+  # ── Hono server: type-check, lint, integration tests ────────────────────────
+  server:
+    name: Server type-check / lint / test
+    needs: changes
+    if: ${{ needs.changes.outputs.server == 'true' }}
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: postgresql://was:wasdev@localhost:5432/wallandshadow
+      S3_ENDPOINT: http://127.0.0.1:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: wasdev
+      S3_SECRET_KEY: wasdevpass
+      S3_BUCKET: wallandshadow
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: was
+          POSTGRES_PASSWORD: wasdev
+          POSTGRES_DB: wallandshadow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=wasdev \
+            -e MINIO_ROOT_PASSWORD=wasdevpass \
+            minio/minio:latest server /data
+          # Wait for MinIO to be ready
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9000/minio/health/live; then
+              echo "MinIO is ready"
+              break
+            fi
+            echo "Waiting for MinIO... ($i)"
+            sleep 1
+          done
+
+      - name: Create MinIO buckets
+        run: |
+          docker run --rm --network host \
+            -e MC_HOST_local=http://wasdev:wasdevpass@127.0.0.1:9000 \
+            minio/mc:latest mb local/wallandshadow local/wallandshadow-test --ignore-existing
+
+      - name: Install ImageMagick
+        run: sudo apt-get install -y imagemagick
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "yarn"
+          cache-dependency-path: was-web/yarn.lock
+
+      - name: Install dependencies
+        working-directory: was-web
+        run: yarn install --frozen-lockfile
+
+      - name: Create test database
+        run: psql -h localhost -U was -d wallandshadow -c "CREATE DATABASE wallandshadow_test OWNER was;"
+        env:
+          PGPASSWORD: wasdev
+
+      - name: Type-check
+        working-directory: was-web/server
+        run: yarn tsc --noEmit
+
+      - name: Lint
+        working-directory: was-web/server
+        run: yarn lint
+
+      - name: Apply database schema (test database)
+        working-directory: was-web/server
+        run: yarn drizzle-kit push
+        env:
+          DATABASE_URL: postgresql://was:wasdev@localhost:5432/wallandshadow_test
+
+      - name: Run tests
+        working-directory: was-web/server
+        run: yarn test
+
+  # ── Terminal gate: the single required status check ─────────────────────────
+  # Set branch protection on main to require "CI gate". It succeeds when every
+  # job above either succeeded or was skipped, and fails otherwise.
+  ci-gate:
+    name: CI gate
+    needs: [changes, web, server]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fail if any job failed or was cancelled
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "::error::One or more CI jobs failed or were cancelled."
+          exit 1
+
+      - name: Report success
+        run: echo "All CI jobs succeeded or were skipped."
