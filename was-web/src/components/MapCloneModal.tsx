@@ -9,7 +9,7 @@ import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
 import Modal from 'react-bootstrap/Modal';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 // The map clone modal is like the map editor modal but intentionally more limited.
 // We only expect to be integrated into the adventure page, so we don't need to

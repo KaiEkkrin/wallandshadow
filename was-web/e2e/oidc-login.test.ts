@@ -40,24 +40,10 @@ test.describe('OIDC login', () => {
     // Click sign in — this triggers a redirect to Zitadel's hosted login page
     await page.click('button >> text=/^Sign in$/');
 
-    // We're now on Zitadel's v1 hosted login page.
-    // Enter the login name (email) and click Next
-    const loginInput = page.locator('input[name="loginName"], input[autocomplete="username"]');
-    await expect(loginInput).toBeVisible({ timeout: 15000 });
-    await loginInput.fill(zitadelEmail!);
-    await page.getByRole('button', { name: /^Next$/ }).click();
-
-    // Enter the password and click Next
-    const passwordInput = page.locator('input[type="password"]');
-    await expect(passwordInput).toBeVisible({ timeout: 10000 });
-    await passwordInput.fill(zitadelPassword!);
-
-    // Click Next and wait for the redirect chain to complete.
-    // Zitadel redirects to /auth/callback which processes the code and navigates to /app.
-    await Promise.all([
-      page.waitForURL('**/app**', { timeout: 30000 }),
-      page.getByRole('button', { name: /^Next$/ }).click(),
-    ]);
+    // We're now on Zitadel's v1 hosted login page. Complete it and wait for the
+    // redirect chain: Zitadel redirects to /auth/callback, which processes the
+    // code and navigates to /app.
+    await Util.signInWithZitadel(page, zitadelEmail!, zitadelPassword!, '**/app**');
 
     // Verify the app loaded in authenticated state
     await expect(page.locator('h5 >> text="Latest maps"')).toBeVisible({ timeout: 15000 });
@@ -113,20 +99,9 @@ test.describe('OIDC login', () => {
       await guestPage.click('#existingUserExternalRadio');
       await guestPage.click('button >> text=/^Sign in$/');
 
-      // Complete Zitadel hosted login
-      const loginInput = guestPage.locator('input[name="loginName"], input[autocomplete="username"]');
-      await expect(loginInput).toBeVisible({ timeout: 15000 });
-      await loginInput.fill(zitadelEmail!);
-      await guestPage.getByRole('button', { name: /^Next$/ }).click();
-      const passwordInput = guestPage.locator('input[type="password"]');
-      await expect(passwordInput).toBeVisible({ timeout: 10000 });
-      await passwordInput.fill(zitadelPassword!);
-
-      // After the callback, the user should land on the original invite (not /app)
-      await Promise.all([
-        guestPage.waitForURL('**' + inviteUrl, { timeout: 30000 }),
-        guestPage.getByRole('button', { name: /^Next$/ }).click(),
-      ]);
+      // Complete Zitadel hosted login. After the callback, the user should land
+      // on the original invite (not /app).
+      await Util.signInWithZitadel(guestPage, zitadelEmail!, zitadelPassword!, '**' + inviteUrl);
 
       await expect(guestPage.getByRole('button', { name: /^Join/ })).toBeVisible({ timeout: 15000 });
     } finally {

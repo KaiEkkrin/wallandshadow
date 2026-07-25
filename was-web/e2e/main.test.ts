@@ -121,7 +121,8 @@ test.describe('Basic tests', () => {
 
         // Create and copy the share link
         await page.click('text="Create invite link"');
-        const inviteLinkElement = await page.waitForSelector('text="Send this link to other players to invite them."');
+        const inviteLinkElement = page.locator('text="Send this link to other players to invite them."');
+        await expect(inviteLinkElement).toBeVisible();
         const inviteLink = await inviteLinkElement.getAttribute('href');
         expect(inviteLink).not.toBeNull();
         if (inviteLink === null) {
@@ -154,25 +155,17 @@ test.describe('Basic tests', () => {
         {
           // Expand accordion on phones
           if (Util.isPhone(deviceName)) {
-            const mapAccordion = await page2.waitForSelector('text="Test map"');
-            await mapAccordion.scrollIntoViewIfNeeded();
-            await mapAccordion.click();
+            await page2.locator('text="Test map"').click();
           }
 
-          const mapLink = await page2.waitForSelector('text="Open map"');
-          await mapLink.scrollIntoViewIfNeeded();
-          await mapLink.click();
+          // Both "Test map" and "Test square map" exist by now, each with its own
+          // "Open map" link, so scope the click to this map's card. ("Test map"
+          // is not a substring of "Test square map", so the filter is unambiguous.)
+          await page2.locator('.card').filter({ hasText: 'Test map' })
+            .getByRole('link', { name: 'Open map' }).click();
 
           // Wait for either the map to render or a WebGL error
-          const throbberGone = expect(page2.locator('.Throbber-container')).not.toBeVisible({ timeout: 30000 });
-          // Multiple WebGL error toasts can stack; first() avoids strict-mode violation.
-          const errorToast = page2.locator('.toast-header:has-text("Error loading map")').first();
-          const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
-
-          const which = await Promise.race([
-            throbberGone.then(() => 'map' as const),
-            errorAppeared.then(() => 'error' as const),
-          ]);
+          const which = await Util.awaitMapOutcome(page2);
 
           if (which === 'map') {
             // WebGL succeeded -- full verification
@@ -209,12 +202,11 @@ test.describe('Basic tests', () => {
 
         // Expand accordion on phones
         if (Util.isPhone(deviceName)) {
-          const adventureAccordion = await page2.waitForSelector('text="Test adventure"');
-          await adventureAccordion.scrollIntoViewIfNeeded();
-          await adventureAccordion.click();
+          await page2.locator('text="Test adventure"').click();
         }
 
-        const openAdventure = await page2.waitForSelector('text="Open adventure"'); // I want it in the screenshot :)
+        const openAdventure = page2.locator('text="Open adventure"');
+        await expect(openAdventure).toBeVisible(); // I want it in the screenshot :)
         await Util.takeScreenshot(page2, browserName, deviceName, 'share-shared-with-me');
 
         // Clicking "Open adventure" should get us back to the adventure page

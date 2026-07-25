@@ -47,6 +47,18 @@ export function isPhone(deviceName: string) {
   return /(iPhone)|(Pixel)/.test(deviceName);
 }
 
+/**
+ * Wait for the Bootstrap navbar's collapse transition to finish. The links
+ * become visible as soon as the height animation starts, so asserting
+ * visibility alone is not enough: clicking one mid-animation fails with
+ * "element is not stable", and Playwright's retry can then land after the
+ * navbar has closed again. `.collapsing` is present only while the transition
+ * runs, so its absence is the settled signal.
+ */
+async function awaitNavbarSettled(page: Page) {
+  await expect(page.locator('#basic-navbar-nav.collapsing')).toHaveCount(0, { timeout: 5000 });
+}
+
 export async function ensureNavbarExpanded(page: Page, deviceName: string) {
   // On phones we'll get the collapsed hamburger thingy
   if (!isPhone(deviceName)) return;
@@ -58,6 +70,7 @@ export async function ensureNavbarExpanded(page: Page, deviceName: string) {
 
   await page.click('[aria-controls="basic-navbar-nav"]');
   await expect(firstLink).toBeVisible({ timeout: 5000 });
+  await awaitNavbarSettled(page);
 }
 
 export async function whileNavbarExpanded(page: Page, deviceName: string, fn: () => Promise<void>) {
@@ -71,6 +84,7 @@ export async function whileNavbarExpanded(page: Page, deviceName: string, fn: ()
   if (!wasExpanded) {
     await page.click('[aria-controls="basic-navbar-nav"]');
     await expect(firstLink).toBeVisible({ timeout: 5000 });
+    await awaitNavbarSettled(page);
   }
 
   await fn();
@@ -186,28 +200,48 @@ export async function createNewMap(
   console.log('✓ Navigation to map page completed, URL:', page.url());
 }
 
+/**
+ * Wait for the map page to settle into one of its two outcomes:
+ *
+ * - `'map'` — WebGL is available, so three.js mounts its renderer's canvas
+ *   into `#drawingDiv` and the map renders.
+ * - `'error'` — WebGL is unavailable (common in headless CI), so an
+ *   "Error loading map" toast appears and the page keeps its controls but
+ *   never gets a canvas.
+ *
+ * Both signals are positive evidence of their own branch. The throbber
+ * disappearing is deliberately *not* used as the success signal: it also goes
+ * away on the failure path, so racing it against the toast reports "WebGL
+ * working" whenever the toast happens to render a moment after the throbber
+ * unmounts — and the caller then asserts things that only hold when the map
+ * really loaded. That race is timing-sensitive enough to flip on an unrelated
+ * change to bundle size.
+ */
+export async function awaitMapOutcome(page: Page): Promise<'map' | 'error'> {
+  const canvasShown = page.locator('#drawingDiv canvas').waitFor({ state: 'visible', timeout: 30000 });
+  // Multiple WebGL error toasts can stack; first() avoids strict-mode violation.
+  const errorToast = page.locator('.toast-header:has-text("Error loading map")').first();
+  const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
+
+  const mapShown = canvasShown.then(() => 'map' as const);
+  const mapFailed = errorAppeared.then(() => 'error' as const);
+  // Whichever branch loses the race settles later, and its rejection must not
+  // surface as an unhandled promise rejection.
+  mapShown.catch(() => {});
+  mapFailed.catch(() => {});
+  return Promise.race([mapShown, mapFailed]);
+}
+
 export async function verifyMap(
   page: Page, browserName: string, deviceName: string,
   adventureName: string, adventureDescription: string, mapName: string, message: string
 ) {
   // After createNewMap, we should be on the map page.
-  // Two possible outcomes:
-  // 1. WebGL works: .Throbber-container disappears, map renders normally
-  // 2. WebGL fails: "Error loading map" toast appears, map stays on page with controls
-
-  const throbberGone = expect(page.locator('.Throbber-container')).not.toBeVisible({ timeout: 30000 });
-  // Multiple WebGL error toasts can stack; first() avoids strict-mode violation.
-  const errorToast = page.locator('.toast-header:has-text("Error loading map")').first();
-  const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
-
-  const which = await Promise.race([
-    throbberGone.then(() => 'map' as const),
-    errorAppeared.then(() => 'error' as const),
-  ]);
+  const which = await awaitMapOutcome(page);
 
   if (which === 'map') {
     // WebGL succeeded -- full verification path
-    console.log('✓ Throbber disappeared, WebGL working');
+    console.log('✓ Map canvas mounted, WebGL working');
 
     await page.waitForLoadState('networkidle', { timeout: 10000 });
     console.log('✓ Network idle');
@@ -261,16 +295,7 @@ export async function dismissAllToasts(page: Page) {
  * any error toasts so the page is in a clean state afterward.
  */
 export async function handleWebGLOrError(page: Page): Promise<'map' | 'error'> {
-  const throbberGone = expect(page.locator('.Throbber-container')).not.toBeVisible({ timeout: 30000 });
-  // Multiple WebGL error toasts can stack; first() avoids strict-mode violation.
-  const errorToast = page.locator('.toast-header:has-text("Error loading map")').first();
-  const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
-
-  const which = await Promise.race([
-    throbberGone.then(() => 'map' as const),
-    errorAppeared.then(() => 'error' as const),
-  ]);
-
+  const which = await awaitMapOutcome(page);
   if (which === 'error') {
     await dismissAllToasts(page);
   }
@@ -295,7 +320,6 @@ async function navigateToAdventure(
 
   if (isPhone(deviceName)) {
     const adventureToggle = page.locator(`text="${adventureName}"`);
-    await adventureToggle.scrollIntoViewIfNeeded();
     await adventureToggle.click();
   }
 
@@ -330,6 +354,56 @@ export function deleteButton(page: Page, inModal = false) {
   return scope.locator('button.btn-danger').filter({
     has: page.locator('svg[data-icon="xmark"]')
   }).first();
+}
+
+/**
+ * Complete Zitadel's hosted login — login name, password, and the optional
+ * two-factor enrolment prompt — then wait for the redirect chain to land on
+ * `expectedUrl` (a `page.waitForURL` glob).
+ *
+ * Zitadel encourages users to enrol a second factor after a successful
+ * password login. The prompt is skippable, but it sits between the password
+ * step and the redirect back to the app, and whether it appears depends on the
+ * instance's login policy and the account's existing factors — so it has to be
+ * treated as optional rather than as a fixed step in the flow.
+ */
+export async function signInWithZitadel(
+  page: Page,
+  email: string,
+  password: string,
+  expectedUrl: string
+): Promise<void> {
+  // Enter the login name (email) and continue.
+  const loginInput = page.locator('input[name="loginName"], input[autocomplete="username"]');
+  await expect(loginInput).toBeVisible({ timeout: 15000 });
+  await loginInput.fill(email);
+  await page.getByRole('button', { name: /^Next$/ }).click();
+
+  // Enter the password and continue.
+  const passwordInput = page.locator('input[type="password"]');
+  await expect(passwordInput).toBeVisible({ timeout: 10000 });
+  await passwordInput.fill(password);
+  await page.getByRole('button', { name: /^Next$/ }).click();
+
+  // From here Zitadel either redirects straight back to the app, or interposes
+  // the "2-Factor Setup" page. Race the two outcomes so that the common path
+  // doesn't have to pay a timeout waiting for a prompt that never appears.
+  const skipButton = page.getByRole('button', { name: /^Skip$/ });
+  const arrived = page.waitForURL(expectedUrl, { timeout: 30000 });
+  const prompted = skipButton.waitFor({ state: 'visible', timeout: 30000 });
+  // Whichever branch loses the race settles later, and its rejection must not
+  // surface as an unhandled promise rejection.
+  arrived.catch(() => {});
+  prompted.catch(() => {});
+  await Promise.race([arrived, prompted]);
+
+  // An instantaneous state query rather than a wait: the race above has already
+  // settled which of the two branches we are on.
+  if (await skipButton.isVisible()) {
+    await skipButton.click();
+  }
+
+  await page.waitForURL(expectedUrl, { timeout: 30000 });
 }
 
 /**

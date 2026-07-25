@@ -1,9 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { MapType } from '@wallandshadow/shared';
 
 import { HonoApi } from '../../src/services/honoApi';
 import {
   ApiError,
+  isAccountSuspendedError,
   HonoApiClient,
   type AdventureDetailRow,
   type MapRow,
@@ -160,5 +161,79 @@ describe('HonoApi.getMap error handling', () => {
     }));
 
     await expect(api.getMap('adv-1', 'map-1')).rejects.toMatchObject({ status: 500 });
+  });
+});
+
+describe('HonoApiClient error surfacing', () => {
+  // Drives the real client (not a stub) so that throwIfNotOk is exercised.
+  function clientWithResponse(body: string, init: ResponseInit): HonoApiClient {
+    const client = new HonoApiClient();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, init));
+    return client;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test('structured server errors surface their error field', async () => {
+    const client = clientWithResponse(JSON.stringify({ error: 'account-suspended' }), { status: 403 });
+
+    await expect(client.getMe()).rejects.toMatchObject({
+      status: 403,
+      message: 'account-suspended',
+    });
+  });
+
+  test('a suspended-account error is still recognised by isAccountSuspendedError', async () => {
+    const client = clientWithResponse(JSON.stringify({ error: 'account-suspended' }), { status: 403 });
+
+    const caught = await client.getMe().catch((e: unknown) => e);
+    expect(isAccountSuspendedError(caught)).toBe(true);
+  });
+
+  test('a non-JSON body surfaces verbatim', async () => {
+    const client = clientWithResponse('upstream exploded', { status: 502 });
+
+    await expect(client.getMe()).rejects.toMatchObject({
+      status: 502,
+      message: 'upstream exploded',
+    });
+  });
+
+  // A bodyless 5xx is what the Vite dev proxy returns when the API server is
+  // down. It used to produce an ApiError with an empty message, which read as
+  // an application fault rather than a dead transport.
+  test('a bodyless failure reports its status instead of an empty message', async () => {
+    const client = clientWithResponse('', { status: 500, statusText: 'Internal Server Error' });
+
+    await expect(client.getMe()).rejects.toMatchObject({
+      status: 500,
+      message: 'HTTP 500 Internal Server Error',
+    });
+  });
+
+  test('a bodyless failure with no status text still names the status', async () => {
+    const client = clientWithResponse('', { status: 500, statusText: '' });
+
+    await expect(client.getMe()).rejects.toMatchObject({ status: 500, message: 'HTTP 500' });
+  });
+
+  test('a whitespace-only body is treated as bodyless', async () => {
+    const client = clientWithResponse('\n  \n', { status: 504, statusText: 'Gateway Timeout' });
+
+    await expect(client.getMe()).rejects.toMatchObject({
+      status: 504,
+      message: 'HTTP 504 Gateway Timeout',
+    });
+  });
+
+  test('a JSON body with a non-string error field falls back to the raw body', async () => {
+    const client = clientWithResponse(JSON.stringify({ error: 42 }), { status: 400 });
+
+    await expect(client.getMe()).rejects.toMatchObject({
+      status: 400,
+      message: '{"error":42}',
+    });
   });
 });

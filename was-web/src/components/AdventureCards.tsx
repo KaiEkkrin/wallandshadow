@@ -11,7 +11,7 @@ import Accordion from 'react-bootstrap/Accordion';
 import Button from 'react-bootstrap/Button';
 import Card from 'react-bootstrap/Card';
 
-import { LinkContainer } from 'react-router-bootstrap';
+import { Link } from 'react-router';
 import useMeasure from 'react-use-measure';
 import ImageCardContent from './ImageCardContent';
 
@@ -26,9 +26,7 @@ const AdventureCard = ({ adventure, collapsing }: IAdventureCardProps) => {
       <React.Fragment>
         <Card.Subtitle>By <UserName name={adventure.ownerName} /></Card.Subtitle>
         <Card.Text>{adventure.description}</Card.Text>
-        <LinkContainer to={"/adventure/" + adventure.id}>
-          <Card.Link>Open adventure</Card.Link>
-        </LinkContainer>
+        <Card.Link as={Link} to={"/adventure/" + adventure.id}>Open adventure</Card.Link>
       </React.Fragment>
     ),
     [adventure]

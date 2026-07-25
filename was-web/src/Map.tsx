@@ -35,7 +35,7 @@ import { networkStatusTracker } from './models/networkStatusTracker';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { logError } from './services/consoleLogger';
 
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 import * as THREE from 'three';
 import fluent from 'fluent-iterable';

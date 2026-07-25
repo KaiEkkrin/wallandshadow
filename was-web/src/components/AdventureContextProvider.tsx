@@ -9,7 +9,7 @@ import { IAdventure, IPlayer, IIdentified, ISpriteManager, PresenceSubscription,
 import { SpriteManager } from '../services/spriteManager';
 import { logError } from '../services/consoleLogger';
 
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router';
 import { Observable } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 import { v7 as uuidv7 } from 'uuid';

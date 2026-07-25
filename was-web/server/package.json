@@ -1,6 +1,6 @@
 {
   "name": "@wallandshadow/server",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "type": "module",
   "scripts": {
@@ -28,7 +28,7 @@
     "hono-rate-limiter": "^0.5.3",
     "jose": "^6.0.0",
     "pg": "^8.13.0",
-    "sharp": "^0.34.0",
+    "sharp": "^0.35.0",
     "unstorage": "^1.17.5",
     "uuid": "^14.0.0",
     "ws": "^8.21.0"
@@ -39,7 +39,7 @@
     "@types/ws": "^8.5.0",
     "drizzle-kit": "^0.31.0",
     "tsup": "^8.3.0",
-    "tsx": "^4.0.0",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.0",
     "vitest": "^4.0.0"
   }

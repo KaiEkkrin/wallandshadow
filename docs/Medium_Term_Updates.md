@@ -4,115 +4,75 @@
 
 This document tracks dependency updates to plan for 2026 and beyond. These are not urgent but should be scheduled to avoid falling behind.
 
-## React Router 6 → 7
+## React Router 6 → 8 — ✅ done (2026-07-25)
 
-**Current:** react-router-dom ^6.30.3
-**Target:** react-router ^7.x
-**Timeline:** Blocked — see below
+**Current:** react-router ^8.3.0
 
-React Router 7 is stable (7.13.1 as of March 2026). React Router 7 consolidates packages—`react-router-dom` is replaced by `react-router` with subpath imports for DOM-specific features.
+Done as part of the dependency security audit: react-router-dom 6.x carried three
+advisories (open redirect leading to XSS, open redirect via backslash in `<Link>` /
+`useNavigate`, and arbitrary constructor injection via `deserializeErrors()`) with no
+fix available on the 6.x line.
 
-**⛔ Blocker:** `react-router-bootstrap ^0.26.3` has no React Router 7 compatible release and the package appears unmaintained (last published 2 years ago, open issue #326). This package is used throughout the app for Bootstrap-styled navigation links. Options:
-1. Wait for `react-router-bootstrap` to release v7 support (uncertain timeline)
-2. Remove `react-router-bootstrap` dependency and implement Bootstrap link styling directly using standard React Router `Link` + Bootstrap CSS classes
+The recorded blocker — `react-router-bootstrap` having no v7 release and looking
+unmaintained — turned out to be small: it was used only for `LinkContainer`, in three
+files and nine call sites. It was removed rather than waited on. `Nav.Link` items became
+`<Nav.Link as={NavLink} ... end>` (LinkContainer resolved its active state with
+`useMatch(path)`, an exact match, so `end` preserves the old highlighting), and
+`Card.Link` / `Navbar.Brand` became plain `as={Link}`.
 
-### Key Changes (when unblocked)
+`react-router-dom` was replaced by `react-router` (v7 consolidated the packages), then
+taken to v8 because 7.x is itself flagged for an RSC-mode CSRF bypass. This app is a
+declarative SPA — `BrowserRouter` plus `<Routes>`, no RSC, actions or SSR — so it was not
+exposed, but 8.3 is a clean move for the API surface in use. React Router 8 requires
+React >= 19.2.7; react/react-dom were refreshed to 19.2.8 within the existing `^19.0.0`
+range.
 
-- Uninstall `react-router-dom`, install `react-router`
-- Update imports from `"react-router-dom"` to `"react-router"`
-- DOM-specific imports (like `RouterProvider`) use `"react-router/dom"`
-- Replace all `react-router-bootstrap` usage with plain Bootstrap + React Router `Link`
-
-### Steps (when unblocked)
-
-1. Update `was-web/package.json`:
-   ```json
-   // Remove:
-   "react-router-dom": "^6.30.3",
-   "react-router-bootstrap": "^0.26.3",
-   "@types/react-router-bootstrap": "^0.26.8",
-
-   // Add:
-   "react-router": "^7.0.0"
-   ```
-
-2. Update imports throughout codebase:
-   ```bash
-   find ./src \( -name "*.tsx" -o -name "*.ts" \) -type f \
-     -exec sed -i 's|from "react-router-dom"|from "react-router"|g' {} +
-   ```
-
-3. Update DOM-specific imports:
-   ```typescript
-   // Before
-   import { RouterProvider } from "react-router-dom";
-
-   // After
-   import { RouterProvider } from "react-router/dom";
-   ```
-
-4. Replace all `react-router-bootstrap` `<LinkContainer>` components with plain Bootstrap `<Nav.Link as={Link}>` etc.
-
-5. Test all routing thoroughly
+`@types/react-router-bootstrap` was dropped too. The bundle shrank ~54 kB.
 
 ### References
 
-- [React Router v6 to v7 Migration](https://reactrouter.com/upgrading/v6)
 - [React Router Documentation](https://reactrouter.com/)
 
 ---
 
-## ESLint 9 → 10
+## ESLint 9 → 10 — ✅ done (2026-07-25)
 
-**Current:** eslint ^9.39.2
-**Target:** eslint ^10.0.0
-**Timeline:** Blocked — see below
+**Current:** eslint ^10.8.0, @eslint/js ^10.0.1, eslint-plugin-react-hooks ^7.1.1,
+eslint-plugin-react-refresh ^0.5.3
 
-ESLint 10.0.2 is stable as of February 2026. Both ESLint configs already use flat config format (no legacy `.eslintrc`). However:
+Done as part of the dependency security audit — it is what clears the `brace-expansion`
+DoS advisory (CVE-2026-14257) on the eslint side, because eslint 10 depends on
+minimatch ^10, which uses brace-expansion ^5. Pinning brace-expansion 5 by resolution
+instead is **not** viable: 5.x changed its export shape from a bare function to
+`{ expand }`, so minimatch 3.x and 9.x would break at runtime.
 
-**⛔ Blocker:** `eslint-plugin-import ^2.32.0` (used in `was-web/functions`) is **not compatible** with ESLint 10 — it throws `TypeError: Cannot use 'in' operator to search for 'sourceType' in undefined` due to context API changes. See [import-js/eslint-plugin-import#3227](https://github.com/import-js/eslint-plugin-import/issues/3227). Wait until this plugin releases ESLint 10 support.
+The recorded blocker (`eslint-plugin-import`) left with the Firebase `functions/`
+directory and no longer exists in this repo.
 
-**Also needed when unblocked:**
-- Functions lint script uses `--ext .ts` which is removed in ESLint 10; change to `eslint 'src/**/*.ts'`
-- Verify `eslint-plugin-react-hooks` compatibility (currently doesn't declare ESLint 10 peer dep)
-- `typescript-eslint ^8.x` already supports ESLint 10 — no upgrade needed
+### ⬜ Follow-up: the React Compiler rules
 
-### Pre-Migration Checklist (for when unblocked)
+`eslint-plugin-react-hooks` 7 folds the React Compiler rules into `recommended`. Most
+pass and are enabled. Four are turned off in `was-web/eslint.config.js` because they
+report **33 pre-existing violations across 24 files**:
 
-1. ✅ Already using flat config in both `was-web/eslint.config.js` and `was-web/functions/eslint.config.js`
-2. ✅ No `.eslintrc.*` files present
-3. ✅ No custom rules using deprecated context members
-4. ⬜ Wait for `eslint-plugin-import` to support ESLint 10
-5. ⬜ Fix functions lint script: `"lint": "eslint 'src/**/*.ts'"` (remove `--ext`)
+| Rule | Count |
+| --- | --- |
+| `react-hooks/set-state-in-effect` | 29 |
+| `react-hooks/preserve-manual-memoization` | 2 |
+| `react-hooks/refs` | 1 |
+| `react-hooks/purity` | 1 |
 
-### Steps (when unblocked)
-
-1. Update `was-web/package.json`:
-   ```json
-   "eslint": "^10.0.0"
-   ```
-
-2. Update `was-web/functions/package.json`:
-   ```json
-   "eslint": "^10.0.0"
-   ```
-
-3. Fix functions lint script in `was-web/functions/package.json`:
-   ```json
-   "lint": "eslint 'src/**/*.ts'"
-   ```
-
-4. Run linting in both locations and fix any new errors:
-   ```bash
-   yarn lint
-   cd functions && yarn lint
-   ```
+Nearly all are effects that call `setState` to derive state from props — the pattern
+[You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect)
+describes. Fixing them is a real refactor across context providers, modals and the map
+annotations layer, and changing effect semantics near the real-time sync paths carries
+risk, so it was deliberately not folded into a dependency upgrade. Re-enable one rule at
+a time when someone takes this on.
 
 ### References
 
 - [ESLint Version Support](https://eslint.org/version-support/)
-- [ESLint v10 Preview](https://eslint.org/blog/2025/10/whats-coming-in-eslint-10.0.0/)
-- [ESLint Flat Config Migration](https://eslint.org/docs/latest/use/configure/migration-guide)
+- [React Compiler ESLint rules](https://react.dev/reference/eslint-plugin-react-hooks)
 
 ---
 
@@ -214,11 +174,40 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 
 | Priority | Package | Target | Timeline |
 |----------|---------|--------|----------|
-| 1 | React Router | 7.x | ⛔ Blocked by react-router-bootstrap (no v7 support) |
-| 2 | ESLint | 10.x | ⛔ Blocked by eslint-plugin-import (no ESLint 10 support) |
+| 1 | React Compiler lint rules | 4 rules re-enabled | ⬜ 33 violations across 24 files — see the ESLint section |
+| 2 | license-checker-rseidelsohn | 5.x | ⛔ Blocked — requires Node >= 24; see below |
 | 3 | Three.js | Latest | ✅ Done to 0.183 (2026-03-01); check again in ~3 months |
 | 4 | TypeScript | 6.x | Wait for stable release (beta as of 2026-03-01) |
 | 5 | drizzle-kit + drizzle-orm | 1.0.0 stable | ⛔ Blocked — see security note below |
+| — | React Router | 8.x | ✅ Done 2026-07-25 |
+| — | ESLint | 10.x | ✅ Done 2026-07-25 |
+
+---
+
+## license-checker-rseidelsohn 4 → 5
+
+**Current:** ^4.4.2
+**Target:** ^5.0.1
+**Timeline:** Blocked on a Node 22 → 24 upgrade
+
+This is the last outstanding `yarn audit` finding: 4.x reaches
+`brace-expansion` 2.1.2 through `read-installed-packages > read-package-json > glob >
+minimatch`, and only brace-expansion >= 5.0.8 is considered patched for CVE-2026-14257
+(unbounded expansion → OOM). 5.0.1 drops that whole chain in favour of
+`@npmcli/arborist`, which would clear the advisory.
+
+**⛔ Blocker:** `license-checker-rseidelsohn@5` declares `engines: { node: ">=24", npm:
+">=11" }`. This project is on Node 22 everywhere — the devcontainer, `node-version: 22`
+in `.github/workflows/ci.yml`, and `node:22-slim` in `was-web/Dockerfile` — so the
+install fails outright. There is no 5.x release that supports Node 22.
+
+**Exposure:** low. The package is a devDependency used only by the build-time licence
+scan in `was-web/vite-plugins/third-party-notices.ts`, over the repo's own dependency
+tree. The DoS needs an attacker-supplied glob pattern, which never occurs here.
+
+When the project moves to Node 24 (devcontainer, CI and Dockerfile together), bump this
+to ^5.0.1, then run `yarn build` — the plugin fails the build loudly if the scan breaks,
+so a successful build is the verification.
 
 ---
 
@@ -232,7 +221,10 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 
 ### Security context: GHSA-67mh-4wv8-2f99
 
-`yarn audit` flags esbuild 0.18.20 (GHSA-67mh-4wv8-2f99 — CORS vulnerability in esbuild's dev server, fixed in 0.25.0). The vulnerable version is a transitive dependency of drizzle-kit:
+esbuild 0.18.20 is still in the tree as a transitive dependency of drizzle-kit. As of
+the 2026-07-25 audit `yarn audit` no longer reports it (GHSA-67mh-4wv8-2f99 — CORS
+vulnerability in esbuild's dev server, fixed in 0.25.0), but the old version is still
+there, so the upgrade below remains worth doing on its own merits:
 
 ```
 drizzle-kit@0.31.10

@@ -34,7 +34,6 @@ test.describe('Map CRUD tests', () => {
     // Open the adventure
     if (Util.isPhone(deviceName)) {
       const toggle = page.locator('text="Map delete test"');
-      await toggle.scrollIntoViewIfNeeded();
       await toggle.click();
     }
     await page.click('text="Open adventure"');
@@ -43,13 +42,11 @@ test.describe('Map CRUD tests', () => {
     // Click the delete button on the map card (expand accordion on phones)
     if (Util.isPhone(deviceName)) {
       const mapToggle = page.locator('text="Sacrificial map"');
-      await mapToggle.scrollIntoViewIfNeeded();
       await mapToggle.click();
     }
 
     // Use dispatchEvent to avoid version badge interception on small viewports
     const deleteMapBtn = Util.deleteButton(page);
-    await deleteMapBtn.scrollIntoViewIfNeeded();
     await deleteMapBtn.dispatchEvent('click');
 
     // Confirm deletion and verify the map disappears
@@ -97,7 +94,6 @@ test.describe('Map CRUD tests', () => {
       // User 1 deletes the map (expand accordion on phones)
       if (Util.isPhone(deviceName)) {
         const mapToggle = page.locator('text="Shared map"');
-        await mapToggle.scrollIntoViewIfNeeded();
         await mapToggle.click();
         // Wait for accordion body to expand and show "Open map" link
         await expect(page.locator('text="Open map"')).toBeVisible();

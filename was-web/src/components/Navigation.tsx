@@ -17,7 +17,7 @@ import Nav from 'react-bootstrap/Nav';
 import Navbar from 'react-bootstrap/Navbar';
 
 import useMeasure from 'react-use-measure';
-import { LinkContainer } from 'react-router-bootstrap';
+import { Link, NavLink } from 'react-router';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCheck } from '@fortawesome/free-solid-svg-icons';
@@ -34,23 +34,15 @@ function NavPageLinks() {
 
   return (
     <Nav className="me-auto">
-      <LinkContainer to="/app">
-        <Nav.Link>Home</Nav.Link>
-      </LinkContainer>
+      <Nav.Link as={NavLink} to="/app" end>Home</Nav.Link>
       {!loggedInItemsHidden && (
-        <LinkContainer to="/all">
-          <Nav.Link>My adventures</Nav.Link>
-        </LinkContainer>
+        <Nav.Link as={NavLink} to="/all" end>My adventures</Nav.Link>
       )}
       {!loggedInItemsHidden && (
-        <LinkContainer to="/shared">
-          <Nav.Link>Shared with me</Nav.Link>
-        </LinkContainer>
+        <Nav.Link as={NavLink} to="/shared" end>Shared with me</Nav.Link>
       )}
       {!loggedInItemsHidden && profile?.level === UserLevel.Admin && (
-        <LinkContainer to="/admin">
-          <Nav.Link>Admin</Nav.Link>
-        </LinkContainer>
+        <Nav.Link as={NavLink} to="/admin" end>Admin</Nav.Link>
       )}
     </Nav>
   );
@@ -240,9 +232,7 @@ function NavLogin() {
     </div>
   ) : (
     <div className="ms-2 me-2">
-      <LinkContainer to="/login">
-        <Nav.Link>Sign up/Login</Nav.Link>
-      </LinkContainer>
+      <Nav.Link as={NavLink} to="/login" end>Sign up/Login</Nav.Link>
     </div>
   );
 }
@@ -271,19 +261,17 @@ function Navigation(props: INavigationProps) {
         variant="dark"
         style={{ backgroundColor: 'var(--env-navbar-bg)' }}
       >
-        <LinkContainer to="/app">
-          <Navbar.Brand className="Navigation-brand me-3">
-            <img src="/logo32.svg" alt="logo" height={32} className="me-2" />
-            <div className="Navigation-brand-text">
-              <div className="Navigation-brand-main">
-                wall &amp; shadow
-              </div>
-              <div className="Navigation-brand-shadow">
-                wall &amp; shadow
-              </div>
+        <Navbar.Brand as={Link} to="/app" className="Navigation-brand me-3">
+          <img src="/logo32.svg" alt="logo" height={32} className="me-2" />
+          <div className="Navigation-brand-text">
+            <div className="Navigation-brand-main">
+              wall &amp; shadow
             </div>
-          </Navbar.Brand>
-        </LinkContainer>
+            <div className="Navigation-brand-shadow">
+              wall &amp; shadow
+            </div>
+          </div>
+        </Navbar.Brand>
         <Navbar.Toggle aria-controls="basic-navbar-nav" />
         <Navbar.Collapse id="basic-navbar-nav">
           <NavPageLinks />

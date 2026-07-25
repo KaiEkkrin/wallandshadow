@@ -87,7 +87,6 @@ test.describe('Adventure CRUD tests', () => {
     await Util.navigateHome(page, deviceName);
     if (Util.isPhone(deviceName)) {
       const toggle = page.locator('text="Doomed adventure"');
-      await toggle.scrollIntoViewIfNeeded();
       await toggle.click();
     }
     await page.click('text="Open adventure"');
@@ -96,12 +95,10 @@ test.describe('Adventure CRUD tests', () => {
     // Delete the map first (expand accordion on phones)
     if (Util.isPhone(deviceName)) {
       const mapToggle = page.locator('text="Doomed map"');
-      await mapToggle.scrollIntoViewIfNeeded();
       await mapToggle.click();
     }
     // Use dispatchEvent to avoid version badge interception on small viewports
     const deleteMapBtn = Util.deleteButton(page);
-    await deleteMapBtn.scrollIntoViewIfNeeded();
     await deleteMapBtn.dispatchEvent('click');
 
     // Confirm map deletion and wait for it to disappear

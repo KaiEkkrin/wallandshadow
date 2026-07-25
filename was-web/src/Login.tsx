@@ -17,7 +17,7 @@ import Modal from 'react-bootstrap/Modal';
 import Tab from 'react-bootstrap/Tab';
 import Tabs from 'react-bootstrap/Tabs';
 
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router';
 import { getPostLoginPath } from './utils/loginRedirect';
 const oidcEnabled = isOidcEnabled();
 // In production/test builds, show only the OIDC sign-in button. In dev builds

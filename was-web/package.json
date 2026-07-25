@@ -1,6 +1,6 @@
 {
   "name": "was-web",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "private": true,
   "workspaces": [
     "packages/shared",
@@ -23,8 +23,7 @@
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
-    "react-router-bootstrap": "^0.26.3",
-    "react-router-dom": "^6.30.4",
+    "react-router": "^8.3.0",
     "react-use-measure": "^2.1.1",
     "rxjs": "^7.8.0",
     "three": "^0.183.0",
@@ -47,8 +46,12 @@
     "test:e2e:report": "playwright show-report --host 0.0.0.0 e2e/test-results/html",
     "lint": "eslint src packages/shared/src"
   },
+  "resolutions": {
+    "vite": "^7.3.6",
+    "vite/esbuild": "^0.28.1"
+  },
   "devDependencies": {
-    "@eslint/js": "^9.39.2",
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.59.1",
     "@testing-library/dom": "^9.3.0",
     "@testing-library/jest-dom": "^6.0.0",
@@ -60,19 +63,18 @@
     "@types/pg": "^8.11.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/react-router-bootstrap": "^0.26.8",
     "@types/three": "^0.183.0",
     "@vitejs/plugin-react": "^5.1.2",
     "@wallandshadow/shared": "*",
-    "eslint": "^9.39.2",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.26",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^16.2.0",
     "license-checker-rseidelsohn": "^4.4.2",
     "pg": "^8.13.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.50.0",
-    "vite": "^7.3.5",
+    "vite": "^7.3.6",
     "vitest": "^4.0.0"
   }
 }

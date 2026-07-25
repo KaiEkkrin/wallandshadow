@@ -3,7 +3,7 @@ import './App.css';
 
 import Button from 'react-bootstrap/Button';
 import Container from 'react-bootstrap/Container';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 import { AuthContext } from './components/AuthContext';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
