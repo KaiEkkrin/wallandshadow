@@ -300,12 +300,43 @@ jobs:
       - name: ShellCheck ansible scripts
         run: shellcheck ansible/*.sh
 
+  # ── OpenTofu infrastructure definitions ─────────────────────────────────────
+  infra:
+    name: OpenTofu checks
+    needs: changes
+    if: ${{ needs.changes.outputs.infra == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.9"
+          tofu_wrapper: false
+
+      - name: Check formatting
+        working-directory: infra
+        run: tofu fmt -check -recursive -diff
+
+      # -backend=false skips the S3 state backend entirely, so no Hetzner
+      # Object Storage credentials are needed and no state is ever read or
+      # written. Providers are still installed, which is what `validate` needs.
+      - name: Initialise without backend
+        working-directory: infra
+        run: tofu init -backend=false -input=false
+
+      - name: Validate configuration
+        working-directory: infra
+        run: tofu validate -no-color
+
   # ── Terminal gate: the single required status check ─────────────────────────
   # Set branch protection on main to require "CI gate". It succeeds when every
   # job above either succeeded or was skipped, and fails otherwise.
   ci-gate:
     name: CI gate
-    needs: [changes, web, server, dockerfile, workflows, ansible]
+    needs: [changes, web, server, dockerfile, workflows, ansible, infra]
     if: always()
     runs-on: ubuntu-latest
 

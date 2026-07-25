@@ -7,7 +7,7 @@
 # ssh_public_key is provided via -var in CI (derived from the private key).
 # =============================================================================
 
-location    = "hel1"
-server_type = "cx23"
+location     = "hel1"
+server_type  = "cx23"
 server_image = "ubuntu-24.04"
-volume_size = 10
+volume_size  = 10
