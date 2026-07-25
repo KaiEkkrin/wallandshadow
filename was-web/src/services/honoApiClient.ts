@@ -113,8 +113,27 @@ export class HonoApiClient {
   private async throwIfNotOk(res: Response): Promise<void> {
     if (res.ok) return;
     const text = await res.text();
+
+    // The server's structured errors are `{ error: '...' }` (see
+    // server/src/errors.ts). Anything else falls back to the raw body.
     let message: string;
-    try { message = JSON.parse(text).error ?? text; } catch { message = text; }
+    try {
+      const parsed: unknown = JSON.parse(text);
+      const error = (parsed as { error?: unknown } | null)?.error;
+      message = typeof error === 'string' ? error : text;
+    } catch {
+      message = text;
+    }
+
+    // Not every failure carries a body: the Vite dev proxy answers with a
+    // bodyless 500 when the API server is down, and gateways in front of the
+    // server can do the same. Without this the failure surfaces as `ApiError:`
+    // with nothing after it, which sends you looking at whichever call site
+    // logged it rather than at the transport. Name the status instead.
+    if (message.trim() === '') {
+      message = `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`;
+    }
+
     throw new ApiError(message, res.status);
   }
 
