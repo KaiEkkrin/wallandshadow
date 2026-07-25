@@ -9,4 +9,11 @@ exclude_paths:
   - was-web/
 
 # Rules deliberately not enforced. Add entries here only with a reason.
-skip_list: []
+skip_list:
+  # "Copy PostgreSQL data to volume" shells out to rsync rather than the
+  # `ansible.posix.synchronize` module. Swapping it would change real
+  # behaviour (different flag semantics, different edge cases) for a
+  # one-shot copy of a live PostgreSQL data directory during VPS
+  # provisioning, and nothing in CI can verify the replacement is
+  # equivalent. Not worth the risk for a lint-only win.
+  - command-instead-of-module
