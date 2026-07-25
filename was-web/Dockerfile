@@ -94,10 +94,12 @@ COPY server/docker-entrypoint.sh server/
 # Copy built SPA
 COPY --from=build-spa /app/build/ build/
 
-# Transfer ownership to the non-root node user (UID 1000) now that all files are in place.
-# Must come after all COPY commands because each COPY resets ownership to root.
-RUN chown -R node:node /app
-
+# Everything under /app stays root-owned and world-readable. The container runs
+# as the unprivileged node user (UID 1000) below and only ever reads /app —
+# runtime writes go to os.tmpdir() (spriteExtensions.ts), never to the app dir.
+# A recursive `chown -R node:node /app` here would rewrite every file into an
+# extra image layer, duplicating the whole of node_modules and doubling the
+# image's inode footprint on the deploy host.
 USER node
 
 ENV NODE_ENV=production
