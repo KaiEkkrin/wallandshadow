@@ -208,12 +208,35 @@ jobs:
         working-directory: was-web/server
         run: yarn test
 
+  # ── GitHub Actions workflow definitions ─────────────────────────────────────
+  workflows:
+    name: Workflow lint
+    needs: changes
+    if: ${{ needs.changes.outputs.workflows == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Run via `docker run` rather than `uses: docker://…`. This repo restricts
+      # Actions to an allowlist (Settings → Actions → Allow select actions), and
+      # that policy governs `uses:` references — including docker:// ones, whose
+      # pattern syntax is awkward at best. A shell command is outside the policy
+      # entirely, so this needs no allowlist entry and pins the image explicitly.
+      #
+      # The actionlint image bundles shellcheck and pyflakes, so inline `run:`
+      # scripts are linted too — which a bare actionlint binary would skip.
+      - name: Run actionlint
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            rhysd/actionlint:1.7.7 -color
+
   # ── Terminal gate: the single required status check ─────────────────────────
   # Set branch protection on main to require "CI gate". It succeeds when every
   # job above either succeeded or was skipped, and fails otherwise.
   ci-gate:
     name: CI gate
-    needs: [changes, web, server]
+    needs: [changes, web, server, workflows]
     if: always()
     runs-on: ubuntu-latest
 
