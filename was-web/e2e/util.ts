@@ -186,28 +186,48 @@ export async function createNewMap(
   console.log('✓ Navigation to map page completed, URL:', page.url());
 }
 
+/**
+ * Wait for the map page to settle into one of its two outcomes:
+ *
+ * - `'map'` — WebGL is available, so three.js mounts its renderer's canvas
+ *   into `#drawingDiv` and the map renders.
+ * - `'error'` — WebGL is unavailable (common in headless CI), so an
+ *   "Error loading map" toast appears and the page keeps its controls but
+ *   never gets a canvas.
+ *
+ * Both signals are positive evidence of their own branch. The throbber
+ * disappearing is deliberately *not* used as the success signal: it also goes
+ * away on the failure path, so racing it against the toast reports "WebGL
+ * working" whenever the toast happens to render a moment after the throbber
+ * unmounts — and the caller then asserts things that only hold when the map
+ * really loaded. That race is timing-sensitive enough to flip on an unrelated
+ * change to bundle size.
+ */
+export async function awaitMapOutcome(page: Page): Promise<'map' | 'error'> {
+  const canvasShown = page.locator('#drawingDiv canvas').waitFor({ state: 'visible', timeout: 30000 });
+  // Multiple WebGL error toasts can stack; first() avoids strict-mode violation.
+  const errorToast = page.locator('.toast-header:has-text("Error loading map")').first();
+  const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
+
+  const mapShown = canvasShown.then(() => 'map' as const);
+  const mapFailed = errorAppeared.then(() => 'error' as const);
+  // Whichever branch loses the race settles later, and its rejection must not
+  // surface as an unhandled promise rejection.
+  mapShown.catch(() => {});
+  mapFailed.catch(() => {});
+  return Promise.race([mapShown, mapFailed]);
+}
+
 export async function verifyMap(
   page: Page, browserName: string, deviceName: string,
   adventureName: string, adventureDescription: string, mapName: string, message: string
 ) {
   // After createNewMap, we should be on the map page.
-  // Two possible outcomes:
-  // 1. WebGL works: .Throbber-container disappears, map renders normally
-  // 2. WebGL fails: "Error loading map" toast appears, map stays on page with controls
-
-  const throbberGone = expect(page.locator('.Throbber-container')).not.toBeVisible({ timeout: 30000 });
-  // Multiple WebGL error toasts can stack; first() avoids strict-mode violation.
-  const errorToast = page.locator('.toast-header:has-text("Error loading map")').first();
-  const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
-
-  const which = await Promise.race([
-    throbberGone.then(() => 'map' as const),
-    errorAppeared.then(() => 'error' as const),
-  ]);
+  const which = await awaitMapOutcome(page);
 
   if (which === 'map') {
     // WebGL succeeded -- full verification path
-    console.log('✓ Throbber disappeared, WebGL working');
+    console.log('✓ Map canvas mounted, WebGL working');
 
     await page.waitForLoadState('networkidle', { timeout: 10000 });
     console.log('✓ Network idle');
@@ -261,16 +281,7 @@ export async function dismissAllToasts(page: Page) {
  * any error toasts so the page is in a clean state afterward.
  */
 export async function handleWebGLOrError(page: Page): Promise<'map' | 'error'> {
-  const throbberGone = expect(page.locator('.Throbber-container')).not.toBeVisible({ timeout: 30000 });
-  // Multiple WebGL error toasts can stack; first() avoids strict-mode violation.
-  const errorToast = page.locator('.toast-header:has-text("Error loading map")').first();
-  const errorAppeared = errorToast.waitFor({ state: 'visible', timeout: 30000 });
-
-  const which = await Promise.race([
-    throbberGone.then(() => 'map' as const),
-    errorAppeared.then(() => 'error' as const),
-  ]);
-
+  const which = await awaitMapOutcome(page);
   if (which === 'error') {
     await dismissAllToasts(page);
   }
@@ -295,7 +306,6 @@ async function navigateToAdventure(
 
   if (isPhone(deviceName)) {
     const adventureToggle = page.locator(`text="${adventureName}"`);
-    await adventureToggle.scrollIntoViewIfNeeded();
     await adventureToggle.click();
   }
 

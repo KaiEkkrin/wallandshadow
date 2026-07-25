@@ -132,7 +132,6 @@ test.describe('Image management tests', () => {
     // Open the adventure
     if (Util.isPhone(deviceName)) {
       const toggle = page.locator('text="Map image test"');
-      await toggle.scrollIntoViewIfNeeded();
       await toggle.click();
     }
     await page.click('text="Open adventure"');
@@ -141,7 +140,6 @@ test.describe('Image management tests', () => {
     // Click the pick-image button on the map card (expand accordion on phones)
     if (Util.isPhone(deviceName)) {
       const mapToggle = page.locator('text="Mapped image"');
-      await mapToggle.scrollIntoViewIfNeeded();
       await mapToggle.click();
     }
 
@@ -149,7 +147,6 @@ test.describe('Image management tests', () => {
     const mapImageBtn = page.locator('button.btn-secondary').filter({
       has: page.locator('svg[data-icon="image"]')
     }).first();
-    await mapImageBtn.scrollIntoViewIfNeeded();
     await mapImageBtn.dispatchEvent('click');
 
     // Select the previously uploaded image
