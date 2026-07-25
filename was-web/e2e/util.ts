@@ -333,6 +333,56 @@ export function deleteButton(page: Page, inModal = false) {
 }
 
 /**
+ * Complete Zitadel's hosted login — login name, password, and the optional
+ * two-factor enrolment prompt — then wait for the redirect chain to land on
+ * `expectedUrl` (a `page.waitForURL` glob).
+ *
+ * Zitadel encourages users to enrol a second factor after a successful
+ * password login. The prompt is skippable, but it sits between the password
+ * step and the redirect back to the app, and whether it appears depends on the
+ * instance's login policy and the account's existing factors — so it has to be
+ * treated as optional rather than as a fixed step in the flow.
+ */
+export async function signInWithZitadel(
+  page: Page,
+  email: string,
+  password: string,
+  expectedUrl: string
+): Promise<void> {
+  // Enter the login name (email) and continue.
+  const loginInput = page.locator('input[name="loginName"], input[autocomplete="username"]');
+  await expect(loginInput).toBeVisible({ timeout: 15000 });
+  await loginInput.fill(email);
+  await page.getByRole('button', { name: /^Next$/ }).click();
+
+  // Enter the password and continue.
+  const passwordInput = page.locator('input[type="password"]');
+  await expect(passwordInput).toBeVisible({ timeout: 10000 });
+  await passwordInput.fill(password);
+  await page.getByRole('button', { name: /^Next$/ }).click();
+
+  // From here Zitadel either redirects straight back to the app, or interposes
+  // the "2-Factor Setup" page. Race the two outcomes so that the common path
+  // doesn't have to pay a timeout waiting for a prompt that never appears.
+  const skipButton = page.getByRole('button', { name: /^Skip$/ });
+  const arrived = page.waitForURL(expectedUrl, { timeout: 30000 });
+  const prompted = skipButton.waitFor({ state: 'visible', timeout: 30000 });
+  // Whichever branch loses the race settles later, and its rejection must not
+  // surface as an unhandled promise rejection.
+  arrived.catch(() => {});
+  prompted.catch(() => {});
+  await Promise.race([arrived, prompted]);
+
+  // An instantaneous state query rather than a wait: the race above has already
+  // settled which of the two branches we are on.
+  if (await skipButton.isVisible()) {
+    await skipButton.click();
+  }
+
+  await page.waitForURL(expectedUrl, { timeout: 30000 });
+}
+
+/**
  * Locator for the adventure image picker button (camera icon next to Edit).
  */
 export function adventureImageButton(page: Page) {
