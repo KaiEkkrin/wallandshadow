@@ -53,9 +53,6 @@ jobs:
           filters: |
             web:
               - 'was-web/**'
-              - '!was-web/server/**'
-              - '!was-web/Dockerfile'
-              - '!was-web/.dockerignore'
               - '.github/workflows/ci.yml'
             server:
               - 'was-web/server/**'
@@ -73,6 +70,7 @@ jobs:
               - '.github/workflows/**'
             ansible:
               - 'ansible/**'
+              - '.ansible-lint'
               - '.github/workflows/ci.yml'
             infra:
               - 'infra/**'
