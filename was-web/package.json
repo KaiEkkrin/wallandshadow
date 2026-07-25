@@ -47,6 +47,10 @@
     "test:e2e:report": "playwright show-report --host 0.0.0.0 e2e/test-results/html",
     "lint": "eslint src packages/shared/src"
   },
+  "resolutions": {
+    "vite": "^7.3.6",
+    "vite/esbuild": "^0.28.1"
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@playwright/test": "^1.59.1",
@@ -72,7 +76,7 @@
     "pg": "^8.13.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.50.0",
-    "vite": "^7.3.5",
+    "vite": "^7.3.6",
     "vitest": "^4.0.0"
   }
 }
