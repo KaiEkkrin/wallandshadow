@@ -1276,8 +1276,15 @@ git checkout main
 
 Recorded because they were noticed while establishing the findings above, but each is a decision outside this plan's scope. Raise them with the repo owner rather than folding them in.
 
-- **`infra/.terraform.lock.hcl` is not committed**, although `infra/versions.tf` says "`.terraform.lock.hcl` is committed to the repo (like a lockfile)". It is not gitignored either — it simply was never added. Consequence for CI: `tofu init` in the `infra` job resolves the newest provider matching `~> 1.49` on every run, so a new `hetznercloud/hcloud` release could fail an unrelated PR. Committing the lock file would fix that, but it also pins what `provision.yml` applies to real infrastructure, so it is the owner's call.
-- **`network.tf:9` `assignee_type = "server"`** is reported by `tofu validate` as a no-longer-required attribute. Non-fatal (validate exits 0). Removing it edits a live resource definition and belongs in an infrastructure change, not a CI change.
+**Resolved after the fact** (2026-07-25, follow-up PR — kept here so the record reads straight):
+
+- ~~**`infra/.terraform.lock.hcl` is not committed**~~ — now committed, pinning `hetznercloud/hcloud` 1.67.0 with hashes for `linux_amd64`, `linux_arm64`, `darwin_amd64` and `darwin_arm64`. `infra/versions.tf`'s claim that the lock file is committed is finally true.
+- ~~**`deploy-server-production.yml` has no CI job**~~ — it now calls `ci.yml` with `force_all: true`, matching the test deploy.
+- ~~**`.ansible-lint`'s `exclude_paths` is inert**~~ — removed; the job's `working-directory: ansible` already scopes it.
+
+**Still open:**
+
+- **`network.tf:9` `assignee_type = "server"`** is reported by `tofu validate` as a no-longer-required attribute. Non-fatal (validate exits 0). Deliberately left alone: `hcloud_primary_ip.main` is the static IPv4 that DNS points at, and no CI job holds Hetzner credentials, so nothing here can run `tofu plan` to prove the removal would not force replacement. Clear it as part of an infrastructure change where a plan can be reviewed first.
 - **End-to-end Playwright tests never run in CI.** `yarn test:e2e` exists and needs both dev servers running. Adding it would materially change CI runtime and was not requested.
 - **No image build in CI.** Per the 2026-07-25 decision, PR CI validates the Dockerfile statically only. A Dockerfile can therefore pass every check here and still fail to build; that is first discovered by the test deploy. If that bites, the cheapest upgrade is a single-arch `linux/amd64` build with `push: false` reusing the existing `type=gha` cache.
 
