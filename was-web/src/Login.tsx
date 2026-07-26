@@ -99,9 +99,6 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
     }
   }, [authMethod, displayName, email, key, password, handleSignIn, handleSignUp, handleExternalSignUp, handleExternalSignIn]);
 
-  // Label for the external auth radio button
-  const externalLabel = oidcEnabled ? 'External provider' : 'Google account';
-
   return (
     <Modal show={shown} onHide={handleClose}>
       <Modal.Header closeButton>
@@ -121,14 +118,16 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
                   checked={authMethod === 'email'}
                   onChange={() => setAuthMethod('email')}
                 />
-                <Form.Check
-                  type="radio"
-                  id="newUserExternalRadio"
-                  name="newUserAuthMethod"
-                  label={externalLabel}
-                  checked={authMethod === 'external'}
-                  onChange={() => setAuthMethod('external')}
-                />
+                {oidcEnabled && (
+                  <Form.Check
+                    type="radio"
+                    id="newUserExternalRadio"
+                    name="newUserAuthMethod"
+                    label="External provider"
+                    checked={authMethod === 'external'}
+                    onChange={() => setAuthMethod('external')}
+                  />
+                )}
               </Form.Group>
               {authMethod === 'email' && (
                 <>
@@ -177,14 +176,16 @@ function EmailPasswordModal({ shown, initialTab, handleClose, handleSignIn, hand
                   checked={authMethod === 'email'}
                   onChange={() => setAuthMethod('email')}
                 />
-                <Form.Check
-                  type="radio"
-                  id="existingUserExternalRadio"
-                  name="existingUserAuthMethod"
-                  label={externalLabel}
-                  checked={authMethod === 'external'}
-                  onChange={() => setAuthMethod('external')}
-                />
+                {oidcEnabled && (
+                  <Form.Check
+                    type="radio"
+                    id="existingUserExternalRadio"
+                    name="existingUserAuthMethod"
+                    label="External provider"
+                    checked={authMethod === 'external'}
+                    onChange={() => setAuthMethod('external')}
+                  />
+                )}
               </Form.Group>
               {authMethod === 'email' && (
                 <>
@@ -279,20 +280,18 @@ function Login() {
       .catch(handleLoginError);
   }, [auth, finishLogin, handleLoginError, handleLoginResult, setLoginFailedVisible, setShowEmailForm]);
 
-  const handleExternalSignUp = useCallback((_displayName: string) => {
+  // The external option is only offered when OIDC is configured, so reaching
+  // either of these without an issuer means the login UI and `isOidcEnabled`
+  // have drifted apart — say so rather than doing nothing.
+  const startExternalLogin = useCallback(() => {
     setShowEmailForm(false);
     setLoginFailedVisible(false);
-    if (oidcEnabled) {
-      startOidcLogin(location.state?.from).catch(handleLoginError);
+    if (!oidcEnabled) {
+      handleLoginError(new Error('External sign-in was requested but no OIDC issuer is configured'));
+      return;
     }
-  }, [location.state?.from, handleLoginError, setLoginFailedVisible, setShowEmailForm]);
 
-  const handleExternalSignIn = useCallback(() => {
-    setShowEmailForm(false);
-    setLoginFailedVisible(false);
-    if (oidcEnabled) {
-      startOidcLogin(location.state?.from).catch(handleLoginError);
-    }
+    startOidcLogin(location.state?.from).catch(handleLoginError);
   }, [location.state?.from, handleLoginError, setLoginFailedVisible, setShowEmailForm]);
 
   const handleSignUpClick = useCallback(() => {
@@ -343,8 +342,8 @@ function Login() {
       <EmailPasswordModal shown={showEmailForm} initialTab={initialTab} handleClose={handleEmailFormClose}
         handleSignIn={handleEmailFormSignIn}
         handleSignUp={handleEmailFormSignUp}
-        handleExternalSignUp={handleExternalSignUp}
-        handleExternalSignIn={handleExternalSignIn} />
+        handleExternalSignUp={startExternalLogin}
+        handleExternalSignIn={startExternalLogin} />
     </div>
   );
 }
