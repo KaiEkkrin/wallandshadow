@@ -1,8 +1,9 @@
 // The sprite record goes into the token.
 export interface ISprite {
-  source: string; // the path of the user-uploaded image in Storage, e.g. `images/${uid}/${id}`
-                  // use this to lookup the spritesheet with `array-contains`.
-  geometry: string; // converted by "convertSpriteGeometry" below; a string so it can be indexed
+  source: string; // the object storage path of the user-uploaded image, e.g. `images/${uid}/${id}`
+                  // find the containing spritesheet by looking this up in its `sprites` array.
+  geometry: string; // converted by `fromSpriteGeometryString` / `toSpriteGeometryString` below;
+                    // a string so it can be indexed
 }
 
 // #149: The spritesheet record is stored per-map.

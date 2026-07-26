@@ -566,7 +566,7 @@ describe('server integration tests', () => {
   // ── Cascade deletion ─────────────────────────────────────────────────────
 
   describe('cascade deletion', () => {
-    test('deleteMap purges the changes subcollection', async () => {
+    test('deleteMap purges the map_changes rows', async () => {
       const { token, uid } = await registerUser(app);
       const a1Id = await createAdventure(token);
       const m1Id = await createMap(token, a1Id);
