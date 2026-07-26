@@ -1,5 +1,3 @@
-import { Timestamp } from './types';
-
 // The sprite record goes into the token.
 export interface ISprite {
   source: string; // the path of the user-uploaded image in Storage, e.g. `images/${uid}/${id}`
@@ -12,7 +10,7 @@ export interface ISpritesheet {
   sprites: string[]; // the sprites in position order, "" denoting any blank spaces
   geometry: string;
   freeSpaces: number; // keep this in sync with `sprites` during transactions
-  date: Timestamp | number; // initialise this to `serverTimestamp`
+  date: number; // when this record was assembled, in milliseconds since the epoch
   supersededBy: string; // the id of a newer spritesheet overriding this one or "" if none
   refs: number; // starting at 0, the number of open edits for this spritesheet
 }

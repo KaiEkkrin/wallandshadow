@@ -1,5 +1,4 @@
 // Data
-export * from './data/types';
 export * from './data/adventure';
 export * from './data/admin';
 export * from './data/annotation';
