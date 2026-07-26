@@ -1,13 +1,12 @@
 # Ephemeral WebSocket Messages (`ping`, `measurement`)
 
-Broken out of @docs/REPLATFORM.md during Phase 4. The original replatforming plan
-anticipated bidirectional ephemeral messages on the map WebSocket for live collaboration
-cues. Those messages were never implemented and nothing currently depends on them. This
-document captures the motivation and the shape of the work so we can decide later whether
-to build it.
+Broken out of @docs/ARCHITECTURE.md. The architecture anticipated bidirectional ephemeral
+messages on the map WebSocket for live collaboration cues. Those messages were never
+implemented and nothing currently depends on them. This document captures the motivation
+and the shape of the work so we can decide later whether to build it.
 
 **Status**: unfunded. The WebSocket handler dispatches `subscribe` and `mapChange`
-frames (see @docs/REPLATFORM.md "WebSocket Room Model"), but no *ephemeral* message
+frames (see @docs/ARCHITECTURE.md "WebSocket Room Model"), but no *ephemeral* message
 types (`ping`, `measurement`) are implemented — nothing in this document is built. Map
 changes are persisted via the `mapChange` frame and the server broadcasts the persisted
 result back via PostgreSQL LISTEN/NOTIFY.

@@ -2,17 +2,6 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug Firebase Functions",
-      "type": "node",
-      "request": "attach",
-      "port": 9229,
-      "restart": true,
-      "sourceMaps": true,
-      "outFiles": ["${workspaceFolder}/was-web/functions/lib/**/*.js"],
-      "skipFiles": ["<node_internals>/**"],
-      "cwd": "${workspaceFolder}/was-web/functions"
-    },
-    {
       "name": "Launch Chrome",
       "type": "chrome",
       "request": "launch",

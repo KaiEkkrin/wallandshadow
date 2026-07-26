@@ -6,9 +6,7 @@ Guidance for Claude Code when working with this repository.
 
 Wall & Shadow — virtual tabletop (VTT) web app for running tabletop RPG sessions online. Real-time collaborative map editing, token management, game state sharing.
 
-**Stack**: React + TypeScript + Three.js + Vite on the client; Hono + PostgreSQL + Drizzle ORM on the server; MinIO (dev) / Hetzner Object Storage (prod) for images; Zitadel OIDC for auth. See @docs/REPLATFORM.md for architecture details.
-
-The Firebase codebase lives on the `legacy-firebase` branch. `main` is Firebase-free.
+**Stack**: React + TypeScript + Three.js + Vite on the client; Hono + PostgreSQL + Drizzle ORM on the server; MinIO (dev) / Hetzner Object Storage (prod) for images; Zitadel OIDC for auth. See @docs/ARCHITECTURE.md for architecture details.
 
 ## Directory Structure
 
@@ -242,11 +240,10 @@ Ban is permanent and irreversible from the UI: it soft-deletes the target's adve
 - @README.md — project overview, tech stack, documentation index
 - @docs/DEVELOPMENT.md — local development setup and the day-to-day workflow
 - @docs/ZITADEL_OIDC_SETUP.md — first-time Zitadel OIDC provider configuration
-- @docs/REPLATFORM.md — current architecture and deployment details
+- @docs/ARCHITECTURE.md — current architecture and deployment details
 - @docs/architecture/ephemeral-state.md — system-level overview of the ephemeral (in-memory, never-persisted) layer: presence + live overlays (scribbles / rulers)
 - @docs/EPHEMERAL_WS.md — unimplemented ephemeral WebSocket message design
 - @docs/ANALYTICS.md — future analytics options (Plausible / Umami / GoAccess)
-- @docs/LEGACY_FIREBASE_DEPLOY.md — applies only to the `legacy-firebase` branch
 - @docs/INFRASTRUCTURE_BOOTSTRAP.md — first-time Hetzner VPS provisioning
 - @docs/Medium_Term_Updates.md — pending dependency updates
 - @.devcontainer/README.md — dev container setup

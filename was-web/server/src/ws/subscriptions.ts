@@ -318,7 +318,7 @@ export async function snapshotAdventureDetail(
   };
 }
 
-/** { map, adventure } — matches the pair HonoDataService.get('map') composes today. */
+/** { map, adventure } — the pair `HonoLiveData.watchMap` needs to build an `IMap`. */
 export async function snapshotMap(
   database: Db,
   adventureId: string,

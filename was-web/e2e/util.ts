@@ -138,7 +138,7 @@ export async function signUp(page: Page, deviceName: string, prefix?: string | u
   await expect(page.locator('[id=nameInput]')).toBeVisible();
 
   // Fill in the form.  Take care to create unique email addresses because
-  // we may be re-using the authentication emulator instance from another run
+  // the dev database persists between runs and already holds earlier signups
   const n = ++signupNumber;
   const user = {
     displayName: `${prefix ?? "Test"} ${n}`,

@@ -43,7 +43,7 @@ we have a concrete question to answer with it — not speculatively.
 
 ## Principles (if and when we build it)
 
-1. **Self-hosted and EU-resident.** Same rationale as the rest of the replatform: no
+1. **Self-hosted and EU-resident.** Same rationale as the rest of the self-hosted stack: no
    third-party data processor, no GDPR consent banner required if we stay on
    anonymous/aggregate data.
 2. **No cookies, no fingerprinting.** Cookie-less analytics let us skip the consent
