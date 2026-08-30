@@ -4,6 +4,9 @@ import { FeatureColour } from '../featureColour';
 import { IDrawing } from '../interfaces';
 import { RedrawFlag } from '../redrawFlag';
 
+import { ScribbleDrawing } from './scribbleDrawing';
+import { ScribbleSegment, SCRIBBLE_MAX_SEGMENTS } from '../scribbleTypes';
+
 import { Areas, createPaletteColouredAreaObject, createAreas, createSelectionColouredAreaObject } from './areas';
 import { Grid } from './grid';
 import { GridFilter } from './gridFilter';
@@ -38,6 +41,7 @@ const highlightZ = 0.1;
 const vertexHighlightZ = 0.2;
 const textZ = -0.23; // in front of the token sprite but below the LoS
 const invalidSelectionZ = 0.6;
+const scribbleZ = 0.7; // above everything; depthTest is off so this only keeps it in clip range
 const outlineTokenZ = -0.24; // needs to be above regular token sprites to be clearly visible
 const outlineZOffset = 0.01;
 
@@ -101,6 +105,7 @@ export class DrawingOrtho implements IDrawing {
   private readonly _mapColourVisualisation: MapColourVisualisation;
 
   private readonly _outlinedRectangle: OutlinedRectangle;
+  private readonly _scribbles: ScribbleDrawing;
 
   private readonly _gridNeedsRedraw: RedrawFlag;
   private readonly _needsRedraw: RedrawFlag;
@@ -163,6 +168,8 @@ export class DrawingOrtho implements IDrawing {
     this._filterScene = new THREE.Scene();
     this._fixedHighlightScene = new THREE.Scene();
     this._overlayScene = new THREE.Scene();
+    this._scribbles = new ScribbleDrawing(SCRIBBLE_MAX_SEGMENTS, scribbleZ);
+    this._scribbles.setViewport(renderWidth, renderHeight);
 
     this._canvasClearColour = new THREE.Color(0.01, 0.01, 0.01);
     this._renderer.autoClear = false;
@@ -423,11 +430,12 @@ export class DrawingOrtho implements IDrawing {
     // true)
     const needsRedraw = this._needsRedraw.needsRedraw();
     const gridNeedsRedraw = this._gridNeedsRedraw.needsRedraw();
+    const scribblesActive = this._scribbles.hasContent;
     if (gridNeedsRedraw) {
       this._grid.render(this._renderer, this._camera);
     }
 
-    if (gridNeedsRedraw || needsRedraw) {
+    if (gridNeedsRedraw || needsRedraw || scribblesActive) {
       // In debug mode, just render the debug texture fullscreen
       if (this._debugShowFaceCoord || this._debugShowVertexCoord) {
         this._renderer.setRenderTarget(null);
@@ -473,7 +481,17 @@ export class DrawingOrtho implements IDrawing {
           this._renderer.render(this._fixedHighlightScene, this._fixedCamera);
         }
         this._renderer.render(this._overlayScene, this._overlayCamera);
+        this._scribbles.updateNow(Date.now());
+        this._scribbles.render(this._renderer, this._camera);
       }
+    }
+
+    // While scribbles are present, keep re-rendering each frame so their fade
+    // animates. The loop stops once the caller (ScribbleController) pushes an
+    // empty set via setScribbles([]) — it does so when all strokes have expired
+    // (peer removals arrive over the wire; local strokes are pruned on a timer).
+    if (scribblesActive) {
+      this._needsRedraw.setNeedsRedraw();
     }
 
     postAnimate?.();
@@ -546,6 +564,7 @@ export class DrawingOrtho implements IDrawing {
     this._outlineSelection.resize(width, height);
     this._outlineSelectionDrag.resize(width, height);
     this._outlineSelectionDragRed.resize(width, height);
+    this._scribbles.setViewport(width, height);
 
     this._camera.left = translation.x + width / -scaling.x;
     this._camera.right = translation.x + width / scaling.x;
@@ -694,6 +713,11 @@ export class DrawingOrtho implements IDrawing {
     return this._debugShowFaceCoord || this._debugShowVertexCoord;
   }
 
+  setScribbles(segments: ScribbleSegment[]) {
+    this._scribbles.setSegments(segments);
+    this._needsRedraw.setNeedsRedraw();
+  }
+
   dispose() {
     if (this._disposed === true) {
       return;
@@ -728,6 +752,7 @@ export class DrawingOrtho implements IDrawing {
     this._mapColourVisualisation.dispose();
 
     this._outlinedRectangle.dispose();
+    this._scribbles.dispose();
 
     this._textureCache.dispose();
     this._textMaterial.dispose();

@@ -8,11 +8,12 @@ and the reasoning behind them. For what a particular function does, read the
 code (see "Where the code lives" at the end).
 
 **Status.** The backplane is built and carries two tenants. Presence is wired
-end to end, UI included. Live overlays exist as a *data layer only*: the server
-registry, the wire contract, and the `ILiveData` client surface are implemented
-and tested, but the scribble and ruler UIs — rendering, input capture, per-author
-colour — are not on `main` yet. Nothing in the app currently calls
-`watchLiveOverlays`.
+end to end, UI included. Of the two live-overlay kinds, **scribbles** are now
+wired end to end as well — a pencil edit mode, pointer capture, and the fading
+renderer — with per-author colour still outstanding (every stroke currently
+draws white). **Rulers** remain a *data layer only*: the server registry, the
+wire contract, and the `ILiveData` client surface carry them, but no ruler UI
+exists yet.
 
 ## What counts as ephemeral state
 
@@ -239,6 +240,11 @@ Everything from the wire is treated as untrusted at the server boundary:
 - Client surface: `ILiveData` in `was-web/packages/shared/src/services/liveData.ts`,
   implemented in `was-web/src/services/honoLiveData.ts` over
   `was-web/src/services/honoWebSocket.ts`.
+- Scribble UI (so far the only live-overlay kind with one):
+  `was-web/src/models/scribbleController.ts` captures strokes and merges local
+  with remote, `was-web/src/models/three/scribbleDrawing.ts` renders them, and
+  `EditMode.Scribble` routes pointer events through `was-web/src/models/mapUi.ts`
+  into the map state machine.
 - Shared subscription machinery both paths use:
   `was-web/server/src/ws/subscriptions.ts` and `was-web/server/src/ws/rooms.ts`.
 - Tests: `was-web/server/src/__tests__/ws-presence.test.ts` and
