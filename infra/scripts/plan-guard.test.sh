@@ -27,6 +27,8 @@ expect 1 plan-replace-server.json
 expect 1 plan-create-before-destroy.json
 expect 1 plan-destroy-volume.json
 expect 2 not-json.txt
+expect 2 empty.json
+expect 2 not-a-plan.json
 
 # The listing names every offending resource, not just the first.
 listing=$(./plan-guard.sh testdata/plan-replace-server.json 2>&1 || true)

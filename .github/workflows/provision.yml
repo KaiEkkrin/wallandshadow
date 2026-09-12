@@ -52,6 +52,12 @@ on:
         type: boolean
         default: false
 
+# Two overlapping runs would race on the OpenTofu state, and the S3 backend
+# has no locking, so a second run queues until the first finishes.
+concurrency:
+  group: provision
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
