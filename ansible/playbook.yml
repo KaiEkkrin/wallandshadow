@@ -26,6 +26,19 @@
     - vars/main.yml
 
   tasks:
+    # ── Preconditions ───────────────────────────────────────────────────────
+
+    - name: Require the persistent volume
+      ansible.builtin.assert:
+        that:
+          - volume_id is defined
+          - volume_id | string | length > 0
+        fail_msg: >-
+          volume_id is required. PostgreSQL's data, the secrets file and
+          Caddy's certificates live on the Hetzner volume; the provision
+          workflow passes its ID from OpenTofu.
+        quiet: true
+
     # ── System packages ─────────────────────────────────────────────────────
 
     - name: Install prerequisite packages
@@ -259,16 +272,17 @@
         line: "PasswordAuthentication no"
       notify: Restart sshd
 
-    # ── Volume mount (PostgreSQL data) ──────────────────────────────────────
-    # Volume is provisioned by OpenTofu. volume_id is passed as an extra-var.
-    # Device path uses the stable by-id name that survives reboots.
+    # ── Persistent volume ───────────────────────────────────────────────────
+    # Provisioned by OpenTofu; volume_id is passed as an extra-var. The device
+    # path uses the stable by-id name that survives reboots. Everything that
+    # must survive a server rebuild lives here: see the layout in
+    # vars/main.yml and docs/SERVER_OPERATIONS.md.
 
     - name: Create volume mount point
       ansible.builtin.file:
         path: "{{ pgdata_mount }}"
         state: directory
-        mode: "0700"
-      when: volume_id is defined and volume_id != ''
+        mode: "0755"
 
     - name: Mount volume at {{ pgdata_mount }}
       ansible.posix.mount:
@@ -277,15 +291,53 @@
         fstype: ext4
         opts: discard,nofail,defaults
         state: mounted
-      when: volume_id is defined and volume_id != ''
 
-    - name: Set volume ownership for postgres
+    # The volume root is shared, so root owns it. PostgreSQL only needs to own
+    # its own data directory, and Caddy must be able to reach its storage.
+    - name: Set volume root ownership
       ansible.builtin.file:
         path: "{{ pgdata_mount }}"
-        owner: postgres
-        group: postgres
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create the secrets directory on the volume
+      ansible.builtin.file:
+        path: "{{ secrets_file | dirname }}"
+        state: directory
+        owner: root
+        group: root
         mode: "0700"
-      when: volume_id is defined and volume_id != ''
+
+    # The mount is `nofail`, so the server still boots (and stays reachable
+    # over SSH) without the volume. These drop-ins stop PostgreSQL and Caddy
+    # from starting on the bare mount point in that case; Caddy would
+    # otherwise request fresh certificates onto the root disk.
+    - name: Create drop-in directories for services that keep state on the volume
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ item }}.d"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - caddy.service
+        - postgresql@.service
+
+    - name: Make services that keep state on the volume require it
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item }}.d/wallandshadow-volume.conf"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible (wallandshadow playbook).
+          [Unit]
+          RequiresMountsFor={{ pgdata_mount }}
+      loop:
+        - caddy.service
+        - postgresql@.service
+      notify: Reload systemd
 
     # ── Secret generation ───────────────────────────────────────────────────
     # Idempotent across provision runs: the VPS's existing secrets file is the

@@ -20,14 +20,28 @@ app_port_test: 3002
 domain_prod: "wallandshadow.com"
 domain_test: "test.wallandshadow.com"
 
-# ── Secrets file on VPS ──────────────────────────────────────────────────────
+# ── Rendered configuration on the VPS ────────────────────────────────────────
+# Env files, image tags, CORS policies and the goaccess config. The playbook
+# re-renders all of it (the deploy workflows rewrite the image tags), so it
+# lives on the root disk.
 secrets_dir: "/etc/wallandshadow"
-secrets_file: "/etc/wallandshadow/secrets"
 
-# ── Volume (PostgreSQL data) ──────────────────────────────────────────────────
-# Passed as extra-var from the provision workflow (OpenTofu output).
-# volume_id: "12345678"  — set via -e volume_id=... on the command line
+# ── Persistent volume ────────────────────────────────────────────────────────
+# Everything that must survive a server rebuild lives on the Hetzner volume
+# (docs/SERVER_OPERATIONS.md). The mount point keeps its original name:
+#   /mnt/pgdata/main           PostgreSQL data directory
+#   /mnt/pgdata/wallandshadow  secrets file (DB password, JWT secret, S3 keys)
+#   /mnt/pgdata/caddy          Caddy's certificates and ACME account
+# volume_id is required, via -e volume_id=... (the provision workflow passes
+# the OpenTofu output).
 pgdata_mount: "/mnt/pgdata"
+secrets_file: "{{ pgdata_mount }}/wallandshadow/secrets"
+caddy_storage_dir: "{{ pgdata_mount }}/caddy"
+
+# Where the secrets file and Caddy's data lived before they moved onto the
+# volume. The playbook migrates each once (see playbook.yml).
+legacy_secrets_file: "/etc/wallandshadow/secrets"
+caddy_legacy_data_dir: "/var/lib/caddy/.local/share/caddy"
 
 # ── S3 / Object Storage ──────────────────────────────────────────────────────
 # Endpoint and bucket for backups. Credentials passed as extra-vars from the
