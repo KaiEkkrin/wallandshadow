@@ -8,5 +8,8 @@
 .claude.json
 .config/
 .local/
-.minio-data/
 .pgdata/
+.rustfs-data/
+rustfs.log
+# Left behind by the MinIO-based dev container (replaced by RustFS); safe to delete
+.minio-data/

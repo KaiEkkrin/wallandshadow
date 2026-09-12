@@ -1,8 +1,8 @@
 # Wall & Shadow Dev Container
 
-Complete development environment for Wall & Shadow with Node.js 22, PostgreSQL 17, MinIO, and optional GPU support for Playwright/WebGL tests. Also includes a full terminal toolchain: neovim (LazyVim), zellij, ripgrep, fd, fzf, lazygit, Rust, and tree-sitter. Editor config is synced from [KaiEkkrin/dot-config](https://github.com/KaiEkkrin/dot-config) on first launch.
+Complete development environment for Wall & Shadow with Node.js 22, PostgreSQL 17, RustFS, and optional GPU support for Playwright/WebGL tests. Also includes a full terminal toolchain: neovim (LazyVim), zellij, ripgrep, fd, fzf, lazygit, Rust, and tree-sitter. Editor config is synced from [KaiEkkrin/dot-config](https://github.com/KaiEkkrin/dot-config) on first launch.
 
-PostgreSQL and MinIO start automatically when the container starts — no external Compose setup needed.
+PostgreSQL and RustFS start automatically when the container starts — no external Compose setup needed.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ devcontainer build --workspace-folder .
 devcontainer up --workspace-folder .
 ```
 
-On first launch this runs the post-create script: installs yarn dependencies, initialises PostgreSQL, clones dot-config into `~/.config`, etc. PostgreSQL and MinIO start automatically on every subsequent launch.
+On first launch this runs the post-create script: installs yarn dependencies, initialises PostgreSQL, clones dot-config into `~/.config`, etc. PostgreSQL and RustFS start automatically on every subsequent launch.
 
 ### Connect a terminal
 
@@ -66,8 +66,8 @@ The devcontainer CLI does not implement `forwardPorts` ([open issue](https://git
 | ---- | ------- |
 | 3000 | Hono API server |
 | 5000 | Vite dev server |
-| 9000 | MinIO API |
-| 9001 | MinIO Console |
+| 9000 | RustFS S3 API |
+| 9001 | RustFS Console (`/rustfs/console/`) |
 | 9323 | Playwright Report |
 
 Database port 5432 is intentionally not published to avoid conflicts with host services.
@@ -78,7 +78,7 @@ Database port 5432 is intentionally not published to avoid conflicts with host s
 devcontainer up --workspace-folder . --remove-existing-container
 ```
 
-This recreates the container from the updated image. PostgreSQL data, MinIO data, dot-config, and all other content in `.devcontainer/` persist because they live in the bind-mounted workspace.
+This recreates the container from the updated image. PostgreSQL data, RustFS data, dot-config, and all other content in `.devcontainer/` persist because they live in the bind-mounted workspace.
 
 If the container looks wrong after a rebuild (e.g. a tool is missing that the Dockerfile installs), the CLI may have reused a cached image layer. Force a full image rebuild with:
 
@@ -135,11 +135,11 @@ When VS Code opens, you'll see a popup: **"Reopen in Container"** — click it.
 
 Alternatively, press `F1` and select **"Dev Containers: Reopen in Container"**.
 
-The first build takes 5–10 minutes (downloads base image, installs dependencies, initialises PostgreSQL and MinIO). Subsequent starts are much faster.
+The first build takes 5–10 minutes (downloads base image, installs dependencies, initialises PostgreSQL and RustFS). Subsequent starts are much faster.
 
 **Step 2: Start developing**
 
-PostgreSQL and MinIO start automatically. No setup needed.
+PostgreSQL and RustFS start automatically. No setup needed.
 
 ```bash
 cd was-web
@@ -219,8 +219,8 @@ groups   # should include video and render
 | **Hono API**      | http://localhost:3000          | start manually: `cd was-web/server && yarn dev`      |
 | **Vite dev**      | http://localhost:5000          | start manually: `cd was-web && yarn dev:vite`        |
 | **PostgreSQL**    | localhost:5432                 | user: `was`, pass: `wasdev`, db: `wallandshadow`     |
-| **MinIO Console** | http://localhost:9001          | `wasdev` / `wasdevpass`                              |
-| **MinIO API**     | http://localhost:9000          | —                                                    |
+| **RustFS Console** | http://localhost:9001/rustfs/console/ | `wasdev` / `wasdevpass`                       |
+| **RustFS S3 API** | http://localhost:9000          | —                                                    |
 
 The `DATABASE_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, and `S3_SECRET_KEY`
 environment variables are pre-set in the container.
@@ -302,7 +302,7 @@ Pre-configured in the container:
 - `IS_LOCAL_DEV=true` — enables dev-only features (e.g. email/password login on the login page)
 - `FORCE_COLOR=true` — colourised terminal output
 - `PGDATA` / `DATABASE_URL` — PostgreSQL connection
-- `S3_ENDPOINT` / `S3_BUCKET` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` — MinIO connection
+- `S3_ENDPOINT` / `S3_BUCKET` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` — RustFS connection
 
 ---
 
@@ -318,6 +318,17 @@ psql -h localhost -U postgres -c "CREATE DATABASE wallandshadow_test OWNER was;"
 cd was-web/server
 yarn db:push:test
 ```
+
+### Images Missing After the MinIO → RustFS Switch
+
+The dev container used MinIO for object storage until MinIO stopped distributing
+binaries; it now uses RustFS, with data in `.devcontainer/.rustfs-data/`. Objects in
+the old `.devcontainer/.minio-data/` are not migrated, so images uploaded before the
+switch show as broken while their database rows remain. Re-upload them, or reset the
+dev database (see [DEVELOPMENT.md](../docs/DEVELOPMENT.md#resetting-the-databases)).
+Once you no longer need it, delete `.devcontainer/.minio-data/`.
+
+RustFS logs to `.devcontainer/rustfs.log`.
 
 ### Bind Mount Permission Errors
 

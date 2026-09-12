@@ -1,8 +1,18 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Locator } from '@playwright/test';
 
 import * as Util from './util';
 import { setUserLevel } from './dbAdmin';
 import { TINY_PNG } from './testImage';
+
+// toBeVisible() passes for a broken <img> too, so also require that the image
+// decoded. Images load cross-origin from the object store with
+// crossOrigin="anonymous"; a missing CORS rule only shows up here.
+async function expectImageLoaded(img: Locator): Promise<void> {
+  await expect.poll(
+    () => img.evaluate((el: HTMLImageElement) => (el.complete ? el.naturalWidth : 0)),
+    { timeout: 5000 },
+  ).toBeGreaterThan(0);
+}
 
 test.describe('Image management tests', () => {
   // All tests in this describe block exercise image-upload UI, which is gated
@@ -35,13 +45,17 @@ test.describe('Image management tests', () => {
       buffer: TINY_PNG,
     });
 
-    // Wait for the uploaded image to appear, then assign it
-    await expect(page.locator('.App-image-collection-image')).toBeVisible({ timeout: 5000 });
+    // Wait for the uploaded image to appear and load, then assign it
+    const uploaded = page.locator('.App-image-collection-image');
+    await expect(uploaded).toBeVisible({ timeout: 5000 });
+    await expectImageLoaded(uploaded);
     await page.click('text="Use this image"');
     await expect(page.locator('.modal-title:has-text("Choose image")')).not.toBeVisible();
 
-    // Verify the adventure card now shows an image
-    await expect(page.locator('.card img.App-image-collection-image, .card img[alt="Image test"]')).toBeVisible({ timeout: 5000 });
+    // Verify the adventure card now shows the loaded image
+    const cardImage = page.locator('.card img.App-image-collection-image, .card img[alt="Image test"]');
+    await expect(cardImage).toBeVisible({ timeout: 5000 });
+    await expectImageLoaded(cardImage);
   });
 
   test('remove image from adventure', async ({ page }) => {

@@ -27,7 +27,7 @@ class CapturingLogger implements ILogger {
 
 // A storage stub whose deleteMany either reports per-key failures or throws a
 // transport-level error, so we can drive auditedDeleteS3 down both branches
-// without depending on MinIO actually failing.
+// without depending on the object store actually failing.
 class StubStorage implements IStorage {
   constructor(
     private readonly behaviour:

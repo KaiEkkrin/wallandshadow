@@ -146,28 +146,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Start MinIO
+      - name: Start RustFS
         run: |
-          docker run -d --name minio \
+          docker run -d --name rustfs \
             -p 9000:9000 \
-            -e MINIO_ROOT_USER=wasdev \
-            -e MINIO_ROOT_PASSWORD=wasdevpass \
-            minio/minio:latest server /data
-          # Wait for MinIO to be ready
+            -e RUSTFS_ACCESS_KEY=wasdev \
+            -e RUSTFS_SECRET_KEY=wasdevpass \
+            rustfs/rustfs:1.0.0-rc.6
           for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:9000/minio/health/live; then
-              echo "MinIO is ready"
-              break
+            if curl -sf -o /dev/null http://127.0.0.1:9000/health; then
+              echo "RustFS is ready"
+              exit 0
             fi
-            echo "Waiting for MinIO... ($i)"
+            echo "Waiting for RustFS... ($i)"
             sleep 1
           done
+          echo "::error::RustFS did not become ready"
+          docker logs rustfs
+          exit 1
 
-      - name: Create MinIO buckets
+      - name: Create RustFS buckets
         run: |
-          docker run --rm --network host \
-            -e MC_HOST_local=http://wasdev:wasdevpass@127.0.0.1:9000 \
-            minio/mc:latest mb local/wallandshadow local/wallandshadow-test --ignore-existing
+          for bucket in wallandshadow wallandshadow-test; do
+            curl -fsS -o /dev/null --aws-sigv4 "aws:amz:us-east-1:s3" --user wasdev:wasdevpass \
+              -X PUT "http://127.0.0.1:9000/$bucket"
+          done
 
       - name: Install ImageMagick
         run: sudo apt-get install -y imagemagick

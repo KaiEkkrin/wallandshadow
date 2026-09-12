@@ -14,6 +14,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     ca-certificates \
     gnupg \
     curl \
+    unzip \
     postgresql-17 \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list \
@@ -24,11 +25,21 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 # Add PostgreSQL binaries to PATH so pg_ctl, psql, initdb etc. work in all shell sessions
 ENV PATH="/usr/lib/postgresql/17/bin:${PATH}"
 
-# Install MinIO server and client (static binaries, no dependencies)
-RUN curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio \
-    && chmod +x /usr/local/bin/minio \
-    && curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc \
-    && chmod +x /usr/local/bin/mc
+# Install RustFS, the S3-compatible object store used for local dev (a static musl
+# binary, no dependencies). It replaced MinIO, which no longer distributes binaries.
+# Buckets are created with curl's built-in SigV4 signing (post-start.sh), so no
+# separate S3 CLI is needed.
+ARG RUSTFS_VERSION=1.0.0-rc.6
+RUN case "$(dpkg --print-architecture)" in \
+        amd64) RUSTFS_ARCH=x86_64 ;; \
+        arm64) RUSTFS_ARCH=aarch64 ;; \
+        *) echo "Unsupported architecture for RustFS: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/rustfs/rustfs/releases/download/${RUSTFS_VERSION}/rustfs-linux-${RUSTFS_ARCH}-musl-v${RUSTFS_VERSION}.zip" -o /tmp/rustfs.zip \
+    && unzip -o /tmp/rustfs.zip rustfs -d /usr/local/bin \
+    && chmod +x /usr/local/bin/rustfs \
+    && rm /tmp/rustfs.zip \
+    && rustfs --version
 
 # Install Playwright system dependencies
 RUN npx playwright install-deps

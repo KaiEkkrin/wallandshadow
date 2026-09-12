@@ -6,7 +6,7 @@ Guidance for Claude Code when working with this repository.
 
 Wall & Shadow — virtual tabletop (VTT) web app for running tabletop RPG sessions online. Real-time collaborative map editing, token management, game state sharing.
 
-**Stack**: React + TypeScript + Three.js + Vite on the client; Hono + PostgreSQL + Drizzle ORM on the server; MinIO (dev) / Hetzner Object Storage (prod) for images; Zitadel OIDC for auth. See @docs/ARCHITECTURE.md for architecture details.
+**Stack**: React + TypeScript + Three.js + Vite on the client; Hono + PostgreSQL + Drizzle ORM on the server; RustFS (dev) / Hetzner Object Storage (prod) for images; Zitadel OIDC for auth. See @docs/ARCHITECTURE.md for architecture details.
 
 ## Directory Structure
 
@@ -39,7 +39,7 @@ Code shared between the web client and the Hono server lives in `packages/shared
 
 ## Development Commands
 
-All commands from `was-web/` directory unless otherwise noted. The devcontainer auto-starts PostgreSQL and MinIO.
+All commands from `was-web/` directory unless otherwise noted. The devcontainer auto-starts PostgreSQL and RustFS.
 
 ### Start Development
 
@@ -86,7 +86,7 @@ yarn db:push:test       # test database
 
 ```bash
 yarn test:unit          # Vitest watch mode (client)
-yarn test:server        # Server integration tests against real PostgreSQL + MinIO
+yarn test:server        # Server integration tests against real PostgreSQL + RustFS
 yarn test:e2e           # Playwright (requires Hono + Vite dev server running)
 ```
 
@@ -144,7 +144,7 @@ See @docs/DEVELOPMENT.md for developer setup and the day-to-day workflow, and @d
 ### Testing
 
 - Test behaviour, not implementation details. Assert on outputs and side effects.
-- Server integration tests run against real PostgreSQL and MinIO — no mocks for data stores.
+- Server integration tests run against real PostgreSQL and RustFS — no mocks for data stores.
 - Cover error paths: bad input returns the right status code, auth failures are rejected.
 - **E2E tests**: Include terse step-by-step narrative comments (e.g. `// Open the edit modal and change the name`). Unlike application code, Playwright tests benefit from WHAT comments because selectors alone don't convey the user-facing intent of each step.
 

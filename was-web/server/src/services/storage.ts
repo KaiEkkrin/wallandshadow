@@ -21,7 +21,7 @@ function createS3Client(): S3Client {
       accessKeyId: process.env.S3_ACCESS_KEY ?? 'wasdev',
       secretAccessKey: process.env.S3_SECRET_KEY ?? 'wasdevpass',
     },
-    forcePathStyle: true, // required for MinIO
+    forcePathStyle: true, // required for RustFS (dev), which serves path-style only by default
   });
 }
 
@@ -44,7 +44,7 @@ export class StorageObjectNotFoundError extends Error {
 }
 
 // True when an S3 SDK error means "the object is not there" rather than a
-// transient failure. MinIO and Hetzner Object Storage both return NoSuchKey.
+// transient failure. RustFS and Hetzner Object Storage both return NoSuchKey.
 function isNotFoundError(e: unknown): boolean {
   if (typeof e !== 'object' || e === null) {
     return false;
