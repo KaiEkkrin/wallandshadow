@@ -352,8 +352,9 @@
     # refreshes its env-file.
     #
     # The file used to live at legacy_secrets_file, on the root disk, where a
-    # rebuild lost it. If only that copy exists it is read here, then deleted
-    # once the volume copy has been written below.
+    # rebuild lost it. If only that copy exists it is read here, and deleted
+    # later in the play, once the backup script that reads it has been
+    # re-rendered.
 
     - name: Check for the secrets file on the volume
       ansible.builtin.stat:
@@ -428,11 +429,6 @@
         mode: "0600"
         owner: root
         group: root
-
-    - name: Remove the legacy secrets file from the root disk
-      ansible.builtin.file:
-        path: "{{ legacy_secrets_file }}"
-        state: absent
 
     # ── PostgreSQL data directory on volume ─────────────────────────────────
     # First provision: move the cluster apt created onto the volume. On a
@@ -776,6 +772,16 @@
         mode: "0755"
         owner: root
         group: root
+
+    # The backup script just re-rendered above already reads secrets_file
+    # (the volume path); the one installed on the server before this run
+    # still read the legacy path. Only now is it safe to remove the legacy
+    # file — deleting it any earlier would break nightly backups if the run
+    # failed somewhere in between.
+    - name: Remove the legacy secrets file from the root disk
+      ansible.builtin.file:
+        path: "{{ legacy_secrets_file }}"
+        state: absent
 
     - name: Schedule nightly backup
       ansible.builtin.cron:
