@@ -224,6 +224,10 @@ the copied certificates are the ones in use.
    Check first that Hetzner Console → the server → **Rescale** lists the
    target type in `hel1`. Hetzner can't rescale to a type with a smaller disk
    than the current one.
+
+   **(on your own machine)** Record the certificate serials with the serial
+   check from [step 1 of the migration](#1-record-the-current-state), so the
+   verification below (step 5) has a baseline to compare against.
 2. Plan (apply off). Expect `hcloud_server.main` **updated in place**, with
    `server_type` changing, and the guard step passing. **Stop** if the server
    would be replaced.
@@ -292,18 +296,25 @@ Reindex any database whose two versions differ, then record the new version:
    ```
 
    If `umount` fails, `fuser -vm /mnt/pgdata` shows what still holds the
-   volume. If the apply in the next step fails before the server is replaced,
-   recover with:
+   volume. If the old server is running but unreachable over SSH, shut it
+   down instead from the Hetzner Console (Servers → wallandshadow → Power →
+   Shut down) before step 4 (the apply); if it's already dead there is
+   nothing to stop. If the apply in the next step fails before the server is
+   replaced, recover with:
 
    ```bash
    mount /mnt/pgdata && systemctl start postgresql caddy wallandshadow-test wallandshadow-prod
    ```
 
-4. Run it again with **replace_server** and **apply** on. OpenTofu destroys the
-   old server and creates a new one with the same addresses and the volume
-   attached. Ansible then mounts the volume, reuses the secrets on it, points
-   PostgreSQL at the real data (checked before any database change) and gives
-   Caddy its stored certificates.
+   If the apply had already detached the volume before it failed, `mount`
+   fails harmlessly (and PostgreSQL stays stopped); in that case re-run the
+   apply (replace_server and apply on) rather than starting services.
+
+4. Run the workflow again with **replace_server** and **apply** on. OpenTofu
+   destroys the old server and creates a new one with the same addresses and
+   the volume attached. Ansible then mounts the volume, reuses the secrets on
+   it, points PostgreSQL at the real data (checked before any database
+   change) and gives Caddy its stored certificates.
 
    If the Ansible job fails (for example on an apt lock while the new server
    is still finishing its first boot), re-run with **apply** on and
@@ -397,7 +408,7 @@ sudo -u postgres dropdb wallandshadow_restore_check
 ```
 
 Expect the restore to finish without an error and the two counts to match
-(the restored one can be lower if anyone has signed up since the dump).
+(they can differ if accounts were created or deleted since the dump).
 
 **Production restore** (replaces the live production database; downtime for
 production until the last command):

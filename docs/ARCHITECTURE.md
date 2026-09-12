@@ -211,7 +211,7 @@ Everything that must survive a server rebuild lives on a Hetzner volume mounted 
 `/mnt/pgdata`: PostgreSQL's data directory, the generated secrets (database password,
 JWT secret) and Caddy's certificates. Both IP addresses are reserved Primary IPs. The
 root disk holds only what Ansible re-renders, so the server can be rescaled or rebuilt
-freely — see @docs/SERVER_OPERATIONS.md.
+without losing data — see @docs/SERVER_OPERATIONS.md.
 
 ### CI Pipeline
 
