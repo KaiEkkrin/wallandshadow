@@ -17,6 +17,11 @@ resource "hcloud_server" "main" {
 
   firewall_ids = [hcloud_firewall.main.id]
 
+  # Rescale in place without growing the root disk, so the server can always
+  # be rescaled back down. The root disk only holds the OS and Docker images;
+  # everything that must persist lives on the volume (docs/SERVER_OPERATIONS.md).
+  keep_disk = true
+
   public_net {
     ipv4_enabled = true
     ipv4         = hcloud_primary_ip.main.id
@@ -26,9 +31,13 @@ resource "hcloud_server" "main" {
     project = "wallandshadow"
   }
 
-  # Ignore image changes — OS upgrades happen via apt, not server rebuild
   lifecycle {
-    ignore_changes = [image]
+    # image: OS upgrades happen via apt, or by a deliberate rebuild after
+    # changing server_image (docs/SERVER_OPERATIONS.md).
+    # ssh_keys: Hetzner only sets SSH keys when it creates a server, so any
+    # change here would destroy and recreate it. Rotating the deploy key is a
+    # manual procedure instead (docs/SERVER_OPERATIONS.md).
+    ignore_changes = [image, ssh_keys]
   }
 }
 
