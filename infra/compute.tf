@@ -39,7 +39,12 @@ resource "hcloud_server" "main" {
     # ssh_keys: Hetzner only sets SSH keys when it creates a server, so any
     # change here would destroy and recreate it. Rotating the deploy key is a
     # manual procedure instead (docs/SERVER_OPERATIONS.md).
-    ignore_changes = [image, ssh_keys]
+    # public_net: the provider never reads it back, and an in-place change
+    # powers the server off and re-assigns its addresses — deleting the one
+    # it holds when the old state didn't name it (as for the adopted IPv6).
+    # It only has to be right when the server is created, which
+    # ignore_changes doesn't affect.
+    ignore_changes = [image, ssh_keys, public_net]
   }
 }
 

@@ -2,12 +2,18 @@
 # Network — firewall + static IPv4 and IPv6 addresses
 # =============================================================================
 
+# delete_protection on both addresses below: Hetzner requires
+# auto_delete = false for it, which both already have. An apply that would
+# otherwise delete a reserved address (for example the public_net bug this
+# guards against — see hcloud_server.main's lifecycle block) fails instead of
+# losing it.
 resource "hcloud_primary_ip" "main" {
-  name          = "wallandshadow-ip"
-  type          = "ipv4"
-  location      = var.location
-  assignee_type = "server"
-  auto_delete   = false
+  name              = "wallandshadow-ip"
+  type              = "ipv4"
+  location          = var.location
+  assignee_type     = "server"
+  auto_delete       = false
+  delete_protection = true
   labels = {
     project = "wallandshadow"
   }
@@ -18,11 +24,12 @@ resource "hcloud_primary_ip" "main" {
 # server (with auto_delete on); the import block below adopted it instead of
 # allocating a new one.
 resource "hcloud_primary_ip" "ipv6" {
-  name          = "wallandshadow-ipv6"
-  type          = "ipv6"
-  location      = var.location
-  assignee_type = "server"
-  auto_delete   = false
+  name              = "wallandshadow-ipv6"
+  type              = "ipv6"
+  location          = var.location
+  assignee_type     = "server"
+  auto_delete       = false
+  delete_protection = true
   labels = {
     project = "wallandshadow"
   }

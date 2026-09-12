@@ -116,17 +116,21 @@ expect exactly:
 
 - `hcloud_primary_ip.ipv6` **will be imported**, then updated in place: name
   changes from `primary_ip-126546323` to `wallandshadow-ipv6`, `auto_delete` →
-  `false`, labels. Seeing this confirms the import adopted the right address —
-  a wrong ID would fail the plan with "not found", or plan a replacement that
-  the guard refuses.
+  `false`, `delete_protection` → `true`, labels; plus the harmless
+  `assignee_id = <server id> -> (known after apply)` and
+  `+ datacenter = (known after apply)` lines. Seeing this confirms the import
+  adopted the right address — a wrong ID fails the plan with "Cannot import
+  non-existent remote object", and an ID of the wrong type or location plans
+  a replacement that the guard refuses.
+- `hcloud_primary_ip.main` updated in place for `delete_protection` only.
 - `hcloud_server.main` updated in place for `keep_disk` only.
 - The **Refuse plans that delete or replace resources** step passes.
 
-If `hcloud_server.main` also shows a `public_net` change, the provider will
-hard power-off the server to assign the address. In that case stop PostgreSQL
-and the applications before step 5, exactly as in step 3 of
-[Rescaling](#rescaling), and apply at a quiet time. **Stop** if anything else
-appears, or if the guard step fails.
+**Stop** if `hcloud_server.main` shows any change other than `keep_disk` — in
+particular, a `public_net` change must not appear: `ignore_changes` on
+`hcloud_server.main` means the plan should never propose one, and if it does
+appear anyway an apply would power the server off and could reassign or
+delete one of the reserved addresses. Also **stop** if the guard step fails.
 
 ### 5. Apply
 
@@ -225,9 +229,12 @@ the copied certificates are the ones in use.
    target type in `hel1`. Hetzner can't rescale to a type with a smaller disk
    than the current one.
 
+   **(on the server)** Note the user count
+   (`sudo -u postgres psql -d wallandshadow -Atc 'SELECT count(*) FROM users'`).
+
    **(on your own machine)** Record the certificate serials with the serial
    check from [step 1 of the migration](#1-record-the-current-state), so the
-   verification below (step 5) has a baseline to compare against.
+   verification below (step 5) has both baselines to compare against.
 2. Plan (apply off). Expect `hcloud_server.main` **updated in place**, with
    `server_type` changing, and the guard step passing. **Stop** if the server
    would be replaced.
