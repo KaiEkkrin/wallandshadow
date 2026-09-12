@@ -114,8 +114,11 @@ workflow watches `ansible/` or `infra/`.
 Run the provision workflow with all inputs off. In the plan (run summary),
 expect exactly:
 
-- `hcloud_primary_ip.ipv6` **will be imported**, then updated in place: name →
-  `wallandshadow-ipv6`, `auto_delete` → `false`, labels.
+- `hcloud_primary_ip.ipv6` **will be imported**, then updated in place: name
+  changes from `primary_ip-126546323` to `wallandshadow-ipv6`, `auto_delete` →
+  `false`, labels. Seeing this confirms the import adopted the right address —
+  a wrong ID would fail the plan with "not found", or plan a replacement that
+  the guard refuses.
 - `hcloud_server.main` updated in place for `keep_disk` only.
 - The **Refuse plans that delete or replace resources** step passes.
 

@@ -25,6 +25,8 @@ resource "hcloud_server" "main" {
   public_net {
     ipv4_enabled = true
     ipv4         = hcloud_primary_ip.main.id
+    ipv6_enabled = true
+    ipv6         = hcloud_primary_ip.ipv6.id
   }
 
   labels = {
