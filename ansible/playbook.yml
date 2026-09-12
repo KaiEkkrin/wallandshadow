@@ -340,27 +340,43 @@
       notify: Reload systemd
 
     # ── Secret generation ───────────────────────────────────────────────────
-    # Idempotent across provision runs: the VPS's existing secrets file is the
-    # source of truth. We slurp it, parse out POSTGRES_PASSWORD and JWT_SECRET,
-    # and reuse those values. Only on a true first provision (file absent) do
-    # we generate new ones via the local password lookup.
+    # Idempotent across provision runs and server rebuilds: the secrets file
+    # on the volume is the source of truth. We slurp it, parse out
+    # POSTGRES_PASSWORD and JWT_SECRET, and reuse those values. Only on a true
+    # first provision (no file anywhere) do we generate new ones via the local
+    # password lookup.
     #
     # Why this matters: rotating JWT_SECRET invalidates every existing session
     # token (forced re-login); rotating pg_password leaves the currently-
     # running container with a stale DATABASE_URL until the next deploy
-    # refreshes its env-file. The local `secrets/` cache used to provide
-    # idempotency, but on ephemeral CI runners it's cold every run.
+    # refreshes its env-file.
+    #
+    # The file used to live at legacy_secrets_file, on the root disk, where a
+    # rebuild lost it. If only that copy exists it is read here, then deleted
+    # once the volume copy has been written below.
 
-    - name: Check whether secrets file already exists on VPS
+    - name: Check for the secrets file on the volume
       ansible.builtin.stat:
         path: "{{ secrets_file }}"
-      register: existing_secrets_stat
+      register: secrets_on_volume
+
+    - name: Check for a secrets file at the legacy root-disk location
+      ansible.builtin.stat:
+        path: "{{ legacy_secrets_file }}"
+      register: legacy_secrets
+
+    - name: Choose which existing secrets file to read
+      ansible.builtin.set_fact:
+        existing_secrets_path: >-
+          {{ secrets_file if secrets_on_volume.stat.exists
+             else legacy_secrets_file if legacy_secrets.stat.exists
+             else '' }}
 
     - name: Read existing secrets file from VPS
       ansible.builtin.slurp:
-        src: "{{ secrets_file }}"
+        src: "{{ existing_secrets_path }}"
       register: existing_secrets_slurp
-      when: existing_secrets_stat.stat.exists
+      when: existing_secrets_path | length > 0
 
     - name: Parse existing POSTGRES_PASSWORD / JWT_SECRET
       ansible.builtin.set_fact:
@@ -377,7 +393,7 @@
               | regex_findall('^JWT_SECRET=(.+)$', multiline=True)
               + [''])
              | first }}
-      when: existing_secrets_stat.stat.exists
+      when: existing_secrets_path | length > 0
 
     - name: Choose PostgreSQL password (reuse if present, else generate)
       ansible.builtin.set_fact:
@@ -412,6 +428,11 @@
         mode: "0600"
         owner: root
         group: root
+
+    - name: Remove the legacy secrets file from the root disk
+      ansible.builtin.file:
+        path: "{{ legacy_secrets_file }}"
+        state: absent
 
     # ── PostgreSQL data directory on volume ─────────────────────────────────
     # First provision: move the cluster apt created onto the volume. On a
@@ -791,9 +812,9 @@
           ║  Provisioning complete                                          ║
           ╚══════════════════════════════════════════════════════════════════╝
 
-          Secrets file: {{ secrets_file }}
-          Deploy workflows fetch DATABASE_URL, JWT_SECRET, and S3 creds
-          from the VPS via SSH — no manual secret copying needed.
+          Secrets file: {{ secrets_file }} (on the persistent volume)
+          The application env-files in {{ secrets_dir }} are rendered from
+          it; deploy workflows only flip the image tag.
 
   # ── Handlers ──────────────────────────────────────────────────────────────
 
