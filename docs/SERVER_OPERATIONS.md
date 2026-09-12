@@ -130,6 +130,7 @@ the Ansible log, expect `changed` for:
 - the volume root ownership and the new directories;
 - the systemd drop-ins;
 - `Write secrets file` and `Remove the legacy secrets file…`;
+- `Deploy backup script` (it now reads the secrets file on the volume);
 - `Copy Caddy's certificates and ACME account onto the volume`;
 - `Deploy Caddyfile`.
 
