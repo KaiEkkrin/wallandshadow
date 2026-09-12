@@ -298,6 +298,22 @@ jobs:
         working-directory: ansible
         run: ansible-lint
 
+      # A Caddyfile mistake otherwise only shows up when Caddy reloads on the
+      # VPS. Render the template with placeholder secrets and let Caddy parse
+      # it. /var/log/caddy must exist because validating opens the access log.
+      - name: Validate the rendered Caddyfile
+        working-directory: ansible
+        run: |
+          stats_hash=$(docker run --rm caddy:2 caddy hash-password --plaintext ci-only)
+          ansible localhost -c local -m ansible.builtin.template \
+            -a "src=templates/Caddyfile.j2 dest=$RUNNER_TEMP/Caddyfile" \
+            -e @vars/main.yml \
+            -e oidc_issuer=https://issuer.example.com \
+            -e stats_basic_auth_user=ci \
+            -e "stats_basic_auth_hash=$stats_hash"
+          docker run --rm -v "$RUNNER_TEMP/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 \
+            sh -c 'mkdir -p /var/log/caddy && caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile'
+
       - name: ShellCheck ansible scripts
         run: shellcheck ansible/*.sh
 

@@ -601,6 +601,46 @@
 
     # ── Caddy configuration ─────────────────────────────────────────────────
 
+    # Caddy keeps its certificates and ACME account on the volume (the
+    # Caddyfile's `storage` option), so a rebuilt server reuses them rather
+    # than requesting new ones. They used to live in Caddy's default data
+    # directory on the root disk; the first run after that change copies them
+    # across. locks/ only holds in-flight issuance locks, so it stays behind.
+    - name: Create Caddy's storage directory on the volume
+      ansible.builtin.file:
+        path: "{{ caddy_storage_dir }}"
+        state: directory
+        owner: caddy
+        group: caddy
+        mode: "0700"
+
+    - name: Check for certificates in Caddy's storage on the volume
+      ansible.builtin.stat:
+        path: "{{ caddy_storage_dir }}/certificates"
+      register: caddy_storage_certificates
+
+    - name: Check for certificates in Caddy's old data directory
+      ansible.builtin.stat:
+        path: "{{ caddy_legacy_data_dir }}/certificates"
+      register: caddy_legacy_certificates
+
+    - name: Copy Caddy's certificates and ACME account onto the volume
+      ansible.builtin.command:
+        cmd: "rsync -a --exclude=locks/ {{ caddy_legacy_data_dir }}/ {{ caddy_storage_dir }}/"
+      # Gated on the volume copy being absent, so this only runs once, and
+      # every run copies, hence always changed.
+      changed_when: true
+      when:
+        - not caddy_storage_certificates.stat.exists
+        - caddy_legacy_certificates.stat.exists
+
+    - name: Set Caddy storage ownership
+      ansible.builtin.file:
+        path: "{{ caddy_storage_dir }}"
+        owner: caddy
+        group: caddy
+        recurse: true
+
     - name: Deploy Caddyfile
       ansible.builtin.template:
         src: templates/Caddyfile.j2
