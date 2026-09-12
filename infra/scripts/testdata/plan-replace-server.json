@@ -1,0 +1,7 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {"address": "hcloud_server.main", "type": "hcloud_server", "name": "main", "action_reason": "replace_because_cannot_update", "change": {"actions": ["delete", "create"]}},
+    {"address": "hcloud_volume_attachment.pgdata", "type": "hcloud_volume_attachment", "name": "pgdata", "change": {"actions": ["delete", "create"]}}
+  ]
+}
