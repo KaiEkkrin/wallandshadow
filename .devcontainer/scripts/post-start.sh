@@ -69,12 +69,22 @@ else
     fi
 fi
 
-# Ensure the dev and test buckets exist. S3 CreateBucket is idempotent for the
-# bucket's owner, so this is safe on every start. curl signs the request itself.
+# Ensure the dev and test buckets exist, with the same CORS rules production
+# applies to its buckets (ansible/templates/bucket_cors.json.j2) but allowing the
+# Vite dev origin. The client loads images with crossOrigin="anonymous", so
+# without this every image fails to load. Both calls are idempotent, so this is
+# safe on every start. curl signs the requests itself.
+CORS_XML='<CORSConfiguration><CORSRule><AllowedOrigin>http://localhost:5000</AllowedOrigin><AllowedMethod>GET</AllowedMethod><AllowedMethod>HEAD</AllowedMethod><AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><ExposeHeader>Content-Length</ExposeHeader><ExposeHeader>Content-Type</ExposeHeader><MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule></CORSConfiguration>'
+CORS_MD5=$(printf '%s' "$CORS_XML" | openssl dgst -md5 -binary | base64)
+s3_put() {
+    curl -fsS -o /dev/null --aws-sigv4 "aws:amz:us-east-1:s3" --user wasdev:wasdevpass -X PUT "$@"
+}
 for bucket in wallandshadow wallandshadow-test; do
-    if ! curl -fsS -o /dev/null --aws-sigv4 "aws:amz:us-east-1:s3" --user wasdev:wasdevpass \
-        -X PUT "http://localhost:9000/$bucket"; then
+    if ! s3_put "http://localhost:9000/$bucket"; then
         echo "   ⚠️  Could not create bucket '$bucket' — see $RUSTFS_LOG"
+    elif ! s3_put -H "Content-MD5: $CORS_MD5" -H "Content-Type: application/xml" \
+        --data-binary "$CORS_XML" "http://localhost:9000/$bucket?cors"; then
+        echo "   ⚠️  Could not set CORS on bucket '$bucket' — see $RUSTFS_LOG"
     fi
 done
 
