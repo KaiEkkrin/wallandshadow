@@ -175,7 +175,7 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 | Priority | Package | Target | Timeline |
 |----------|---------|--------|----------|
 | 1 | React Compiler lint rules | 4 rules re-enabled | ⬜ 33 violations across 24 files — see the ESLint section |
-| 2 | license-checker-rseidelsohn | 5.x | ⛔ Blocked — requires Node >= 24; see below |
+| 2 | license-checker-rseidelsohn | 5.x | ⛔ Blocked — requires Node >= 24; no longer security-driven, see below |
 | 3 | Three.js | Latest | ✅ Done to 0.183 (2026-03-01); check again in ~3 months |
 | 4 | TypeScript | 6.x | Wait for stable release (beta as of 2026-03-01) |
 | 5 | drizzle-kit + drizzle-orm | 1.0.0 stable | ⛔ Blocked — see security note below |
@@ -190,11 +190,12 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 **Target:** ^5.0.1
 **Timeline:** Blocked on a Node 22 → 24 upgrade
 
-This is the last outstanding `yarn audit` finding: 4.x reaches
-`brace-expansion` 2.1.2 through `read-installed-packages > read-package-json > glob >
-minimatch`, and only brace-expansion >= 5.0.8 is considered patched for CVE-2026-14257
-(unbounded expansion → OOM). 5.0.1 drops that whole chain in favour of
-`@npmcli/arborist`, which would clear the advisory.
+**No longer a security item (2026-09-12).** 4.x reaches `brace-expansion` through
+`read-installed-packages > read-package-json > glob > minimatch`, which was the last
+`yarn audit` finding while only brace-expansion 5.x was patched for CVE-2026-14257
+(unbounded expansion → OOM). brace-expansion 2.1.4 (2026-07-30) backports the fix to
+the 2.x line, and the lockfile now resolves it, so `yarn audit` is clean. 5.0.1 still
+drops that whole chain in favour of `@npmcli/arborist`; take it as ordinary upkeep.
 
 **⛔ Blocker:** `license-checker-rseidelsohn@5` declares `engines: { node: ">=24", npm:
 ">=11" }`. This project is on Node 22 everywhere — the devcontainer, `node-version: 22`
