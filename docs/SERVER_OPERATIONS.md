@@ -111,18 +111,27 @@ workflow watches `ansible/` or `infra/`.
 
 ### 4. Plan
 
+**(Hetzner Console)** Primary IPs → `primary_ip-126546323` → switch **Auto
+delete** off. Delete protection can only be switched on once auto-delete is
+off, and the provider does the two in the wrong order for that to happen as
+part of the apply.
+
 Run the provision workflow with all inputs off. In the plan (run summary),
 expect exactly:
 
 - `hcloud_primary_ip.ipv6` **will be imported**, then updated in place: name
-  changes from `primary_ip-126546323` to `wallandshadow-ipv6`, `auto_delete` →
-  `false`, `delete_protection` → `true`, labels; plus the harmless
+  changes from `primary_ip-126546323` to `wallandshadow-ipv6`,
+  `delete_protection` → `true`, labels; plus the harmless
   `assignee_id = <server id> -> (known after apply)` and
-  `+ datacenter = (known after apply)` lines. Seeing this confirms the import
+  `datacenter` → `(known after apply)` lines. Seeing this confirms the import
   adopted the right address — a wrong ID fails the plan with "Cannot import
   non-existent remote object", and an ID of the wrong type or location plans
-  a replacement that the guard refuses.
-- `hcloud_primary_ip.main` updated in place for `delete_protection` only.
+  a replacement that the guard refuses. If the plan still shows `auto_delete`
+  changing to `false`, the Console switch didn't take effect — **stop** and
+  switch it off there (applying anyway would fail harmlessly on delete
+  protection).
+- `hcloud_primary_ip.main` updated in place for `delete_protection` → `true`,
+  plus the same harmless `assignee_id` and `datacenter` lines.
 - `hcloud_server.main` updated in place for `keep_disk` only.
 - The **Refuse plans that delete or replace resources** step passes.
 
@@ -229,19 +238,20 @@ the copied certificates are the ones in use.
    target type in `hel1`. Hetzner can't rescale to a type with a smaller disk
    than the current one.
 
-   **(on the server)** Note the user count
-   (`sudo -u postgres psql -d wallandshadow -Atc 'SELECT count(*) FROM users'`).
-
    **(on your own machine)** Record the certificate serials with the serial
    check from [step 1 of the migration](#1-record-the-current-state), so the
-   verification below (step 5) has both baselines to compare against.
+   verification below (step 5) has a baseline to compare against.
 2. Plan (apply off). Expect `hcloud_server.main` **updated in place**, with
    `server_type` changing, and the guard step passing. **Stop** if the server
    would be replaced.
-3. **(on the server)** Stop the applications and PostgreSQL. The provider
-   changes the type with Hetzner's hard `poweroff`, not a graceful shutdown:
-   a power cut, so PostgreSQL must shut down cleanly first. Downtime for both
-   environments starts here.
+3. **(on the server)** Note the user count
+   (`sudo -u postgres psql -d wallandshadow -Atc 'SELECT count(*) FROM users'`),
+   then stop the applications and PostgreSQL. Recording it right before the
+   stop, rather than back in step 1, keeps sign-ups between the two from
+   throwing off the comparison in step 5. The provider changes the type with
+   Hetzner's hard `poweroff`, not a graceful shutdown: a power cut, so
+   PostgreSQL must shut down cleanly first. Downtime for both environments
+   starts here.
 
    ```bash
    systemctl stop wallandshadow-test wallandshadow-prod postgresql

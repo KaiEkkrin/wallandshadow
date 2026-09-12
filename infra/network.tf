@@ -2,11 +2,11 @@
 # Network — firewall + static IPv4 and IPv6 addresses
 # =============================================================================
 
-# delete_protection on both addresses below: Hetzner requires
-# auto_delete = false for it, which both already have. An apply that would
-# otherwise delete a reserved address (for example the public_net bug this
-# guards against — see hcloud_server.main's lifecycle block) fails instead of
-# losing it.
+# delete_protection on both addresses below: Hetzner only allows it while
+# auto_delete is false, and the provider enables protection before it
+# updates auto_delete — so for the adopted IPv6 address, auto-delete must be
+# switched off by hand before the first apply (docs/SERVER_OPERATIONS.md,
+# migration step 4).
 resource "hcloud_primary_ip" "main" {
   name              = "wallandshadow-ip"
   type              = "ipv4"
