@@ -245,5 +245,6 @@ Ban is permanent and irreversible from the UI: it soft-deletes the target's adve
 - @docs/EPHEMERAL_WS.md — unimplemented ephemeral WebSocket message design
 - @docs/ANALYTICS.md — future analytics options (Plausible / Umami / GoAccess)
 - @docs/INFRASTRUCTURE_BOOTSTRAP.md — first-time Hetzner VPS provisioning
+- @docs/SERVER_OPERATIONS.md — what persists on the VPS; rescaling, rebuilding, key rotation, restores
 - @docs/Medium_Term_Updates.md — pending dependency updates
 - @.devcontainer/README.md — dev container setup

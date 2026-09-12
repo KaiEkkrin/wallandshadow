@@ -48,6 +48,7 @@ Full setup and the day-to-day workflow — database schema, auth modes, tests, a
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Current architecture and deployment |
 | [docs/architecture/](docs/architecture/README.md) | System-level subsystem overviews (e.g. ephemeral state & live overlays) |
 | [docs/INFRASTRUCTURE_BOOTSTRAP.md](docs/INFRASTRUCTURE_BOOTSTRAP.md) | First-time Hetzner VPS provisioning |
+| [docs/SERVER_OPERATIONS.md](docs/SERVER_OPERATIONS.md) | Rescaling, rebuilding, key rotation and restores for the VPS |
 | [docs/ANALYTICS.md](docs/ANALYTICS.md) | Analytics approach for the self-hosted stack |
 | [docs/EPHEMERAL_WS.md](docs/EPHEMERAL_WS.md) | Design notes for the unimplemented ephemeral WebSocket messages |
 | [.devcontainer/README.md](.devcontainer/README.md) | Dev container internals, GPU configuration, troubleshooting |
