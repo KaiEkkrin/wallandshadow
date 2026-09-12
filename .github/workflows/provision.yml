@@ -4,8 +4,16 @@
 # Manual trigger only — infrastructure changes are intentional.
 #
 # Two-stage pipeline:
-#   1. OpenTofu: provisions Hetzner Cloud resources (VPS, volume, static IP, firewall)
+#   1. OpenTofu: provisions Hetzner Cloud resources (VPS, volume, static IPs, firewall)
 #   2. Ansible:  configures VPS contents (PostgreSQL, Caddy, Docker, backups, secrets)
+#
+# Inputs:
+#   apply          — off (the default): show the OpenTofu plan in the run
+#                    summary and change nothing. On: apply it, then run Ansible.
+#   allow_replace  — the run fails if the plan deletes or replaces any
+#                    resource, unless this is ticked.
+#   replace_server — plan a rebuild of the server from scratch (implies
+#                    allow_replace). Read docs/SERVER_OPERATIONS.md first.
 #
 # OpenTofu outputs (VPS IP, volume ID) feed directly into Ansible — no manual
 # copy-paste of generated values.
@@ -30,6 +38,19 @@ name: Provision Infrastructure
 
 on:
   workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply the plan and run Ansible (unticked shows the plan only)
+        type: boolean
+        default: false
+      allow_replace:
+        description: Allow a plan that deletes or replaces resources
+        type: boolean
+        default: false
+      replace_server:
+        description: Rebuild the server from scratch (see docs/SERVER_OPERATIONS.md)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -51,6 +72,9 @@ jobs:
         uses: opentofu/setup-opentofu@v1
         with:
           tofu_version: "1.9"
+          # The wrapper echoes each command into stdout, which would corrupt
+          # the plan JSON written by `tofu show -json` below.
+          tofu_wrapper: false
 
       - name: Derive SSH public key
         id: ssh_pubkey
@@ -74,9 +98,32 @@ jobs:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.HCLOUD_S3_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HCLOUD_S3_SECRET_KEY }}
-        run: tofu plan -var="ssh_public_key=${{ steps.ssh_pubkey.outputs.value }}" -out=tfplan
+        run: |
+          tofu plan -var="ssh_public_key=${{ steps.ssh_pubkey.outputs.value }}" \
+            ${{ inputs.replace_server && '-replace=hcloud_server.main' || '' }} \
+            -out=tfplan
+
+      - name: Show the plan
+        working-directory: infra
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.HCLOUD_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.HCLOUD_S3_SECRET_KEY }}
+        run: |
+          tofu show -json tfplan > "$RUNNER_TEMP/plan.json"
+          {
+            echo '### OpenTofu plan'
+            echo
+            echo '```'
+            tofu show -no-color tfplan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Refuse plans that delete or replace resources
+        if: ${{ !inputs.allow_replace && !inputs.replace_server }}
+        run: infra/scripts/plan-guard.sh "$RUNNER_TEMP/plan.json"
 
       - name: OpenTofu apply
+        if: ${{ inputs.apply }}
         working-directory: infra
         env:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
@@ -112,6 +159,7 @@ jobs:
   # ── Stage 2: Configure VPS contents ───────────────────────────────────────
   ansible:
     needs: opentofu
+    if: ${{ inputs.apply }}
     runs-on: ubuntu-latest
     environment: hetzner
 
@@ -130,9 +178,16 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          KNOWN_HOST=$(ssh-keyscan -t rsa,ecdsa,ed25519 "$VPS_IP" 2>/dev/null)
+          # A freshly created or rebuilt server takes a minute or two to start
+          # sshd, so wait for it rather than failing the run.
+          KNOWN_HOST=""
+          for _ in $(seq 1 36); do
+            KNOWN_HOST=$(ssh-keyscan -t rsa,ecdsa,ed25519 "$VPS_IP" 2>/dev/null || true)
+            [ -n "$KNOWN_HOST" ] && break
+            sleep 5
+          done
           if [ -z "$KNOWN_HOST" ]; then
-            echo "::error::ssh-keyscan returned no host keys for $VPS_IP"
+            echo "::error::ssh-keyscan returned no host keys for $VPS_IP after 3 minutes"
             exit 1
           fi
           printf '%s\n' "$KNOWN_HOST" > ~/.ssh/known_hosts
