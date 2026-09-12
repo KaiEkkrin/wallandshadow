@@ -414,22 +414,20 @@
         group: root
 
     # ── PostgreSQL data directory on volume ─────────────────────────────────
-    # If a volume is attached, move the PostgreSQL data directory to it.
-    # Idempotent: skips if data already exists on the volume.
+    # First provision: move the cluster apt created onto the volume. On a
+    # rebuilt server the volume already holds the real data, and the cluster
+    # apt has just created on the root disk is empty and must not be used.
 
     - name: Check if PostgreSQL data exists on volume
       ansible.builtin.stat:
         path: "{{ pgdata_mount }}/main/PG_VERSION"
       register: pgdata_on_volume
-      when: volume_id is defined and volume_id != ''
 
     - name: Stop PostgreSQL for data migration to volume
       ansible.builtin.systemd:
         name: postgresql
         state: stopped
-      when:
-        - volume_id is defined and volume_id != ''
-        - not (pgdata_on_volume.stat.exists | default(false))
+      when: not pgdata_on_volume.stat.exists
 
     - name: Copy PostgreSQL data to volume
       ansible.builtin.command:
@@ -438,9 +436,7 @@
       # on the one-shot migration to a fresh volume — every execution copies
       # data, hence always changed.
       changed_when: true
-      when:
-        - volume_id is defined and volume_id != ''
-        - not (pgdata_on_volume.stat.exists | default(false))
+      when: not pgdata_on_volume.stat.exists
 
     - name: Set volume data directory ownership
       ansible.builtin.file:
@@ -448,23 +444,52 @@
         owner: postgres
         group: postgres
         recurse: true
-      when: volume_id is defined and volume_id != ''
 
     - name: Point PostgreSQL data_directory to volume
       ansible.builtin.lineinfile:
         path: "/etc/postgresql/{{ pg_version }}/main/postgresql.conf"
         regexp: "^data_directory"
         line: "data_directory = '{{ pgdata_mount }}/main'"
-      notify: Restart PostgreSQL
-      when: volume_id is defined and volume_id != ''
+      register: pg_data_directory
 
-    - name: Start PostgreSQL after data migration
+    # Restart here rather than from a handler. Handlers run at the end of the
+    # play, so on a rebuilt server the role and database tasks below would
+    # configure the empty cluster on the root disk; PostgreSQL would only move
+    # onto the real data afterwards, where the role still has its old password.
+    - name: Restart PostgreSQL onto the volume  # noqa: no-handler
+      ansible.builtin.systemd:
+        name: postgresql
+        state: restarted
+        daemon_reload: true
+      when: pg_data_directory is changed
+
+    - name: Ensure PostgreSQL is running
       ansible.builtin.systemd:
         name: postgresql
         state: started
-      when:
-        - volume_id is defined and volume_id != ''
-        - not (pgdata_on_volume.stat.exists | default(false))
+        daemon_reload: true
+
+    - name: Wait for PostgreSQL to accept connections
+      ansible.builtin.wait_for:
+        path: /var/run/postgresql/.s.PGSQL.5432
+        timeout: 60
+
+    - name: Read the running cluster's data directory
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_query:
+        query: SHOW data_directory
+      register: pg_running_data_directory
+
+    - name: Refuse to touch roles or databases unless PostgreSQL is serving the volume
+      ansible.builtin.assert:
+        that:
+          - pg_running_data_directory.query_result[0].data_directory == pgdata_mount ~ '/main'
+        fail_msg: >-
+          PostgreSQL is serving
+          {{ pg_running_data_directory.query_result[0].data_directory }}, not
+          {{ pgdata_mount }}/main. Stopping before any role or database changes.
+        quiet: true
 
     # ── PostgreSQL configuration ────────────────────────────────────────────
 
