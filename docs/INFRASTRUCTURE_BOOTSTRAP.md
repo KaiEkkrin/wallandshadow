@@ -1,6 +1,6 @@
 # Infrastructure Bootstrap
 
-The self-hosted stack runs on Hetzner Cloud. Infrastructure is provisioned with OpenTofu (VPS, volume, static IP, firewall) and configured with Ansible (PostgreSQL, Caddy, Docker, backups). Both run from a single GitHub Actions workflow.
+The self-hosted stack runs on Hetzner Cloud. Infrastructure is provisioned with OpenTofu (VPS, volume, static IPv4 and IPv6 addresses, firewall) and configured with Ansible (PostgreSQL, Caddy, Docker, backups). Both run from a single GitHub Actions workflow.
 
 ## One-time setup (the only ClickOps)
 
@@ -99,7 +99,7 @@ Every run is safe to repeat. OpenTofu and Ansible are idempotent, and the workfl
 
 ## DNS records
 
-The VPS has a static IPv4 (and, if enabled, IPv6) from Hetzner. Configure these records at your registrar / DNS host. Replace `<VPS_IPv4>` and `<VPS_IPv6>` with the values from the OpenTofu output.
+The VPS has static IPv4 and IPv6 addresses from Hetzner: both are reserved Primary IPs, so they survive a server rebuild and the `<VPS_IPv6>` record stays valid. Configure these records at your registrar / DNS host. Replace `<VPS_IPv4>` and `<VPS_IPv6>` with the values from the OpenTofu output.
 
 ### Required — apex and test
 

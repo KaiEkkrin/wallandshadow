@@ -41,7 +41,9 @@ unless the running cluster is serving `/mnt/pgdata/main`.
 - **replace_server** (default off). Plans a rebuild of the server from scratch
   (see [Rebuilding](#rebuilding)). Implies allow_replace.
 
-Always run with **apply** off first and read the plan.
+Always run with **apply** off first and read the plan. The apply run plans
+again from `main`, so check that nothing new has merged under `infra/` between
+the two runs.
 
 ## One-time migration of the current server
 
@@ -117,15 +119,16 @@ expect exactly:
 - `hcloud_server.main` updated in place for `keep_disk` only.
 - The **Refuse plans that delete or replace resources** step passes.
 
-If `hcloud_server.main` also shows a `public_net` change, the provider may
-power the server off briefly to assign the address. That's safe — everything
-starts again on boot — but it's downtime, so apply at a quiet time. **Stop**
-if anything else appears, or if the guard step fails.
+If `hcloud_server.main` also shows a `public_net` change, the provider will
+hard power-off the server to assign the address. In that case stop PostgreSQL
+and the applications before step 5, exactly as in step 3 of
+[Rescaling](#rescaling), and apply at a quiet time. **Stop** if anything else
+appears, or if the guard step fails.
 
 ### 5. Apply
 
 Run the workflow with **apply** on (allow_replace and replace_server off). In
-the Ansible log, expect `changed` for:
+the Ansible log, among others, expect `changed` for:
 
 - the volume root ownership and the new directories;
 - the systemd drop-ins;
@@ -134,6 +137,8 @@ the Ansible log, expect `changed` for:
 - `Copy Caddy's certificates and ACME account onto the volume`;
 - `Deploy Caddyfile`.
 
+Some tasks report `changed` on every run (for example `Apply CORS policy to
+each app bucket`); what matters is that nothing unexpected fails.
 `Restart PostgreSQL onto the volume` is **skipped**, because `data_directory`
 didn't change. `Refuse to touch roles or databases…` passes.
 
@@ -143,7 +148,7 @@ didn't change. `Refuse to touch roles or databases…` passes.
 
 ```bash
 ls -la /mnt/pgdata
-diff <(grep -E '^(POSTGRES_PASSWORD|JWT_SECRET|DATABASE_URL_)' /root/secrets.pre-volume) <(grep -E '^(POSTGRES_PASSWORD|JWT_SECRET|DATABASE_URL_)' /mnt/pgdata/wallandshadow/secrets) && echo "secrets unchanged"
+cmp -s <(grep -E '^(POSTGRES_PASSWORD|JWT_SECRET|DATABASE_URL_)' /root/secrets.pre-volume) <(grep -E '^(POSTGRES_PASSWORD|JWT_SECRET|DATABASE_URL_)' /mnt/pgdata/wallandshadow/secrets) && echo "secrets unchanged" || echo "SECRETS DIFFER — stop"
 test ! -e /etc/wallandshadow/secrets && echo "legacy secrets file removed"
 ls /mnt/pgdata/caddy/certificates/*/
 systemctl show -p RequiresMountsFor caddy.service postgresql@17-main.service
@@ -155,13 +160,19 @@ curl -fsS https://test.wallandshadow.com/api/health; echo
 Expect:
 
 - `/mnt/pgdata` holds `main` (postgres), `wallandshadow` (root, `drwx------`)
-  and `caddy` (caddy, `drwx------`).
+  and `caddy` (caddy, `drwx------`), alongside the filesystem's own
+  `lost+found`.
 - `secrets unchanged` (it compares the database password, JWT secret and
-  database URLs).
+  database URLs without printing them). **Stop** if it prints
+  `SECRETS DIFFER`.
 - `legacy secrets file removed`.
 - The same three certificate directories as step 1.
-- `RequiresMountsFor=/mnt/pgdata` twice.
-- `no certificate requests or errors`.
+- Two `RequiresMountsFor=` lines, each including `/mnt/pgdata` (the
+  PostgreSQL unit's line also lists its own config and data paths).
+- `no certificate requests or errors`. Unrelated error lines can match too
+  (for example reverse-proxy connection errors while an application
+  restarts); the serial check below is the authoritative proof that nothing
+  was re-issued.
 - `{"ok":true}` twice.
 
 **(on your own machine)** Re-run the serial check from step 1. The serials
@@ -213,11 +224,27 @@ the copied certificates are the ones in use.
 2. Plan (apply off). Expect `hcloud_server.main` **updated in place**, with
    `server_type` changing, and the guard step passing. **Stop** if the server
    would be replaced.
-3. Apply (apply on). The provider powers the server off, changes its type and
-   powers it on: a few minutes of downtime for both environments. With
-   `keep_disk = true` the root disk keeps its size, so you can always rescale
-   back down.
-4. Verify as in step 7 of the migration.
+3. **(on the server)** Stop the applications and PostgreSQL. The provider
+   changes the type with Hetzner's hard `poweroff`, not a graceful shutdown:
+   a power cut, so PostgreSQL must shut down cleanly first. Downtime for both
+   environments starts here.
+
+   ```bash
+   systemctl stop wallandshadow-test wallandshadow-prod postgresql
+   ```
+
+   Everything starts again on boot, because the units are enabled. If the
+   apply in the next step fails before the server powers off, start them
+   again yourself:
+
+   ```bash
+   systemctl start postgresql wallandshadow-test wallandshadow-prod
+   ```
+
+4. Apply (apply on). The provider powers the server off, changes its type and
+   powers it on: a few minutes of downtime. With `keep_disk = true` the root
+   disk keeps its size, so you can always rescale back down.
+5. Verify as in step 7 of the migration.
 
 ## Rebuilding
 
@@ -225,13 +252,51 @@ Rebuild when upgrading to a new Ubuntu LTS (change `server_image` in
 `infra/terraform.tfvars` first), when the root disk is broken, or to rehearse
 this procedure. Expect 10–15 minutes of downtime.
 
+The Ubuntu LTS upgrade is untested: this path has only been exercised on
+`ubuntu-24.04`. The old server is gone before Ansible has run on the new
+image, and known risks on a newer release include the playbook's `apt_key`
+tasks (newer apt drops `apt-key`), pgdg (the PostgreSQL apt repository)
+support for the new codename, and PostgreSQL collation-version changes.
+Rehearse on a throwaway server first. To roll back, revert `server_image` and
+rebuild again; the volume is untouched. After an LTS rebuild, check the
+collation versions **(on the server)**:
+
+```bash
+sudo -u postgres psql -Atc "SELECT datname, datcollversion, pg_database_collation_actual_version(oid) FROM pg_database WHERE datallowconn"
+```
+
+Reindex any database whose two versions differ, then record the new version:
+`sudo -u postgres reindexdb <db>` and
+`sudo -u postgres psql -c 'ALTER DATABASE <db> REFRESH COLLATION VERSION'`.
+
 1. **(on the server, if it's reachable)** Run `/usr/local/bin/pg_backup.sh`
    and check for `Backup complete: …`. Note the user count
    (`sudo -u postgres psql -d wallandshadow -Atc 'SELECT count(*) FROM users'`).
+
+   **(on your own machine)** Record the certificate serials with the serial
+   check from [step 1 of the migration](#1-record-the-current-state).
 2. Plan with **replace_server** on and apply off. Expect `hcloud_server.main`
    and `hcloud_volume_attachment.pgdata` to be replaced, and nothing else. In
    particular, the volume and both Primary IPs must be unchanged.
-3. Run it again with **replace_server** and **apply** on. OpenTofu destroys the
+3. **(on the server)** Stop everything that uses the volume, and unmount it.
+   The replacement destroys the volume attachment while the old server is
+   still running, then deletes the server without shutting it down, so
+   PostgreSQL and Caddy must have let go of the volume by then. Downtime
+   starts here.
+
+   ```bash
+   systemctl stop wallandshadow-test wallandshadow-prod caddy postgresql && umount /mnt/pgdata
+   ```
+
+   If `umount` fails, `fuser -vm /mnt/pgdata` shows what still holds the
+   volume. If the apply in the next step fails before the server is replaced,
+   recover with:
+
+   ```bash
+   mount /mnt/pgdata && systemctl start postgresql caddy wallandshadow-test wallandshadow-prod
+   ```
+
+4. Run it again with **replace_server** and **apply** on. OpenTofu destroys the
    old server and creates a new one with the same addresses and the volume
    attached. Ansible then mounts the volume, reuses the secrets on it, points
    PostgreSQL at the real data (checked before any database change) and gives
@@ -241,17 +306,41 @@ this procedure. Expect 10–15 minutes of downtime.
    is still finishing its first boot), re-run with **apply** on and
    **replace_server off**. Leaving replace_server on would rebuild the server
    again.
-4. Copy the `VPS_KNOWN_HOST` block printed at the end of the run into that
+5. Copy the `VPS_KNOWN_HOST` block printed at the end of the run into that
    secret in the `hetzner` environment. Deploys fail at SSH until you do.
-5. **(on the server)** Start the applications. They come up on the last
+6. **(on the server)** Start the applications. They come up on the last
    deployed images (`latest-test`, `latest-prod`):
 
    ```bash
    systemctl start wallandshadow-test wallandshadow-prod
    ```
 
-6. Verify with the step 6 and step 7 checks from the migration. The user count
-   must match step 1. Traffic stats and logs start again from empty.
+7. Verify. **(on the server)**
+
+   ```bash
+   findmnt /mnt/pgdata
+   systemctl is-active postgresql@17-main caddy wallandshadow-test wallandshadow-prod
+   sudo -u postgres psql -Atc 'SHOW data_directory'
+   sudo -u postgres psql -d wallandshadow -Atc 'SELECT count(*) FROM users'
+   systemctl show -p RequiresMountsFor caddy.service postgresql@17-main.service
+   curl -fsS https://wallandshadow.com/api/health; echo
+   curl -fsS https://test.wallandshadow.com/api/health; echo
+   ```
+
+   Expect:
+
+   - `findmnt` shows `/mnt/pgdata` on an ext4 device.
+   - Four `active` lines.
+   - `data_directory` is `/mnt/pgdata/main`.
+   - The user count from step 1.
+   - Two `RequiresMountsFor=` lines, each including `/mnt/pgdata`.
+   - `{"ok":true}` twice.
+
+   **(on your own machine)** Re-run the serial check. The serials must match
+   the ones you recorded in step 1.
+
+   After an Ubuntu LTS upgrade, also run the collation check above. Traffic
+   stats and logs start again from empty.
 
 ## Rotating the deploy SSH key
 
@@ -275,8 +364,8 @@ volume.
 
 ## Restoring the database from a backup
 
-Not yet rehearsed; try it against the test database before you need it. The
-nightly dumps cover the production database only.
+Not yet rehearsed; rehearse it with the scratch-database variant below before
+you need it. The nightly dumps cover the production database only.
 
 **(on the server)**
 
@@ -286,10 +375,31 @@ export AWS_SECRET_ACCESS_KEY=$(grep '^S3_SECRET_KEY=' /mnt/pgdata/wallandshadow/
 aws s3 ls s3://wallandshadow-backups/db/ --endpoint-url https://hel1.your-objectstorage.com | tail -n 3
 ```
 
-Pick the dump to restore (`DUMP=wallandshadow-YYYYMMDD-HHMMSS.sql.gz`), then:
+Pick the dump to restore (`DUMP=wallandshadow-YYYYMMDD-HHMMSS.sql.gz`), then
+download it:
 
 ```bash
 aws s3 cp "s3://wallandshadow-backups/db/$DUMP" /root/ --endpoint-url https://hel1.your-objectstorage.com
+```
+
+**Rehearsal** (leaves production alone): restore the dump into a scratch
+database, compare the user count with production, then drop it.
+
+```bash
+sudo -u postgres createdb -O was wallandshadow_restore_check
+gunzip -c "/root/$DUMP" | sudo -u postgres psql -v ON_ERROR_STOP=1 wallandshadow_restore_check
+sudo -u postgres psql -d wallandshadow_restore_check -Atc 'SELECT count(*) FROM users'
+sudo -u postgres psql -d wallandshadow -Atc 'SELECT count(*) FROM users'
+sudo -u postgres dropdb wallandshadow_restore_check
+```
+
+Expect the restore to finish without an error and the two counts to match
+(the restored one can be lower if anyone has signed up since the dump).
+
+**Production restore** (replaces the live production database; downtime for
+production until the last command):
+
+```bash
 systemctl stop wallandshadow-prod
 sudo -u postgres dropdb wallandshadow
 sudo -u postgres createdb -O was wallandshadow

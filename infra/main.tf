@@ -1,7 +1,7 @@
 # =============================================================================
 # OpenTofu — Wall & Shadow infrastructure
 # =============================================================================
-# Manages Hetzner Cloud resources: VPS, volume, static IP, firewall.
+# Manages Hetzner Cloud resources: VPS, volume, static IPs, firewall.
 #
 # State is stored in a Hetzner Object Storage bucket (S3-compatible).
 # See docs/INFRASTRUCTURE_BOOTSTRAP.md for first-time setup.
