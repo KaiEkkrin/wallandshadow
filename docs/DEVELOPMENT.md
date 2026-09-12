@@ -23,7 +23,7 @@ The easiest way to get started is with the VS Code dev container.
 1. Open this repository in VS Code
 2. Press `F1` and select **"Dev Containers: Reopen in Container"**
 3. Wait for the container to build (5-10 minutes first time)
-4. The dev container automatically starts PostgreSQL and MinIO.
+4. The dev container automatically starts PostgreSQL and RustFS.
 
 5. Apply the database schema (first time only):
 
@@ -43,7 +43,7 @@ configuration, service endpoints, and troubleshooting.
 
 ## Running the dev servers
 
-PostgreSQL and MinIO start automatically when the dev container starts. Run the
+PostgreSQL and RustFS start automatically when the dev container starts. Run the
 two application servers in separate terminals — that way you can restart either
 without restarting the other:
 
@@ -156,7 +156,7 @@ cd was-web
 # Client unit tests (watch mode)
 yarn test:unit
 
-# Hono server integration tests (requires PostgreSQL + MinIO running)
+# Hono server integration tests (requires PostgreSQL + RustFS running)
 yarn test:server
 
 # End-to-end tests (requires Hono server + Vite dev server running)

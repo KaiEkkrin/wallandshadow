@@ -15,7 +15,7 @@ Zitadel OIDC · Caddy · systemd-supervised Docker containers
 | Database                | PostgreSQL (self-managed on VPS)                                                        | Ubiquitous, excellent JSON support for change documents, CASCADE constraints handle recursive deletes              |
 | HTTP API server         | Node.js + Hono (TypeScript)                                                             | Runtime-agnostic (portable to Bun/Deno/CF Workers); thin route handlers over a shared service layer               |
 | Real-time transport     | WebSockets via `ws` library                                                             | Used for map change broadcast. Potential future use for ephemeral features — see @docs/EPHEMERAL_WS.md             |
-| Object storage          | MinIO (local dev) + Hetzner Object Storage (production)                                 | S3-compatible; same client code in both environments                                                               |
+| Object storage          | RustFS (local dev, CI) + Hetzner Object Storage (production)                            | S3-compatible; same client code in both environments. RustFS replaced MinIO, which stopped distributing binaries and images |
 | Auth                    | Zitadel OIDC; server is an OIDC Relying Party only                                      | Avoids building token issuance, refresh, OAuth2 flows; provider handles Google federation and future passkeys      |
 | Email/password accounts | Retained for migrated accounts and local dev; no new production signups                 | Existing users keep access; no email infrastructure needed (password reset via admin endpoint only)                |
 | Static serving          | Caddy                                                                                   | Auto-HTTPS via Let's Encrypt; reverse-proxies `/api/*` and `/ws/*` to the Hono server                             |
@@ -48,7 +48,7 @@ Zitadel OIDC · Caddy · systemd-supervised Docker containers
          │                    │
 ┌────────▼──────┐   ┌────────▼──────────────────┐
 │  PostgreSQL   │   │  Object Storage            │
-│  • All app    │   │  • Dev:  MinIO container   │
+│  • All app    │   │  • Dev:  RustFS            │
 │    data       │   │  • Prod: Hetzner OS        │
 │  • LISTEN/    │   │  • S3-compatible API       │
 │    NOTIFY     │   │  • User images             │
@@ -227,7 +227,7 @@ jobs:
   changes      always      →  web / server / dockerfile / workflows / ansible / infra booleans
   web          if web      →  yarn build · yarn lint · yarn test · yarn test:shared
   server       if server   →  tsc --noEmit · lint · drizzle-kit push · test
-                              (against real PostgreSQL 17 + MinIO service containers)
+                              (against real PostgreSQL 17 + RustFS service containers)
   dockerfile   if docker   →  hadolint · BuildKit build checks · shellcheck entrypoint
   workflows    if wf       →  actionlint (with shellcheck on inline run: blocks)
   ansible      if ansible  →  ansible-playbook --syntax-check · ansible-lint · shellcheck

@@ -132,11 +132,11 @@ else
 fi
 echo ""
 
-# Create MinIO data directory (runs once; data persists across rebuilds)
-echo "🪣 Setting up MinIO..."
-MINIO_DATA="/workspaces/wallandshadow/.devcontainer/.minio-data"
-mkdir -p "$MINIO_DATA"
-echo "   ✅ MinIO data directory ready"
+# Create RustFS data directory (runs once; data persists across rebuilds)
+echo "🪣 Setting up RustFS..."
+RUSTFS_DATA="/workspaces/wallandshadow/.devcontainer/.rustfs-data"
+mkdir -p "$RUSTFS_DATA"
+echo "   ✅ RustFS data directory ready"
 echo ""
 
 echo "✅ Setup complete!"
@@ -148,7 +148,7 @@ echo ""
 echo "  Connect to PostgreSQL:"
 echo "    psql -h localhost -U was wallandshadow"
 echo ""
-echo "  MinIO console: http://localhost:9001 (wasdev / wasdevpass)"
+echo "  RustFS console: http://localhost:9001/rustfs/console/ (wasdev / wasdevpass)"
 echo ""
 echo "  Run unit tests:"
 echo "    cd was-web && yarn test:unit"
