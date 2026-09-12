@@ -22,6 +22,11 @@
 - name: Provision Wall & Shadow VPS
   hosts: vps
   become: true
+  # Run notified handlers even when a later task fails. Otherwise a run that
+  # fails after, say, `Deploy Caddyfile` drops the pending reload, and the
+  # re-run sees no change and never reloads: on a rebuilt server that leaves
+  # Caddy on the package's default config, with no HTTPS.
+  force_handlers: true
   vars_files:
     - vars/main.yml
 
@@ -471,8 +476,8 @@
 
     # Restart here rather than from a handler. Handlers run at the end of the
     # play, so on a rebuilt server the role and database tasks below would
-    # configure the empty cluster on the root disk; PostgreSQL would only move
-    # onto the real data afterwards, where the role still has its old password.
+    # configure the empty cluster apt created on the root disk, and their
+    # changes would never reach the real data on the volume.
     - name: Restart PostgreSQL onto the volume  # noqa: no-handler
       ansible.builtin.systemd:
         name: postgresql
@@ -480,9 +485,12 @@
         daemon_reload: true
       when: pg_data_directory is changed
 
+    # The umbrella `postgresql` oneshot stays "active" when the instance failed
+    # (e.g. after a boot without the volume, which the RequiresMountsFor
+    # drop-in above makes a designed state), so starting it would be a no-op.
     - name: Ensure PostgreSQL is running
       ansible.builtin.systemd:
-        name: postgresql
+        name: "postgresql@{{ pg_version }}-main"
         state: started
         daemon_reload: true
 
