@@ -114,6 +114,8 @@ git -C ~/.config remote set-url origin git@github.com:KaiEkkrin/dot-config.git
 | `lazygit` | Homebrew | `brew upgrade lazygit` |
 | `tree-sitter` | npm (global) | `npm update -g tree-sitter-cli` |
 | `cargo` / `rustup` | rustup | `rustup update` |
+| `gh` (GitHub CLI) | apt, from cli.github.com | `sudo apt-get update && sudo apt-get install --only-upgrade gh` |
+| `gh stack` | gh extension (Dockerfile) | `gh extension upgrade gh-stack` |
 | `brew` itself | — | `brew update && brew upgrade` |
 
 Neovim opens with LazyVim (from dot-config). Mason installs LSPs on first use — neovim will prompt on first open.

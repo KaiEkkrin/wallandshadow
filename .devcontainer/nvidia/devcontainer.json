@@ -11,11 +11,6 @@
   // --shm-size: 2GB shared memory for WebGL rendering in Playwright tests.
   //   Replaces the old docker-compose `ipc: host` approach.
   // --userns=keep-id: maps host user UID to same UID inside container (fixes bind mount permissions)
-  // --tmpfs=/tmp:rw,exec,mode=1777: works around a crun >= 1.11 regression (podman#20754) where
-  //   devcontainer feature installation (git:1, github-cli:1) runs as root via buildah and writes
-  //   a new overlay layer in which /tmp gets mode 0755 instead of the correct 1777.  The result is
-  //   that the node user cannot create files in /tmp (e.g. /tmp/.X11-unix).  Mounting a fresh tmpfs
-  //   at container start bypasses the corrupted image layer entirely.
   //
   // --device=nvidia.com/gpu=all uses Podman's CDI (Container Device Interface) interface.
   // Requires on host:
@@ -24,7 +19,6 @@
   "runArgs": [
     "--shm-size=2g",
     "--userns=keep-id",
-    "--tmpfs=/tmp:rw,exec,mode=1777",
     "--env-file=${localWorkspaceFolder}/.devcontainer/.env",
     "--device=nvidia.com/gpu=all",
     // Publish browser-facing ports so they're accessible from the host regardless of
@@ -128,9 +122,5 @@
   },
   "postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
   "postStartCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && bash .devcontainer/scripts/post-start.sh",
-  "remoteUser": "node",
-  "features": {
-    "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {}
-  }
+  "remoteUser": "node"
 }
