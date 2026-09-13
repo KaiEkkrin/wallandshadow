@@ -77,26 +77,11 @@ else
 fi
 echo ""
 
-# Install web app dependencies
-echo "📦 Installing web app dependencies..."
+# Install workspace dependencies (was-web and its server/shared workspaces)
+echo "📦 Installing dependencies..."
 cd /workspaces/wallandshadow/was-web
-if [ -f "yarn.lock" ]; then
-    echo "   Using yarn.lock for deterministic install..."
-    yarn install --frozen-lockfile || yarn install
-else
-    yarn install
-fi
-echo ""
-
-# Install server dependencies
-echo "📦 Installing server dependencies..."
-cd /workspaces/wallandshadow/was-web/server
-if [ -f "yarn.lock" ]; then
-    echo "   Using yarn.lock for deterministic install..."
-    yarn install --frozen-lockfile || yarn install
-else
-    yarn install
-fi
+echo "   Using package-lock.json for deterministic install..."
+npm ci
 echo ""
 
 # Install Playwright browsers for E2E tests
@@ -151,10 +136,10 @@ echo ""
 echo "  RustFS console: http://localhost:9001/rustfs/console/ (wasdev / wasdevpass)"
 echo ""
 echo "  Run unit tests:"
-echo "    cd was-web && yarn test:unit"
+echo "    cd was-web && npm run test:unit"
 echo ""
 echo "  Run E2E tests (requires dev server running):"
-echo "    cd was-web && yarn test:e2e"
+echo "    cd was-web && npm run test:e2e"
 echo ""
 echo "  View this guide anytime:"
 echo "    cat .devcontainer/README.md"

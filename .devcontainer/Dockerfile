@@ -1,7 +1,7 @@
 # Wall & Shadow Dev Container
-# Node 22 LTS with development dependencies
+# Node 24 LTS with development dependencies
 
-FROM mcr.microsoft.com/devcontainers/typescript-node:22-trixie
+FROM mcr.microsoft.com/devcontainers/typescript-node:24-trixie
 
 # Install system dependencies and GitHub CLI
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
@@ -45,7 +45,7 @@ RUN case "$(dpkg --print-architecture)" in \
 RUN npx playwright install-deps
 
 # Install global npm packages
-RUN npm install -g npm-run-all tree-sitter-cli
+RUN npm install -g tree-sitter-cli
 
 # Ensure GPU groups exist for AMD ROCm support
 # (harmless for non-AMD users; needed so --group-add=video/render work in Podman)

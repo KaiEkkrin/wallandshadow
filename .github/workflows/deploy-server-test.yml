@@ -27,7 +27,7 @@ on:
       - 'was-web/packages/shared/**'
       - 'was-web/src/**'
       - 'was-web/package.json'
-      - 'was-web/yarn.lock'
+      - 'was-web/package-lock.json'
       - 'was-web/vite.config.ts'
       - 'was-web/Dockerfile'
       - 'was-web/.dockerignore'

@@ -60,13 +60,12 @@ jobs:
               - 'was-web/server/**'
               - 'was-web/packages/shared/**'
               - 'was-web/package.json'
-              - 'was-web/yarn.lock'
+              - 'was-web/package-lock.json'
               - '.github/workflows/ci.yml'
             dockerfile:
               - 'was-web/Dockerfile'
               - 'was-web/.dockerignore'
               - 'was-web/server/docker-entrypoint.sh'
-              - '.hadolint.yaml'
               - '.github/workflows/ci.yml'
             workflows:
               - '.github/workflows/**'
@@ -91,29 +90,29 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
-          cache: "yarn"
-          cache-dependency-path: was-web/yarn.lock
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: was-web/package-lock.json
 
       - name: Install dependencies
         working-directory: was-web
-        run: yarn install --frozen-lockfile
+        run: npm ci
 
       - name: Build web
         working-directory: was-web
-        run: yarn build
+        run: npm run build
 
       - name: Lint web
         working-directory: was-web
-        run: yarn lint
+        run: npm run lint
 
       - name: Unit tests
         working-directory: was-web
-        run: yarn test
+        run: npm test
 
       - name: Shared unit tests
         working-directory: was-web
-        run: yarn test:shared
+        run: npm run test:shared
 
   # ── Hono server: type-check, lint, integration tests ────────────────────────
   server:
@@ -180,13 +179,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
-          cache: "yarn"
-          cache-dependency-path: was-web/yarn.lock
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: was-web/package-lock.json
 
       - name: Install dependencies
         working-directory: was-web
-        run: yarn install --frozen-lockfile
+        run: npm ci
 
       - name: Create test database
         run: psql -h localhost -U was -d wallandshadow -c "CREATE DATABASE wallandshadow_test OWNER was;"
@@ -195,21 +194,21 @@ jobs:
 
       - name: Type-check
         working-directory: was-web/server
-        run: yarn tsc --noEmit
+        run: npm run typecheck
 
       - name: Lint
         working-directory: was-web/server
-        run: yarn lint
+        run: npm run lint
 
       - name: Apply database schema (test database)
         working-directory: was-web/server
-        run: yarn drizzle-kit push
+        run: npx drizzle-kit push
         env:
           DATABASE_URL: postgresql://was:wasdev@localhost:5432/wallandshadow_test
 
       - name: Run tests
         working-directory: was-web/server
-        run: yarn test
+        run: npm test
 
   # ── Container image definition: static checks only, no image build ──────────
   dockerfile:
@@ -225,7 +224,6 @@ jobs:
         uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
         with:
           dockerfile: was-web/Dockerfile
-          config: .hadolint.yaml
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
