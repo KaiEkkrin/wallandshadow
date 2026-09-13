@@ -21,6 +21,13 @@ app_port_test: 3002
 domain_prod: "wallandshadow.com"
 domain_test: "test.wallandshadow.com"
 
+# ── Caddy release series ─────────────────────────────────────────────────────
+# apt is pinned to this series, so unattended-upgrades takes only its patch
+# releases. Caddy's minor releases can change behaviour, so moving to the next
+# one is a deliberate change here (docs/SERVER_OPERATIONS.md). CI validates the
+# Caddyfile against the caddy:<series> image.
+caddy_series: "2.11"
+
 # ── Rendered configuration on the VPS ────────────────────────────────────────
 # Env files, image tags, CORS policies and the goaccess config. The playbook
 # re-renders all of it (the deploy workflows rewrite the image tags), so it
