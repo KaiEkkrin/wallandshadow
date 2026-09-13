@@ -55,7 +55,7 @@ Full setup and the day-to-day workflow — database schema, auth modes, tests, a
 
 ## Deployment
 
-Production and test deploys run through `.github/workflows/deploy-server-production.yml` and `deploy-server-test.yml` — they build a multi-arch Docker image, push it to GHCR, and SSH to the Hetzner VPS to restart the systemd unit with the new image tag. Infrastructure is provisioned by `.github/workflows/provision.yml` (OpenTofu + Ansible).
+Production and test deploys run through `.github/workflows/deploy-server-production.yml` and `deploy-server-test.yml` — they build a Docker image, push it to GHCR, and SSH to the Hetzner VPS to restart the systemd unit with the new image tag. Infrastructure is provisioned by `.github/workflows/provision.yml` (OpenTofu + Ansible).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deployment architecture and [docs/INFRASTRUCTURE_BOOTSTRAP.md](docs/INFRASTRUCTURE_BOOTSTRAP.md) for first-time VPS bootstrap.
 
