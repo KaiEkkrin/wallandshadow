@@ -196,6 +196,52 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 
 ---
 
+## Vite 8, Vitest 5 — ✅ done (2026-09-13)
+
+**Current:** vite ^8.3.0, vitest ^5.0.0 (both workspaces), @vitejs/plugin-react ^6.1.1
+
+Vite 8 replaces Rollup and esbuild with **Rolldown** (Rust-based bundler) and
+**Oxc** (Rust-based transformer) as the default build pipeline — the
+`rolldown-vite` variant that used to be opt-in is now plain `vite`. The
+practical effect for this repo: the `vite > esbuild` override in
+`was-web/package.json` had nothing left to pin (esbuild is now only an
+optional peer dependency of Vite, `^0.27 || ^0.28`, which npm doesn't install
+on Vite's behalf) and was deleted. `build.rollupOptions` was renamed to
+`build.rolldownOptions` — same shape, new bundler underneath.
+
+Rolldown also changed the build's shape, as measured at the upgrade: the
+`vite build` step dropped from ~3.0s to ~1.0s, and the eager single-chunk
+bundle Rollup produced split into a smaller entry chunk plus more granular
+modulepreloaded chunks (17 JS chunks under Vite 7 → 27 under Vite 8);
+total shipped bytes are essentially unchanged.
+
+**The native config loader.** Vite 8 ships a `configLoader: 'native'` mode
+(planned to become the default in a future major) that loads `vite.config.ts`
+directly via Node's own module loader instead of bundling it first — faster
+startup, but it only understands plain ESM/TS, not the bundler conveniences
+Vite used to paper over. It isn't in use here: Vite 8.3 still defaults to
+`configLoader: 'bundle'`. That default loader, though, warns about config
+features the native loader won't support, and `was-web/vite.config.ts` needed
+three fixes to silence those warnings:
+`import packageJson from './package.json'` needed `with { type: 'json' }`
+(import attributes are required for JSON imports under native ESM), the
+`third-party-notices` import needed its explicit `.ts` extension, and every
+`resolve(__dirname, …)` became `resolve(import.meta.dirname, …)` (`__dirname`
+isn't defined in a native ESM config file; `import.meta.dirname` is the
+direct replacement, added in Node 20.11 / 21.2).
+
+**Why not defer.** Vite 7 goes security-fix-only once Vite 9 ships (Vite's
+usual two-major support window), so taking 8 now rather than waiting avoids a
+second migration stacked on top of whatever 9 changes next.
+
+### References
+
+- [Vite 8 announcement](https://vite.dev/blog/announcing-vite8)
+- [Vite native config loader](https://vite.dev/guide/troubleshooting.html#vite-config-native-loader)
+- [Vitest 5 migration guide](https://vitest.dev/guide/migration.html)
+
+---
+
 ## Update Priority Summary
 
 | Priority | Package | Target | Timeline |
@@ -204,6 +250,7 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 | — | license-checker-rseidelsohn | 5.x | ✅ Done 2026-09-13 (the Node 24 / npm migration) |
 | — | Three.js | Latest | ✅ Done to 0.186 (2026-09-13); check again in ~3 months |
 | — | TypeScript | 6.x | ✅ Done to 6.0 (2026-09-13); held there — see the TypeScript section |
+| — | Vite / Vitest / plugin-react | 8.x / 5.x / 6.x | ✅ Done 2026-09-13 |
 | 2 | drizzle-kit + drizzle-orm | 1.0.0 stable | ⛔ Blocked — see security note below |
 | — | esbuild advisories | overrides | ✅ Done 2026-09-20 — see the esbuild section |
 | — | React Router | 8.x | ✅ Done 2026-07-25 |
@@ -306,17 +353,20 @@ attempt to reach 0.28.1 for the tsup alert collided with `@esbuild-kit`'s `~0.18
 pin and reported `security_update_not_possible` — "the latest possible version that
 can be installed is 0.18.20". The unrelated drizzle-kit chain blocked the tsup fix.
 
-Both are forced onto the root esbuild, alongside the pre-existing `vite` entry:
+Both are forced onto a single hoisted esbuild:
 
 ```json
 "overrides": {
-  "vite": { "esbuild": "^0.28.1" },
   "tsup": { "esbuild": "^0.28.2" },
   "@esbuild-kit/core-utils": { "esbuild": "^0.28.2" }
 }
 ```
 
-The tree now holds exactly two esbuilds: `esbuild@0.28.2` at the root, and
+These two are what remains of the block after the Vite 8 upgrade above deleted its
+`vite` entry — and they are also now the only reason a root esbuild is installed at
+all, since Rolldown means Vite no longer pulls one in.
+
+The tree holds exactly two esbuilds: `esbuild@0.28.2` hoisted to the root, and
 drizzle-kit's own `esbuild@0.25.12` (not covered by either advisory). `npm audit` is
 clean in full, not just under `--omit=dev`.
 
