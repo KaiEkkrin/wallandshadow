@@ -15,6 +15,9 @@ ansible/secrets/
 /.usercache/.yarn
 /.usercache/.yarnrc
 
+# Superpowers plugin (ephemeral)
+docs/superpowers/
+
 # misc stuff
 .claude/settings.local.json
 *.log

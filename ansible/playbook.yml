@@ -6,7 +6,7 @@
 #   - Caddy reverse proxy (native, systemd)
 #   - Docker (runs the application containers via systemd units)
 #   - ufw firewall
-#   - Unattended security upgrades
+#   - Unattended upgrades (Ubuntu, PostgreSQL minor releases, Caddy patches)
 #   - Nightly PostgreSQL backup to S3
 #   - Auto-generated secrets (passwords, JWT key)
 #
@@ -113,6 +113,22 @@
       ansible.builtin.apt_repository:
         repo: "deb https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main"
         state: present
+
+    # The repository publishes every 2.x release as one package, and Caddy's
+    # minor releases can change behaviour, so apt stays on caddy_series.
+    # Priority 990 beats newer series (500) without ever downgrading. The pin
+    # goes in before the install so a rebuilt server gets the same series.
+    - name: Pin Caddy to release series {{ caddy_series }}
+      ansible.builtin.copy:
+        dest: /etc/apt/preferences.d/caddy
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible (wallandshadow playbook): caddy_series in vars/main.yml.
+          Package: caddy
+          Pin: version {{ caddy_series }}.*
+          Pin-Priority: 990
 
     - name: Install Caddy
       ansible.builtin.apt:
@@ -773,6 +789,14 @@
           APT::Periodic::Unattended-Upgrade "1";
         mode: "0644"
 
+    # Besides Ubuntu's archives, take updates from the PostgreSQL and Caddy
+    # repositories. Neither moves to a new major or minor version by itself:
+    # PostgreSQL's major version is in the package name (postgresql-17), and
+    # Caddy is pinned to caddy_series. Without --force-confold,
+    # unattended-upgrades holds Caddy back whenever a new package ships a
+    # different default /etc/caddy/Caddyfile, because Ansible replaced ours; the
+    # option keeps ours. It applies to every apt run, like the Ansible apt
+    # module's own default.
     - name: Configure unattended-upgrades behaviour
       ansible.builtin.copy:
         dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
@@ -784,6 +808,14 @@
               "${distro_id}ESMApps:${distro_codename}-apps-security";
               "${distro_id}ESM:${distro_codename}-infra-security";
               "${distro_id}:${distro_codename}-updates";
+          };
+          Unattended-Upgrade::Origins-Pattern {
+              "site=apt.postgresql.org";
+              "site=dl.cloudsmith.io";
+          };
+          Dpkg::Options {
+              "--force-confdef";
+              "--force-confold";
           };
           Unattended-Upgrade::Automatic-Reboot "true";
           Unattended-Upgrade::Automatic-Reboot-WithUsers "true";

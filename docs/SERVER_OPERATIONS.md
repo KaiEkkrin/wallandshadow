@@ -1,7 +1,8 @@
 # Server Operations
 
 How the Hetzner VPS keeps its state, and the manual procedures for migrating,
-rescaling, rebuilding, rotating the deploy key and restoring the database.
+rescaling, rebuilding, updating packages, rotating the deploy key and
+restoring the database.
 Commands marked **(on the server)** are run by the operator over SSH as root;
 no automation runs them. For first-time setup see
 [INFRASTRUCTURE_BOOTSTRAP.md](INFRASTRUCTURE_BOOTSTRAP.md).
@@ -229,7 +230,11 @@ the copied certificates are the ones in use.
   ```bash
   rm /root/secrets.pre-volume /root/caddy-data.pre-volume.tgz /root/wallandshadow_test-*.sql.gz
   rm -r /var/lib/caddy/.local/share/caddy   # Caddy no longer reads it
+  rm /etc/wallandshadow/secrets.bak.*       # superseded secrets from an earlier rotate_secrets.sh run
   ```
+
+  `rotate_secrets.sh` now keeps its backups next to the secrets file on the
+  volume, as `/mnt/pgdata/wallandshadow/secrets.bak.*`.
 
 ## Rescaling
 
@@ -372,6 +377,130 @@ Reindex any database whose two versions differ, then record the new version:
 
    After an Ubuntu LTS upgrade, also run the collation check above. Traffic
    stats and logs start again from empty.
+
+## Package updates
+
+unattended-upgrades installs updates once a day (Ubuntu's `apt-daily-upgrade`
+timer: 06:00 server time plus up to an hour's random delay) and reboots at
+04:30 when an update needs it. It takes:
+
+- Ubuntu's own updates, security fixes included. Docker is Ubuntu's
+  `docker.io` package, so it's covered too.
+- PostgreSQL 17 minor releases, from the PostgreSQL repository. These are bug
+  and security fixes that never change the data format. PostgreSQL 18 is a
+  separate package (`postgresql-18`) that nothing installs; moving to it is a
+  manual upgrade.
+- Caddy patch releases within `caddy_series` in `ansible/vars/main.yml`
+  (currently 2.11). An apt pin, `/etc/apt/preferences.d/caddy`, keeps it off
+  newer series, because Caddy's minor releases can change behaviour.
+
+A PostgreSQL or Caddy update restarts that service: a few seconds of dropped
+connections. `/var/log/unattended-upgrades/unattended-upgrades.log` lists what
+was installed.
+
+Now and then a PostgreSQL release asks for a step after upgrading, usually
+reindexing one kind of index. The
+[release notes](https://www.postgresql.org/docs/release/) list it under
+"Migration to Version 17.N".
+
+### Moving Caddy to a new minor series
+
+1. Read [Caddy's release notes](https://github.com/caddyserver/caddy/releases)
+   for every release since the current series, looking for breaking changes
+   and deprecations.
+2. Change `caddy_series` in `ansible/vars/main.yml` in a PR. CI validates the
+   Caddyfile against the new series' Docker image. Merge it.
+3. Run the [provision workflow](#the-provision-workflow). It only moves the
+   pin; unattended-upgrades installs the new series at its next run. To take
+   it now instead, **(on the server)**:
+
+   ```bash
+   apt-get update && apt-get install --only-upgrade caddy
+   ```
+
+4. **(on the server)** Verify:
+
+   ```bash
+   caddy version
+   systemctl is-active caddy
+   curl -fsS https://wallandshadow.com/api/health; echo
+   curl -fsS https://test.wallandshadow.com/api/health; echo
+   ```
+
+   Expect the new version, `active`, and `{"ok":true}` twice.
+
+### Turning on PostgreSQL and Caddy updates (one-time)
+
+Until this change, unattended-upgrades took only Ubuntu's own updates, so
+PostgreSQL and Caddy are still the versions installed when the server was
+built. The first update can jump several releases, so run it by hand while
+you watch, straight after the provision run that turns updates on. Avoid
+doing this between 06:00 and 07:00 server time, when the automatic run could
+start first.
+
+1. **(on the server)** Record what's installed:
+
+   ```bash
+   apt-get update
+   apt-cache policy postgresql-17 caddy
+   ```
+
+   Expect Caddy `Installed: 2.11.2`. Note PostgreSQL's installed and candidate
+   versions, then read its [release notes](https://www.postgresql.org/docs/release/)
+   for every 17.x release after the installed one. Note any step their
+   "Migration to Version 17.N" sections ask for.
+2. **(on the server)** Back up:
+
+   ```bash
+   /usr/local/bin/pg_backup.sh
+   ```
+
+   Expect `Backup complete: …`.
+3. Merge the PR, then run the [provision workflow](#the-provision-workflow):
+   apply off, then on. Expect no OpenTofu changes. In the Ansible log, expect
+   `changed` for `Pin Caddy to release series 2.11` and
+   `Configure unattended-upgrades behaviour`.
+4. **(on the server)** Check what the daily run will do, without doing it:
+
+   ```bash
+   apt-cache policy caddy | sed -n 1,3p
+   unattended-upgrade --dry-run -d 2>&1 | grep -E '^(Allowed origins|Packages that will be upgraded)'
+   ```
+
+   Expect:
+
+   - A Caddy candidate of `2.11.` something.
+   - Allowed origins ending in `site=apt.postgresql.org, site=dl.cloudsmith.io`.
+   - An upgrade list that includes `caddy`, and `postgresql-17` if step 1
+     showed a newer candidate, alongside any pending Ubuntu updates.
+
+   **Stop** if the candidate is outside 2.11: the pin isn't working.
+5. **(on the server)** Run it. PostgreSQL and Caddy restart, so both
+   environments drop connections for a few seconds.
+
+   ```bash
+   unattended-upgrade -v
+   ```
+
+6. **(on the server)** Verify:
+
+   ```bash
+   dpkg-query -W caddy postgresql-17
+   sudo -u postgres psql -Atc 'SHOW server_version'
+   systemctl is-active postgresql@17-main caddy wallandshadow-test wallandshadow-prod
+   curl -fsS https://wallandshadow.com/api/health; echo
+   curl -fsS https://test.wallandshadow.com/api/health; echo
+   ```
+
+   Expect:
+
+   - Caddy on the newest 2.11 release.
+   - `server_version` matching the `postgresql-17` package version, which
+     shows the running cluster restarted onto the new release.
+   - Four `active` lines.
+   - `{"ok":true}` twice.
+
+   Then carry out any post-upgrade steps you noted in step 1.
 
 ## Rotating the deploy SSH key
 
