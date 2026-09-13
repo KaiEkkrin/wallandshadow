@@ -10,6 +10,7 @@
     "noImplicitReturns": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
+    "types": ["node"],
     "paths": {
       "@wallandshadow/shared": ["../packages/shared/src/index.ts"],
       "@wallandshadow/shared/*": ["../packages/shared/src/*"]
