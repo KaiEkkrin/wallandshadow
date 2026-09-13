@@ -78,7 +78,7 @@ a time when someone takes this on.
 
 ## Three.js Continuous Updates
 
-**Current:** ^0.183.0 (updated 2026-03-01 from 0.182)
+**Current:** ^0.186.0 (updated 2026-09-13 from 0.183)
 **Approach:** Incremental updates every 3-6 months
 
 Three.js has no formal deprecation schedule but follows a pattern of deprecating in version X and removing in X+10. Regular updates prevent large migration efforts.
@@ -102,13 +102,22 @@ Three.js has no formal deprecation schedule but follows a pattern of deprecating
 
 6. Run visual regression tests (E2E snapshots)
 
-### Known Deprecations to Watch (0.183)
+### r184–r186 changes (0.183 → 0.186, checked 2026-09-13)
 
-- `Clock` deprecated (use `Timer` instead)
-- `PostProcessing` renamed to `RenderPipeline` (backwards-compatible for now)
-- WebGPU now production-ready on all major browsers including Safari iOS
-- `PCFSoftShadowMap` deprecated (use `PCFShadowMap`)
-- Various loaders deprecated (USDZLoader, LottieLoader)
+- `PCFSoftShadowMap` — the deprecation warning added in an earlier release was
+  followed through: r186 removes the remaining `PCFSoftShadowMap` code
+  entirely.
+- `Matrix3.scale()`, `.rotate()`, `.translate()` deprecated (r185).
+- `LottieLoader` and `TTFLoader` deprecated; both loaders' bundled decoder
+  libraries were removed in favour of loading them from a CDN (r185).
+- The CommonJS build is deprecated and minified builds were removed from the
+  npm package (r186) — build-tooling changes, not an API surface change.
+- `Object3D.dispose()` and `Object3D.intersectsFrustum()` added (r186); no
+  action needed, just new API surface.
+
+None of these affected us: the app doesn't call `PCFSoftShadowMap`,
+`Matrix3.scale/rotate/translate`, `LottieLoader`, `TTFLoader`, `USDZLoader` or
+`USDZExporter`, and Vite already consumes the ESM build.
 
 ### References
 
@@ -119,31 +128,49 @@ Three.js has no formal deprecation schedule but follows a pattern of deprecating
 
 ## TypeScript Updates
 
-**Current:** ^5.7.0
+**Current:** `~6.0.3` (done 2026-09-13)
 **Approach:** Update with each minor release
 
 TypeScript has no formal EOL policy. Keep reasonably current to benefit from type improvements and language features.
 
-### Upcoming Changes
+### Blocked on TypeScript 7
 
-- TypeScript 6.0 Beta announced February 11, 2026 — stable expected imminently
-- TypeScript 6.0 will be a "bridge" release to TypeScript 7.0
-- TypeScript 6.0 will deprecate features that 7.0 removes
-- Plan to be on TypeScript 6.x when it releases, then migrate to 7.0
-- Note: TypeScript 7 will use a Go-based compiler ("Project Corsa")
+TypeScript 7.0.2 is npm's `latest`, but this repo is held at `~6.0.3`:
+typescript-eslint 8.70 only supports TypeScript `<6.1.0`, and its tracking
+issue for TS 7 support (typescript-eslint#12518) was closed as not planned —
+there is no version of typescript-eslint to move to yet. Revisit once
+typescript-eslint ships TS 7 support.
+
+### TypeScript 6 changes that bit us
+
+Moving 5.7 → 6.0 surfaced three behaviour changes, fixed as part of that
+move:
+
+- **Side-effect imports are now checked against `package.json` exports.**
+  `import '@fontsource/princess-sofia'` stopped resolving because the
+  package's `exports` map doesn't have a bare entry for a side-effect-only
+  import; it became `import '@fontsource/princess-sofia/index.css'`, naming
+  the actual CSS file.
+- **`moduleResolution: "node"` is deprecated** in favour of `"bundler"` (or
+  `"node16"`/`"nodenext"`); `was-web/unit/tsconfig.json` moved to `"bundler"`.
+- **`types` now defaults to `[]`** instead of auto-including everything in
+  `node_modules/@types`. The server's `tsconfig.json` compiled without
+  Node's globals until it explicitly added `"types": ["node"]`.
 
 ### Update Process
 
-1. Update `was-web/package.json` and `was-web/functions/package.json`
+1. Update `was-web/package.json` and `was-web/server/package.json` (this repo
+   has no `functions/` workspace)
 
-2. Run type checking:
+2. Run:
    ```bash
-   npm run typecheck
+   npm run build
+   npm -w @wallandshadow/server run typecheck
    ```
 
 3. Fix any new type errors
 
-4. Update `typescript-eslint` to compatible version
+4. Update `typescript-eslint` to a compatible version
 
 ### References
 
@@ -161,8 +188,7 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 
 ### Notes
 
-- `toPromise()` is deprecated—use `firstValueFrom()` or `lastValueFrom()` instead
-- Review codebase for `toPromise()` usage and migrate when convenient
+- `toPromise()` is deprecated—use `firstValueFrom()` or `lastValueFrom()` instead. No uses remain in this codebase.
 
 ### References
 
@@ -175,10 +201,10 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 | Priority | Package | Target | Timeline |
 |----------|---------|--------|----------|
 | 1 | React Compiler lint rules | 4 rules re-enabled | ⬜ 33 violations across 24 files — see the ESLint section |
-| — | license-checker-rseidelsohn | 5.x | ✅ Done 2026-09-13 |
-| 3 | Three.js | Latest | ✅ Done to 0.183 (2026-03-01); check again in ~3 months |
-| 4 | TypeScript | 6.x | Wait for stable release (beta as of 2026-03-01) |
-| 5 | drizzle-kit + drizzle-orm | 1.0.0 stable | ⛔ Blocked — see security note below |
+| — | license-checker-rseidelsohn | 5.x | ✅ Done 2026-09-13 (the Node 24 / npm migration) |
+| — | Three.js | Latest | ✅ Done to 0.186 (2026-09-13); check again in ~3 months |
+| — | TypeScript | 6.x | ✅ Done to 6.0 (2026-09-13); held there — see the TypeScript section |
+| 2 | drizzle-kit + drizzle-orm | 1.0.0 stable | ⛔ Blocked — see security note below |
 | — | React Router | 8.x | ✅ Done 2026-07-25 |
 | — | ESLint | 10.x | ✅ Done 2026-07-25 |
 
@@ -198,8 +224,6 @@ brace-expansion 2.1.4 backported the CVE-2026-14257 fix to the 2.x line the chai
 resolved to. `npm audit --omit=dev` is clean; a full `npm audit` still reports moderate
 esbuild advisories, all from dev-only tooling: drizzle-kit's `@esbuild-kit` chain (see
 the drizzle-kit section below) and tsup's bundled esbuild.
-
----
 
 ---
 
@@ -225,7 +249,7 @@ drizzle-kit@0.31.10
 
 **Why this is safe to defer**: the vulnerability requires esbuild's `--serve` HTTP server to be running. `@esbuild-kit/core-utils` only uses esbuild as a code transformer — it never starts a dev server. There is no live attack surface in this project.
 
-**Why the proper fix must wait**: drizzle-kit 1.0.0-rc.1 (published 2026-04-30) drops `@esbuild-kit/*` entirely, but requires a paired upgrade to drizzle-orm 1.0.0-beta (also pre-release). As of May 2026, the RC is three days old and has a known data-safety regression (`db:push` drops tables without confirmation; `strict: true` is silently ignored). Both packages need to reach stable 1.0.0 before this upgrade is sensible.
+**Why the proper fix must wait**: drizzle-kit 1.0.0-rc.1 (published 2026-04-30) drops `@esbuild-kit/*` entirely, but requires a paired upgrade to drizzle-orm 1.0.0-beta (also pre-release). As of May 2026, the RC is three days old and has a known data-safety regression (`db:push` drops tables without confirmation; `strict: true` is silently ignored). Both packages need to reach stable 1.0.0 before this upgrade is sensible. As of 2026-09-13 both packages' `rc` dist-tag is `1.0.0-rc.4` — still pre-release, so this is still waiting.
 
 ### When drizzle-kit and drizzle-orm 1.0.0 stable ship
 
@@ -239,6 +263,21 @@ drizzle-kit@0.31.10
 4. Run `npm run db:push` and `npm run db:push:test` to verify schema commands work
 5. Run `npm run test:server` to confirm integration tests pass
 6. Verify `npm audit` no longer reports the esbuild vulnerability
+
+---
+
+## tsup (server build)
+
+`was-web/server/` builds with tsup (`tsup.config.ts`). tsup's own README flags
+the project as unmaintained. It's kept for now: it's a thin wrapper around
+esbuild, still works, and it isn't pinned past its declared `^0.27.0` esbuild
+range — an override would force that. Its bundled esbuild is its own
+`npm audit` finding (`node_modules/tsup/node_modules/esbuild`), separate from
+drizzle-kit's `@esbuild-kit` chain but the same shape: dev-only, so
+`npm audit --omit=dev` stays clean. The candidate replacement, tsdown, is
+still pre-1.0. Swap tsup for a plain esbuild build script when convenient —
+the server's build is a single entry point, so the wrapper isn't buying much
+— or revisit if tsdown reaches a stable 1.0 first.
 
 ---
 
