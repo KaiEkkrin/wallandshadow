@@ -3,11 +3,11 @@ import path from 'path';
 
 export default defineConfig({
   test: {
-    root: path.resolve(__dirname, 'src/__tests__'),
+    root: path.resolve(import.meta.dirname, 'src/__tests__'),
     globals: true,
     environment: 'node',
     include: ['**/*.test.ts'],
-    setupFiles: [path.resolve(__dirname, 'src/__tests__/setup.ts')],
+    setupFiles: [path.resolve(import.meta.dirname, 'src/__tests__/setup.ts')],
     testTimeout: 30000,
     // Tests share a database — no parallel execution
     fileParallelism: false,
@@ -20,7 +20,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@wallandshadow/shared': path.resolve(__dirname, '../packages/shared/src/index.ts'),
+      '@wallandshadow/shared': path.resolve(import.meta.dirname, '../packages/shared/src/index.ts'),
     },
   },
 });
