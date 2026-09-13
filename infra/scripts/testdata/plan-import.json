@@ -1,0 +1,6 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {"address": "hcloud_primary_ip.ipv6", "type": "hcloud_primary_ip", "name": "ipv6", "change": {"actions": ["update"], "importing": {"id": "12345678"}}}
+  ]
+}

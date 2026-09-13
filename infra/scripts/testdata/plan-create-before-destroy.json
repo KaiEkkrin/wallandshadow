@@ -1,0 +1,6 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {"address": "hcloud_ssh_key.deploy", "type": "hcloud_ssh_key", "name": "deploy", "change": {"actions": ["create", "delete"]}}
+  ]
+}

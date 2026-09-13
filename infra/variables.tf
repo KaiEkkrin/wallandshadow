@@ -1,32 +1,29 @@
 # =============================================================================
 # Input variables
 # =============================================================================
-# Non-secret values go in terraform.tfvars (committed).
+# Values live in terraform.tfvars (committed). There are deliberately no
+# defaults, so that file is the one place to look.
 # Secret values come from environment variables (HCLOUD_TOKEN, etc.).
 # =============================================================================
 
 variable "location" {
   description = "Hetzner DC location (fsn1 = Falkenstein, nbg1 = Nuremberg, hel1 = Helsinki)"
   type        = string
-  default     = "fsn1"
 }
 
 variable "server_type" {
-  description = "Hetzner VPS server type"
+  description = "Hetzner VPS server type. Changing it rescales the server in place (docs/SERVER_OPERATIONS.md)"
   type        = string
-  default     = "cpx21"
 }
 
 variable "server_image" {
-  description = "OS image for the VPS"
+  description = "OS image for the VPS. Only used when the server is created or rebuilt"
   type        = string
-  default     = "ubuntu-24.04"
 }
 
 variable "volume_size" {
   description = "Volume size in GB (can only grow, never shrink)"
   type        = number
-  default     = 20
 }
 
 variable "ssh_public_key" {

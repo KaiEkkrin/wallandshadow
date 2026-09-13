@@ -207,6 +207,12 @@ systemctl is-active --quiet wallandshadow-<env>.service
 
 Caddy and PostgreSQL run natively on the VPS (managed by Ansible), not as containers.
 
+Everything that must survive a server rebuild lives on a Hetzner volume mounted at
+`/mnt/pgdata`: PostgreSQL's data directory, the generated secrets (database password,
+JWT secret) and Caddy's certificates. Both IP addresses are reserved Primary IPs. The
+root disk holds only what Ansible re-renders, so the server can be rescaled or rebuilt
+without losing data — see @docs/SERVER_OPERATIONS.md.
+
 ### CI Pipeline
 
 `.github/workflows/ci.yml` is the single CI workflow. It runs on **every** pull

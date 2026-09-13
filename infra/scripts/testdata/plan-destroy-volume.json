@@ -1,0 +1,6 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {"address": "hcloud_volume.pgdata", "type": "hcloud_volume", "name": "pgdata", "change": {"actions": ["delete"]}}
+  ]
+}

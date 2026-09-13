@@ -1,6 +1,6 @@
 # Infrastructure Bootstrap
 
-The self-hosted stack runs on Hetzner Cloud. Infrastructure is provisioned with OpenTofu (VPS, volume, static IP, firewall) and configured with Ansible (PostgreSQL, Caddy, Docker, backups). Both run from a single GitHub Actions workflow.
+The self-hosted stack runs on Hetzner Cloud. Infrastructure is provisioned with OpenTofu (VPS, volume, static IPv4 and IPv6 addresses, firewall) and configured with Ansible (PostgreSQL, Caddy, Docker, backups). Both run from a single GitHub Actions workflow.
 
 ## One-time setup (the only ClickOps)
 
@@ -34,6 +34,8 @@ ssh-keygen -t ed25519 -C "wallandshadow-deploy" -f ~/.ssh/wallandshadow_deploy
 # Save the private key as GitHub Secret: SSH_PRIVATE_KEY
 # The public key is derived automatically by the provision workflow
 ```
+
+To rotate this key later, follow [SERVER_OPERATIONS.md](SERVER_OPERATIONS.md#rotating-the-deploy-ssh-key): changing the secret alone isn't enough.
 
 **5. Update placeholder values**
 
@@ -74,27 +76,30 @@ then restart the prod systemd unit so the new env-file is sourced.
 | `HCLOUD_S3_ACCESS_KEY`      | Hetzner Cloud Console      | Provision workflow (state backend + Ansible) |
 | `HCLOUD_S3_SECRET_KEY`      | Hetzner Cloud Console      | Provision workflow (state backend + Ansible) |
 | `VPS_IP`                    | First provision run output | Deploy workflows                             |
+| `VPS_KNOWN_HOST`            | Printed by the provision workflow | Deploy workflows (pinned SSH host keys)      |
 | `OIDC_ISSUER`               | Zitadel instance           | Provision + deploy workflows                 |
 | `OIDC_CLIENT_ID`            | Zitadel application        | Deploy workflows                             |
 | `STATS_BASIC_AUTH_USER`     | You choose                 | Provision workflow (Caddy basic auth on /stats) |
 | `STATS_BASIC_AUTH_PASSWORD` | You choose                 | Provision workflow (Caddy basic auth on /stats) |
 | `ADMIN_USER_ID`             | Zitadel user (optional)    | Provision workflow (Hono auto-promotes to admin) |
 
-`DATABASE_URL`, `JWT_SECRET`, and `S3_ACCESS_KEY`/`S3_SECRET_KEY` are **not** GitHub Secrets — they live on the VPS (written by Ansible) and are fetched by deploy workflows via SSH.
+The application's `DATABASE_URL` and `JWT_SECRET` are **not** GitHub Secrets. Ansible generates the database password and JWT secret on the first provision, keeps them in a secrets file on the VPS's persistent volume, and renders them (with the S3 credentials) into the per-environment env files the application containers read.
 
 ## Running the provision workflow
 
-1. Go to **Actions** > **Provision Infrastructure** > **Run workflow**
-2. OpenTofu creates the VPS, volume, static IP, and firewall
-3. Ansible configures PostgreSQL (data on the volume), Caddy, Docker, backups
-4. On first run: copy the displayed `VPS_IP` to GitHub Secrets
-5. Point your DNS records at the VPS IP (see below — only needed once, the IP is static)
+1. Go to **Actions** > **Provision Infrastructure** > **Run workflow**. Leave **apply** unticked the first time: the run only shows the OpenTofu plan (in the run summary) and changes nothing.
+2. Read the plan, then run the workflow again with **apply** ticked. OpenTofu creates the VPS, volume, static IPv4 and IPv6 addresses, and firewall.
+3. Ansible configures PostgreSQL, Caddy, Docker and backups. PostgreSQL's data, the generated secrets and Caddy's certificates all live on the volume.
+4. On first run: copy the displayed `VPS_IP` to GitHub Secrets, and the displayed `VPS_KNOWN_HOST` block to a secret of that name in the `hetzner` environment.
+5. Point your DNS records at the VPS addresses (see below — only needed once; both addresses are reserved).
 
-Subsequent runs are safe to re-run (both OpenTofu and Ansible are idempotent).
+For a brand-new project, delete the `import` block in `infra/network.tf` first. It adopts this project's existing IPv6 address and would fail anywhere else.
+
+Every run is safe to repeat. OpenTofu and Ansible are idempotent, and the workflow refuses any plan that deletes or replaces a resource unless you tick **allow_replace**. Rescaling, rebuilding, key rotation and restores are in [SERVER_OPERATIONS.md](SERVER_OPERATIONS.md).
 
 ## DNS records
 
-The VPS has a static IPv4 (and, if enabled, IPv6) from Hetzner. Configure these records at your registrar / DNS host. Replace `<VPS_IPv4>` and `<VPS_IPv6>` with the values from the OpenTofu output.
+The VPS has static IPv4 and IPv6 addresses from Hetzner: both are reserved Primary IPs, so they survive a server rebuild and the `<VPS_IPv6>` record stays valid. Configure these records at your registrar / DNS host. Replace `<VPS_IPv4>` and `<VPS_IPv6>` with the values from the OpenTofu output.
 
 ### Required — apex and test
 

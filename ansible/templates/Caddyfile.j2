@@ -7,6 +7,12 @@
 
 {
     email admin@wallandshadow.com
+
+    # Certificates and the ACME account live on the persistent volume, so a
+    # rebuilt or rescaled server keeps them (docs/SERVER_OPERATIONS.md).
+    storage file_system {
+        root {{ caddy_storage_dir }}
+    }
 }
 
 # Drop scanner traffic on :80 with unknown Host headers. Named-site blocks

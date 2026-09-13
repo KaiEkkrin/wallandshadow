@@ -22,10 +22,28 @@
 - name: Provision Wall & Shadow VPS
   hosts: vps
   become: true
+  # Run notified handlers even when a later task fails. Otherwise a run that
+  # fails after, say, `Deploy Caddyfile` drops the pending reload, and the
+  # re-run sees no change and never reloads: on a rebuilt server that leaves
+  # Caddy on the package's default config, with no HTTPS.
+  force_handlers: true
   vars_files:
     - vars/main.yml
 
   tasks:
+    # ── Preconditions ───────────────────────────────────────────────────────
+
+    - name: Require the persistent volume
+      ansible.builtin.assert:
+        that:
+          - volume_id is defined
+          - volume_id | string | length > 0
+        fail_msg: >-
+          volume_id is required. PostgreSQL's data, the secrets file and
+          Caddy's certificates live on the Hetzner volume; the provision
+          workflow passes its ID from OpenTofu.
+        quiet: true
+
     # ── System packages ─────────────────────────────────────────────────────
 
     - name: Install prerequisite packages
@@ -259,16 +277,17 @@
         line: "PasswordAuthentication no"
       notify: Restart sshd
 
-    # ── Volume mount (PostgreSQL data) ──────────────────────────────────────
-    # Volume is provisioned by OpenTofu. volume_id is passed as an extra-var.
-    # Device path uses the stable by-id name that survives reboots.
+    # ── Persistent volume ───────────────────────────────────────────────────
+    # Provisioned by OpenTofu; volume_id is passed as an extra-var. The device
+    # path uses the stable by-id name that survives reboots. Everything that
+    # must survive a server rebuild lives here: see the layout in
+    # vars/main.yml and docs/SERVER_OPERATIONS.md.
 
     - name: Create volume mount point
       ansible.builtin.file:
         path: "{{ pgdata_mount }}"
         state: directory
-        mode: "0700"
-      when: volume_id is defined and volume_id != ''
+        mode: "0755"
 
     - name: Mount volume at {{ pgdata_mount }}
       ansible.posix.mount:
@@ -277,38 +296,93 @@
         fstype: ext4
         opts: discard,nofail,defaults
         state: mounted
-      when: volume_id is defined and volume_id != ''
 
-    - name: Set volume ownership for postgres
+    # The volume root is shared, so root owns it. PostgreSQL only needs to own
+    # its own data directory, and Caddy must be able to reach its storage.
+    - name: Set volume root ownership
       ansible.builtin.file:
         path: "{{ pgdata_mount }}"
-        owner: postgres
-        group: postgres
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create the secrets directory on the volume
+      ansible.builtin.file:
+        path: "{{ secrets_file | dirname }}"
+        state: directory
+        owner: root
+        group: root
         mode: "0700"
-      when: volume_id is defined and volume_id != ''
+
+    # The mount is `nofail`, so the server still boots (and stays reachable
+    # over SSH) without the volume. These drop-ins stop PostgreSQL and Caddy
+    # from starting on the bare mount point in that case; Caddy would
+    # otherwise request fresh certificates onto the root disk.
+    - name: Create drop-in directories for services that keep state on the volume
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ item }}.d"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - caddy.service
+        - postgresql@.service
+
+    - name: Make services that keep state on the volume require it
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item }}.d/wallandshadow-volume.conf"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible (wallandshadow playbook).
+          [Unit]
+          RequiresMountsFor={{ pgdata_mount }}
+      loop:
+        - caddy.service
+        - postgresql@.service
+      notify: Reload systemd
 
     # ── Secret generation ───────────────────────────────────────────────────
-    # Idempotent across provision runs: the VPS's existing secrets file is the
-    # source of truth. We slurp it, parse out POSTGRES_PASSWORD and JWT_SECRET,
-    # and reuse those values. Only on a true first provision (file absent) do
-    # we generate new ones via the local password lookup.
+    # Idempotent across provision runs and server rebuilds: the secrets file
+    # on the volume is the source of truth. We slurp it, parse out
+    # POSTGRES_PASSWORD and JWT_SECRET, and reuse those values. Only on a true
+    # first provision (no file anywhere) do we generate new ones via the local
+    # password lookup.
     #
     # Why this matters: rotating JWT_SECRET invalidates every existing session
     # token (forced re-login); rotating pg_password leaves the currently-
     # running container with a stale DATABASE_URL until the next deploy
-    # refreshes its env-file. The local `secrets/` cache used to provide
-    # idempotency, but on ephemeral CI runners it's cold every run.
+    # refreshes its env-file.
+    #
+    # The file used to live at legacy_secrets_file, on the root disk, where a
+    # rebuild lost it. If only that copy exists it is read here, and deleted
+    # later in the play, once the backup script that reads it has been
+    # re-rendered.
 
-    - name: Check whether secrets file already exists on VPS
+    - name: Check for the secrets file on the volume
       ansible.builtin.stat:
         path: "{{ secrets_file }}"
-      register: existing_secrets_stat
+      register: secrets_on_volume
+
+    - name: Check for a secrets file at the legacy root-disk location
+      ansible.builtin.stat:
+        path: "{{ legacy_secrets_file }}"
+      register: legacy_secrets
+
+    - name: Choose which existing secrets file to read
+      ansible.builtin.set_fact:
+        existing_secrets_path: >-
+          {{ secrets_file if secrets_on_volume.stat.exists
+             else legacy_secrets_file if legacy_secrets.stat.exists
+             else '' }}
 
     - name: Read existing secrets file from VPS
       ansible.builtin.slurp:
-        src: "{{ secrets_file }}"
+        src: "{{ existing_secrets_path }}"
       register: existing_secrets_slurp
-      when: existing_secrets_stat.stat.exists
+      when: existing_secrets_path | length > 0
 
     - name: Parse existing POSTGRES_PASSWORD / JWT_SECRET
       ansible.builtin.set_fact:
@@ -325,7 +399,7 @@
               | regex_findall('^JWT_SECRET=(.+)$', multiline=True)
               + [''])
              | first }}
-      when: existing_secrets_stat.stat.exists
+      when: existing_secrets_path | length > 0
 
     - name: Choose PostgreSQL password (reuse if present, else generate)
       ansible.builtin.set_fact:
@@ -362,22 +436,20 @@
         group: root
 
     # ── PostgreSQL data directory on volume ─────────────────────────────────
-    # If a volume is attached, move the PostgreSQL data directory to it.
-    # Idempotent: skips if data already exists on the volume.
+    # First provision: move the cluster apt created onto the volume. On a
+    # rebuilt server the volume already holds the real data, and the cluster
+    # apt has just created on the root disk is empty and must not be used.
 
     - name: Check if PostgreSQL data exists on volume
       ansible.builtin.stat:
         path: "{{ pgdata_mount }}/main/PG_VERSION"
       register: pgdata_on_volume
-      when: volume_id is defined and volume_id != ''
 
     - name: Stop PostgreSQL for data migration to volume
       ansible.builtin.systemd:
         name: postgresql
         state: stopped
-      when:
-        - volume_id is defined and volume_id != ''
-        - not (pgdata_on_volume.stat.exists | default(false))
+      when: not pgdata_on_volume.stat.exists
 
     - name: Copy PostgreSQL data to volume
       ansible.builtin.command:
@@ -386,9 +458,7 @@
       # on the one-shot migration to a fresh volume — every execution copies
       # data, hence always changed.
       changed_when: true
-      when:
-        - volume_id is defined and volume_id != ''
-        - not (pgdata_on_volume.stat.exists | default(false))
+      when: not pgdata_on_volume.stat.exists
 
     - name: Set volume data directory ownership
       ansible.builtin.file:
@@ -396,23 +466,55 @@
         owner: postgres
         group: postgres
         recurse: true
-      when: volume_id is defined and volume_id != ''
 
     - name: Point PostgreSQL data_directory to volume
       ansible.builtin.lineinfile:
         path: "/etc/postgresql/{{ pg_version }}/main/postgresql.conf"
         regexp: "^data_directory"
         line: "data_directory = '{{ pgdata_mount }}/main'"
-      notify: Restart PostgreSQL
-      when: volume_id is defined and volume_id != ''
+      register: pg_data_directory
 
-    - name: Start PostgreSQL after data migration
+    # Restart here rather than from a handler. Handlers run at the end of the
+    # play, so on a rebuilt server the role and database tasks below would
+    # configure the empty cluster apt created on the root disk, and their
+    # changes would never reach the real data on the volume.
+    - name: Restart PostgreSQL onto the volume  # noqa: no-handler
       ansible.builtin.systemd:
         name: postgresql
+        state: restarted
+        daemon_reload: true
+      when: pg_data_directory is changed
+
+    # The umbrella `postgresql` oneshot stays "active" when the instance failed
+    # (e.g. after a boot without the volume, which the RequiresMountsFor
+    # drop-in above makes a designed state), so starting it would be a no-op.
+    - name: Ensure PostgreSQL is running
+      ansible.builtin.systemd:
+        name: "postgresql@{{ pg_version }}-main"
         state: started
-      when:
-        - volume_id is defined and volume_id != ''
-        - not (pgdata_on_volume.stat.exists | default(false))
+        daemon_reload: true
+
+    - name: Wait for PostgreSQL to accept connections
+      ansible.builtin.wait_for:
+        path: /var/run/postgresql/.s.PGSQL.5432
+        timeout: 60
+
+    - name: Read the running cluster's data directory
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_query:
+        query: SHOW data_directory
+      register: pg_running_data_directory
+
+    - name: Refuse to touch roles or databases unless PostgreSQL is serving the volume
+      ansible.builtin.assert:
+        that:
+          - pg_running_data_directory.query_result[0].data_directory == pgdata_mount ~ '/main'
+        fail_msg: >-
+          PostgreSQL is serving
+          {{ pg_running_data_directory.query_result[0].data_directory }}, not
+          {{ pgdata_mount }}/main. Stopping before any role or database changes.
+        quiet: true
 
     # ── PostgreSQL configuration ────────────────────────────────────────────
 
@@ -506,6 +608,46 @@
         daemon_reload: true
 
     # ── Caddy configuration ─────────────────────────────────────────────────
+
+    # Caddy keeps its certificates and ACME account on the volume (the
+    # Caddyfile's `storage` option), so a rebuilt server reuses them rather
+    # than requesting new ones. They used to live in Caddy's default data
+    # directory on the root disk; the first run after that change copies them
+    # across. locks/ only holds in-flight issuance locks, so it stays behind.
+    - name: Create Caddy's storage directory on the volume
+      ansible.builtin.file:
+        path: "{{ caddy_storage_dir }}"
+        state: directory
+        owner: caddy
+        group: caddy
+        mode: "0700"
+
+    - name: Check for certificates in Caddy's storage on the volume
+      ansible.builtin.stat:
+        path: "{{ caddy_storage_dir }}/certificates"
+      register: caddy_storage_certificates
+
+    - name: Check for certificates in Caddy's old data directory
+      ansible.builtin.stat:
+        path: "{{ caddy_legacy_data_dir }}/certificates"
+      register: caddy_legacy_certificates
+
+    - name: Copy Caddy's certificates and ACME account onto the volume
+      ansible.builtin.command:
+        cmd: "rsync -a --exclude=locks/ {{ caddy_legacy_data_dir }}/ {{ caddy_storage_dir }}/"
+      # Gated on the volume copy being absent, so this only runs once, and
+      # every run copies, hence always changed.
+      changed_when: true
+      when:
+        - not caddy_storage_certificates.stat.exists
+        - caddy_legacy_certificates.stat.exists
+
+    - name: Set Caddy storage ownership
+      ansible.builtin.file:
+        path: "{{ caddy_storage_dir }}"
+        owner: caddy
+        group: caddy
+        recurse: true
 
     - name: Deploy Caddyfile
       ansible.builtin.template:
@@ -679,6 +821,16 @@
         owner: root
         group: root
 
+    # The backup script just re-rendered above already reads secrets_file
+    # (the volume path); the one installed on the server before this run
+    # still read the legacy path. Only now is it safe to remove the legacy
+    # file — deleting it any earlier would break nightly backups if the run
+    # failed somewhere in between.
+    - name: Remove the legacy secrets file from the root disk
+      ansible.builtin.file:
+        path: "{{ legacy_secrets_file }}"
+        state: absent
+
     - name: Schedule nightly backup
       ansible.builtin.cron:
         name: "PostgreSQL backup to S3"
@@ -714,9 +866,9 @@
           ║  Provisioning complete                                          ║
           ╚══════════════════════════════════════════════════════════════════╝
 
-          Secrets file: {{ secrets_file }}
-          Deploy workflows fetch DATABASE_URL, JWT_SECRET, and S3 creds
-          from the VPS via SSH — no manual secret copying needed.
+          Secrets file: {{ secrets_file }} (on the persistent volume)
+          The application env-files in {{ secrets_dir }} are rendered from
+          it; deploy workflows only flip the image tag.
 
   # ── Handlers ──────────────────────────────────────────────────────────────
 
