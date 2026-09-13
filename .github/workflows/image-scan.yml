@@ -1,0 +1,71 @@
+# =============================================================================
+# Image scan — a weekly Grype scan of the production image. It builds the
+# image (not pushed, no secrets) and reports fixable HIGH/CRITICAL
+# vulnerabilities to the Security tab rather than failing the run: a newly
+# published vulnerability arrives without a commit of ours.
+#
+# It is a workflow of its own because the scanner needs an entry on the
+# repository's Actions allowlist, and GitHub rejects a whole workflow at
+# startup when one of its actions isn't allowed. Kept apart, a missing entry
+# stops only this scan, never the early-warning runs.
+#
+# GitHub disables scheduled workflows in public repositories after 60 days
+# without repository activity. If the weekly runs stop, re-enable this
+# workflow from the Actions tab.
+# =============================================================================
+name: Image scan
+
+on:
+  schedule:
+    - cron: "53 5 * * 1"   # Mondays 05:53 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  image-scan:
+    name: Production image vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write   # the SARIF upload
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Placeholder build args, as in ci.yml's BuildKit check: no secrets.
+      - name: Build the production image (not pushed)
+        run: |
+          docker build --pull -t wallandshadow:scan \
+            --build-arg VITE_DEPLOY_ENV=test \
+            --build-arg VITE_OIDC_ISSUER=https://oidc.invalid \
+            --build-arg VITE_OIDC_CLIENT_ID=weekly-scan \
+            --build-arg GIT_COMMIT="$GITHUB_SHA" \
+            was-web/
+
+      # Needs `anchore/scan-action@*` on the Actions allowlist (Settings → Actions).
+      - name: Scan with Grype
+        id: scan
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: wallandshadow:scan
+          only-fixed: true
+          fail-build: false
+          output-format: sarif
+
+      # Grype's SARIF has every fixable finding; keep HIGH and CRITICAL,
+      # which it marks as level "error".
+      - name: Keep only HIGH and CRITICAL
+        env:
+          SARIF_IN: ${{ steps.scan.outputs.sarif }}
+        run: |
+          jq '.runs |= map(.results |= map(select(.level == "error")))' "$SARIF_IN" > grype.sarif
+          echo "Fixable HIGH/CRITICAL findings: $(jq '[.runs[].results[]] | length' grype.sarif)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload to code scanning
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: grype.sarif
+          category: production-image

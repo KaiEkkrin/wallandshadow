@@ -254,6 +254,26 @@ restart the systemd unit. Both call `ci.yml` with `force_all: true` first, so
 every verification runs before anything ships — including on a manual production
 dispatch from a ref that branch protection never saw.
 
+`early-warning.yml` runs weekly (and by hand). It runs the whole of `ci.yml`
+with `force_all: true` and builds the dev container on a fresh runner. It
+catches breakage that arrives without a commit of ours: a download the dev
+container needs disappearing or changing, or CI failing on something that
+floats (the lockfile installs exactly, but the node, postgres and caddy
+images, the runner image and the unpinned `pip install ansible ansible-lint`
+move on their own). Pull requests that change `.devcontainer/` get the dev
+container build too.
+
+`image-scan.yml` also runs weekly (and by hand). It scans the production image
+with Grype and reports fixable HIGH and CRITICAL vulnerabilities to the
+Security tab, so a newly published vulnerability shows up without a commit of
+ours. It is a separate workflow because `anchore/scan-action` needs an entry on
+the repository's Actions allowlist, and GitHub rejects a whole workflow at
+startup when one of its actions isn't allowed: kept apart, a missing entry
+stops only the scan.
+
+GitHub disables scheduled workflows in public repositories after 60 days
+without activity; re-enable them from the Actions tab if the weekly runs stop.
+
 ### Hosting (Hetzner Cloud)
 
 | Resource               | Spec            | Cost (approx.)    |
