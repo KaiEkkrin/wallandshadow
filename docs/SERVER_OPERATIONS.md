@@ -230,7 +230,11 @@ the copied certificates are the ones in use.
   ```bash
   rm /root/secrets.pre-volume /root/caddy-data.pre-volume.tgz /root/wallandshadow_test-*.sql.gz
   rm -r /var/lib/caddy/.local/share/caddy   # Caddy no longer reads it
+  rm /etc/wallandshadow/secrets.bak.*       # superseded secrets from an earlier rotate_secrets.sh run
   ```
+
+  `rotate_secrets.sh` now keeps its backups next to the secrets file on the
+  volume, as `/mnt/pgdata/wallandshadow/secrets.bak.*`.
 
 ## Rescaling
 
