@@ -37,8 +37,8 @@
     "preview": "vite preview",
     "test": "vitest --config ./unit/vitest.config.ts run",
     "test:unit": "vitest --config ./unit/vitest.config.ts",
-    "test:server": "yarn workspace @wallandshadow/server test",
-    "test:shared": "yarn workspace @wallandshadow/shared test",
+    "test:server": "npm -w @wallandshadow/server run test",
+    "test:shared": "npm -w @wallandshadow/shared run test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui-host=0.0.0.0 --ui-port=8444",
     "test:e2e:debug": "playwright test --debug",
@@ -46,17 +46,14 @@
     "test:e2e:report": "playwright show-report --host 0.0.0.0 e2e/test-results/html",
     "lint": "eslint src packages/shared/src"
   },
-  "resolutions": {
-    "vite": "^7.3.6",
-    "vite/esbuild": "^0.28.1"
+  "overrides": {
+    "vite": {
+      "esbuild": "^0.28.1"
+    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.59.1",
-    "@testing-library/dom": "^9.3.0",
-    "@testing-library/jest-dom": "^6.0.0",
-    "@testing-library/react": "^14.0.0",
-    "@testing-library/user-event": "^14.0.0",
     "@types/blueimp-md5": "^2.18.2",
     "@types/chroma-js": "^2.0.0",
     "@types/node": "^22.0.0",
@@ -76,5 +73,9 @@
     "typescript-eslint": "^8.50.0",
     "vite": "^7.3.6",
     "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "bcrypt": true
   }
 }

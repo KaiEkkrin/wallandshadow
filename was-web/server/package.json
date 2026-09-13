@@ -14,7 +14,8 @@
     "db:push": "drizzle-kit push",
     "db:push:test": "DATABASE_URL=postgresql://was:wasdev@localhost:5432/wallandshadow_test drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1041.0",
