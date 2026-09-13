@@ -1,6 +1,6 @@
 # Wall & Shadow Dev Container
 
-Complete development environment for Wall & Shadow with Node.js 22, PostgreSQL 17, RustFS, and optional GPU support for Playwright/WebGL tests. Also includes a full terminal toolchain: neovim (LazyVim), zellij, ripgrep, fd, fzf, lazygit, Rust, and tree-sitter. Editor config is synced from [KaiEkkrin/dot-config](https://github.com/KaiEkkrin/dot-config) on first launch.
+Complete development environment for Wall & Shadow with Node.js 24, PostgreSQL 17, RustFS, and optional GPU support for Playwright/WebGL tests. Also includes a full terminal toolchain: neovim (LazyVim), zellij, ripgrep, fd, fzf, lazygit, Rust, and tree-sitter. Editor config is synced from [KaiEkkrin/dot-config](https://github.com/KaiEkkrin/dot-config) on first launch.
 
 PostgreSQL and RustFS start automatically when the container starts — no external Compose setup needed.
 
@@ -46,7 +46,7 @@ devcontainer build --workspace-folder .
 devcontainer up --workspace-folder .
 ```
 
-On first launch this runs the post-create script: installs yarn dependencies, initialises PostgreSQL, clones dot-config into `~/.config`, etc. PostgreSQL and RustFS start automatically on every subsequent launch.
+On first launch this runs the post-create script: installs npm dependencies (`npm ci`), initialises PostgreSQL, clones dot-config into `~/.config`, etc. PostgreSQL and RustFS start automatically on every subsequent launch.
 
 ### Connect a terminal
 
@@ -147,10 +147,10 @@ PostgreSQL and RustFS start automatically. No setup needed.
 cd was-web
 
 # Terminal 1: Start the Hono API server
-cd server && yarn dev
+cd server && npm run dev
 
 # Terminal 2: Start the Vite dev server
-yarn dev:vite
+npm run dev:vite
 ```
 
 Open **http://localhost:5000** — the Vite dev server proxies `/api/*` and `/ws` to the Hono server at `localhost:3000`.
@@ -218,8 +218,8 @@ groups   # should include video and render
 
 | Service           | URL / Address                  | Credentials                                          |
 | ----------------- | ------------------------------ | ---------------------------------------------------- |
-| **Hono API**      | http://localhost:3000          | start manually: `cd was-web/server && yarn dev`      |
-| **Vite dev**      | http://localhost:5000          | start manually: `cd was-web && yarn dev:vite`        |
+| **Hono API**      | http://localhost:3000          | start manually: `cd was-web/server && npm run dev`   |
+| **Vite dev**      | http://localhost:5000          | start manually: `cd was-web && npm run dev:vite`     |
 | **PostgreSQL**    | localhost:5432                 | user: `was`, pass: `wasdev`, db: `wallandshadow`     |
 | **RustFS Console** | http://localhost:9001/rustfs/console/ | `wasdev` / `wasdevpass`                       |
 | **RustFS S3 API** | http://localhost:9000          | —                                                    |
@@ -245,28 +245,28 @@ psql "$DATABASE_URL"
 cd was-web
 
 # Unit tests (watch mode)
-yarn test:unit
+npm run test:unit
 
 # Server integration tests (uses wallandshadow_test database)
-yarn test:server
+npm run test:server
 
 # E2E tests (requires Hono + Vite dev servers running)
-yarn test:e2e
+npm run test:e2e
 ```
 
 After changing the database schema (`was-web/server/src/db/schema.ts`), push to both databases:
 
 ```bash
 cd was-web/server
-yarn db:push            # dev database
-yarn db:push:test       # test database
+npm run db:push            # dev database
+npm run db:push:test       # test database
 ```
 
 ### Building for Production
 
 ```bash
 cd was-web
-yarn build
+npm run build
 ```
 
 Creates an optimised production build in `was-web/build/`.
@@ -275,7 +275,7 @@ Creates an optimised production build in `was-web/build/`.
 
 #### React App
 
-1. Start both servers (terminal 1: `cd was-web/server && yarn dev`, terminal 2: `cd was-web && yarn dev:vite`)
+1. Start both servers (terminal 1: `cd was-web/server && npm run dev`, terminal 2: `cd was-web && npm run dev:vite`)
 2. Press `F5` in VS Code → select **"Launch Chrome"**
 3. Set breakpoints in `was-web/src/`
 
@@ -318,7 +318,7 @@ create it manually (one-time):
 ```bash
 psql -h localhost -U postgres -c "CREATE DATABASE wallandshadow_test OWNER was;"
 cd was-web/server
-yarn db:push:test
+npm run db:push:test
 ```
 
 ### Images Missing After the MinIO → RustFS Switch
@@ -366,7 +366,7 @@ sudo ausearch -m AVC -ts recent
 ```bash
 cd was-web
 rm -rf node_modules
-yarn install
+npm install
 ```
 
 ### GPU Not Detected
@@ -417,6 +417,6 @@ OR via Remote Explorer:
 - [VS Code Dev Containers Documentation](https://code.visualstudio.com/docs/devcontainers/containers)
 - [Podman Documentation](https://docs.podman.io/)
 - [Podman Rootless Tutorial](https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md)
-- [Node.js 22 Documentation](https://nodejs.org/docs/latest-v22.x/api/)
+- [Node.js 24 Documentation](https://nodejs.org/docs/latest-v24.x/api/)
 - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 - [AMD ROCm on Linux](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/)

@@ -138,7 +138,7 @@ TypeScript has no formal EOL policy. Keep reasonably current to benefit from typ
 
 2. Run type checking:
    ```bash
-   yarn typecheck
+   npm run typecheck
    ```
 
 3. Fix any new type errors
@@ -175,7 +175,7 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 | Priority | Package | Target | Timeline |
 |----------|---------|--------|----------|
 | 1 | React Compiler lint rules | 4 rules re-enabled | ⬜ 33 violations across 24 files — see the ESLint section |
-| 2 | license-checker-rseidelsohn | 5.x | ⛔ Blocked — requires Node >= 24; no longer security-driven, see below |
+| — | license-checker-rseidelsohn | 5.x | ✅ Done 2026-09-13 |
 | 3 | Three.js | Latest | ✅ Done to 0.183 (2026-03-01); check again in ~3 months |
 | 4 | TypeScript | 6.x | Wait for stable release (beta as of 2026-03-01) |
 | 5 | drizzle-kit + drizzle-orm | 1.0.0 stable | ⛔ Blocked — see security note below |
@@ -184,31 +184,20 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 
 ---
 
-## license-checker-rseidelsohn 4 → 5
+## license-checker-rseidelsohn 4 → 5 — ✅ done (2026-09-13)
 
-**Current:** ^4.4.2
-**Target:** ^5.0.1
-**Timeline:** Blocked on a Node 22 → 24 upgrade
+**Current:** ^5.0.1
 
-**No longer a security item (2026-09-12).** 4.x reaches `brace-expansion` through
-`read-installed-packages > read-package-json > glob > minimatch`, which was the last
-`yarn audit` finding while only brace-expansion 5.x was patched for CVE-2026-14257
-(unbounded expansion → OOM). brace-expansion 2.1.4 (2026-07-30) backports the fix to
-the 2.x line, and the lockfile now resolves it, so `yarn audit` is clean. 5.0.1 still
-drops that whole chain in favour of `@npmcli/arborist`; take it as ordinary upkeep.
-
-**⛔ Blocker:** `license-checker-rseidelsohn@5` declares `engines: { node: ">=24", npm:
-">=11" }`. This project is on Node 22 everywhere — the devcontainer, `node-version: 22`
-in `.github/workflows/ci.yml`, and `node:22-slim` in `was-web/Dockerfile` — so the
-install fails outright. There is no 5.x release that supports Node 22.
-
-**Exposure:** low. The package is a devDependency used only by the build-time licence
-scan in `was-web/vite-plugins/third-party-notices.ts`, over the repo's own dependency
-tree. The DoS needs an attacker-supplied glob pattern, which never occurs here.
-
-When the project moves to Node 24 (devcontainer, CI and Dockerfile together), bump this
-to ^5.0.1, then run `yarn build` — the plugin fails the build loudly if the scan breaks,
-so a successful build is the verification.
+Done as part of the Node 24 / npm migration: `license-checker-rseidelsohn@5` declares
+`engines: { node: ">=24", npm: ">=11" }`, and the devcontainer, CI and
+`was-web/Dockerfile` moved to Node 24 together, so the blocker that kept this on 4.x is
+gone. 5.0.1 reads the dependency tree through `@npmcli/arborist` instead of the
+`read-installed-packages > read-package-json > glob > minimatch` chain that reached
+`brace-expansion` on 4.x — already not a security item since 2026-09-12, when
+brace-expansion 2.1.4 backported the CVE-2026-14257 fix to the 2.x line the chain
+resolved to. `npm audit --omit=dev` is clean; a full `npm audit` still reports moderate
+esbuild advisories, all from dev-only tooling: drizzle-kit's `@esbuild-kit` chain (see
+the drizzle-kit section below) and tsup's bundled esbuild.
 
 ---
 
@@ -222,10 +211,10 @@ so a successful build is the verification.
 
 ### Security context: GHSA-67mh-4wv8-2f99
 
-esbuild 0.18.20 is still in the tree as a transitive dependency of drizzle-kit. As of
-the 2026-07-25 audit `yarn audit` no longer reports it (GHSA-67mh-4wv8-2f99 — CORS
-vulnerability in esbuild's dev server, fixed in 0.25.0), but the old version is still
-there, so the upgrade below remains worth doing on its own merits:
+esbuild 0.18.20 is still in the tree as a transitive dependency of drizzle-kit, and a
+full `npm audit` reports it (GHSA-67mh-4wv8-2f99 — CORS vulnerability in esbuild's dev
+server, fixed in 0.25.0). drizzle-kit is a devDependency, so `npm audit --omit=dev`
+stays clean, but the upgrade below remains worth doing on its own merits:
 
 ```
 drizzle-kit@0.31.10
@@ -245,11 +234,11 @@ drizzle-kit@0.31.10
    "drizzle-kit": "^1.0.0",
    "drizzle-orm": "^1.0.0"
    ```
-2. Run `yarn install`
+2. Run `npm install`
 3. Review the [drizzle v1 upgrade guide](https://orm.drizzle.team/docs/upgrade-v1) for any schema API changes
-4. Run `yarn db:push` and `yarn db:push:test` to verify schema commands work
-5. Run `yarn test:server` to confirm integration tests pass
-6. Verify `yarn audit` no longer reports the esbuild vulnerability
+4. Run `npm run db:push` and `npm run db:push:test` to verify schema commands work
+5. Run `npm run test:server` to confirm integration tests pass
+6. Verify `npm audit` no longer reports the esbuild vulnerability
 
 ---
 
@@ -260,10 +249,10 @@ drizzle-kit@0.31.10
    - [Vite Releases](https://github.com/vitejs/vite/releases)
 
 2. **Periodic checks:**
-   - Monthly: Check for security advisories (`yarn audit`)
+   - Monthly: Check for security advisories (`npm audit`)
    - Quarterly: Review major dependency versions
    - Annually: Full dependency audit and update cycle
 
 3. **Use dependabot or similar:**
    - Consider enabling GitHub Dependabot for automated PRs
-   - Or use `yarn upgrade-interactive` for manual reviews
+   - Or use `npm outdated`, then `npm update`, for manual reviews

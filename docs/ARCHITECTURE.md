@@ -232,7 +232,7 @@ on: pull_request          (always runs)
 
 jobs:
   changes      always      →  web / server / dockerfile / workflows / ansible / infra booleans
-  web          if web      →  yarn build · yarn lint · yarn test · yarn test:shared
+  web          if web      →  npm run build · npm run lint · npm test · npm run test:shared
   server       if server   →  tsc --noEmit · lint · drizzle-kit push · test
                               (against real PostgreSQL 17 + RustFS service containers)
   dockerfile   if docker   →  hadolint · BuildKit build checks · shellcheck entrypoint

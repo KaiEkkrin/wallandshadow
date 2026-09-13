@@ -29,13 +29,20 @@ The easiest way to get started is with the VS Code dev container.
 
    ```bash
    cd was-web/server
-   yarn db:push       # dev database
-   yarn db:push:test  # test database
+   npm run db:push       # dev database
+   npm run db:push:test  # test database
    ```
 
 6. Start the dev servers (see [Running the dev servers](#running-the-dev-servers) below).
 
 7. Open **http://localhost:5000** — register a new account or sign in via Zitadel OIDC.
+
+If you have an existing checkout from before the npm migration, rebuild the dev
+container for Node 24 after pulling: `devcontainer up --workspace-folder . --remove-existing-container`
+(or **Dev Containers: Rebuild Container** in VS Code). Its post-create step runs
+`npm ci`, which also clears the Yarn-era `node_modules`. Don't run `npm ci` in the
+old Node 22 container first: it warns `EBADENGINE`, because
+`license-checker-rseidelsohn` 5 needs Node >= 24.
 
 See [.devcontainer/README.md](../.devcontainer/README.md) for comprehensive dev
 container documentation — the terminal-only (`devcontainer` CLI) workflow, GPU
@@ -51,10 +58,10 @@ without restarting the other:
 cd was-web
 
 # Terminal 1: Hono API server
-cd server && yarn dev
+cd server && npm run dev
 
 # Terminal 2: Vite dev server
-yarn dev:vite
+npm run dev:vite
 ```
 
 The Hono server runs on **http://localhost:3000**. The Vite dev server runs on
@@ -67,12 +74,12 @@ re-apply it to both databases:
 
 ```bash
 cd was-web/server
-yarn db:push       # dev database
-yarn db:push:test  # test database
+npm run db:push       # dev database
+npm run db:push:test  # test database
 ```
 
-`yarn db:generate` produces a migration SQL file from schema drift;
-`yarn db:migrate` runs pending migrations in production.
+`npm run db:generate` produces a migration SQL file from schema drift;
+`npm run db:migrate` runs pending migrations in production.
 
 ## Resetting the databases
 
@@ -85,7 +92,7 @@ re-apply the schema:
 ```bash
 psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS wallandshadow;"
 psql -h localhost -U postgres -c "CREATE DATABASE wallandshadow OWNER was;"
-cd was-web/server && yarn db:push
+cd was-web/server && npm run db:push
 ```
 
 **Test database:**
@@ -93,11 +100,11 @@ cd was-web/server && yarn db:push
 ```bash
 psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS wallandshadow_test;"
 psql -h localhost -U postgres -c "CREATE DATABASE wallandshadow_test OWNER was;"
-cd was-web/server && yarn db:push:test
+cd was-web/server && npm run db:push:test
 ```
 
 After a dev database reset all local app data (adventures, maps, users) is gone.
-After a test database reset the next `yarn test:server` run will recreate
+After a test database reset the next `npm run test:server` run will recreate
 everything it needs.
 
 ## Auth modes
@@ -154,38 +161,38 @@ Once one admin exists, further tier changes are made through the admin UI.
 cd was-web
 
 # Client unit tests (watch mode)
-yarn test:unit
+npm run test:unit
 
 # Hono server integration tests (requires PostgreSQL + RustFS running)
-yarn test:server
+npm run test:server
 
 # End-to-end tests (requires Hono server + Vite dev server running)
-yarn test:e2e
+npm run test:e2e
 
 # E2E in interactive UI mode (opens at http://localhost:8444)
-yarn test:e2e:ui
+npm run test:e2e:ui
 
 # Run a single test on a single browser
-yarn test:e2e --project chromium-desktop --grep "create account"
+npm run test:e2e -- --project chromium-desktop --grep "create account"
 ```
 
 To run server tests with lint and type-check, from `was-web/server/`:
 
 ```bash
-yarn tsc --noEmit
-yarn lint
-yarn test
+npm run typecheck
+npm run lint
+npm test
 ```
 
 ## Building for production
 
 ```bash
 cd was-web
-yarn build              # web client → was-web/build/
+npm run build              # web client → was-web/build/
 
 cd server
-yarn build              # Hono server → was-web/server/dist/
+npm run build              # Hono server → was-web/server/dist/
 ```
 
-Run `yarn lint` in both `was-web/` and `was-web/server/` before opening a pull
+Run `npm run lint` in both `was-web/` and `was-web/server/` before opening a pull
 request — see [CONTRIBUTING.md](../CONTRIBUTING.md).
