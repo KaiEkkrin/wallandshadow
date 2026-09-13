@@ -93,8 +93,6 @@ The application's `DATABASE_URL` and `JWT_SECRET` are **not** GitHub Secrets. An
 4. On first run: copy the displayed `VPS_IP` to GitHub Secrets, and the displayed `VPS_KNOWN_HOST` block to a secret of that name in the `hetzner` environment.
 5. Point your DNS records at the VPS addresses (see below — only needed once; both addresses are reserved).
 
-For a brand-new project, delete the `import` block in `infra/network.tf` first. It adopts this project's existing IPv6 address and would fail anywhere else.
-
 Every run is safe to repeat. OpenTofu and Ansible are idempotent, and the workflow refuses any plan that deletes or replaces a resource unless you tick **allow_replace**. Rescaling, rebuilding, key rotation and restores are in [SERVER_OPERATIONS.md](SERVER_OPERATIONS.md).
 
 ## DNS records
