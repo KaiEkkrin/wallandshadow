@@ -227,7 +227,7 @@ of them with `if: always()` and fails only on `failure` or `cancelled` — a
 skipped job counts as a pass.
 
 ```
-on: pull_request → main   (always runs)
+on: pull_request          (always runs)
     workflow_call         (force_all: true — used by the deploy workflows)
 
 jobs:
