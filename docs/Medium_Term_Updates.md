@@ -234,6 +234,39 @@ direct replacement, added in Node 20.11 / 21.2).
 usual two-major support window), so taking 8 now rather than waiting avoids a
 second migration stacked on top of whatever 9 changes next.
 
+### `legacy.inconsistentCjsInterop` — why it is set
+
+`vite.config.ts` sets `legacy: { inconsistentCjsInterop: true }`. Without it the
+app renders a blank page — in dev *and* in a production build — with
+`TypeError: fluent is not a function` from the first `fluent(...)` call it
+reaches.
+
+Rolldown resolves the default import of a CommonJS dependency differently from
+esbuild when that dependency sets `__esModule`. `fluent-iterable` is compiled
+CJS that does the correct thing — `__esModule: true` plus an `exports.default`
+that is the function — and Rolldown hands back the namespace object instead of
+`.default`, so calling it throws. This is a known Rolldown interop bug class
+(rolldown#10308, #10519, #10800), not intended behaviour: Vite 8's own docs for
+the flag say it aligns interop *to* esbuild, and esbuild got this right under
+Vite 7.
+
+The irony is worth recording, because it is the opposite of the obvious guess:
+the two cruder CJS dependencies are fine. `dayjs` and `blueimp-md5` are bare
+`module.exports = fn` with no `__esModule`, so Rolldown's interop assigns
+`default = module.exports` and they work. Only the well-formed package breaks.
+`chroma-js` is real ESM and was never at risk.
+
+Verified by probing all four in a browser under Vite 8, and by the e2e suite:
+120 passed / 5 skipped with the flag, every test failing without it.
+
+**When this can be removed**: when the Rolldown bug is fixed, or when
+`fluent-iterable` leaves the tree — tracked in
+[#401](https://github.com/KaiEkkrin/wallandshadow/issues/401). Re-test by
+removing the flag, clearing
+`node_modules/.vite`, and running the e2e suite; a unit-test or `vite build`
+pass proves nothing here, because the failure is a runtime interop error that
+compiles perfectly happily.
+
 ### References
 
 - [Vite 8 announcement](https://vite.dev/blog/announcing-vite8)

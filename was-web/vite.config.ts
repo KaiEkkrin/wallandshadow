@@ -145,6 +145,15 @@ export default defineConfig({
         : ''
     ),
   },
+  legacy: {
+    // Rolldown resolves a CJS dependency's default import differently from
+    // esbuild when the dependency sets __esModule. fluent-iterable does set it
+    // (correctly), so without this the default import is the namespace object
+    // rather than the function, every `fluent(...)` call throws, and the app
+    // renders blank in both dev and production. Removable once the Rolldown bug
+    // is fixed or fluent-iterable is gone — see docs/Medium_Term_Updates.md.
+    inconsistentCjsInterop: true,
+  },
   server: {
     port: 5000,
     // Force IPv4 — VS Code port forwarding doesn't reliably handle IPv6
