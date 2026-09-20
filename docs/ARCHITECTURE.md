@@ -274,6 +274,9 @@ stops only the scan.
 GitHub disables scheduled workflows in public repositories after 60 days
 without activity; re-enable them from the Actions tab if the weekly runs stop.
 
+Dependabot opens monthly version-update PRs (`.github/dependabot.yml`);
+security updates arrive as advisories are published.
+
 ### Hosting (Hetzner Cloud)
 
 | Resource               | Spec            | Cost (approx.)    |

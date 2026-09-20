@@ -1,0 +1,66 @@
+# Dependabot version updates, monthly, with a week's cooldown so a bad or
+# hijacked release has time to be caught first. Minor and patch updates are
+# grouped; majors open one PR each, because they need their own review.
+# Security updates are a separate repository setting: they arrive as soon as
+# an advisory is published, whatever the schedule or cooldown says.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories:
+      - /was-web
+      - /.devcontainer
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    ignore:
+      # The Node major changes by hand, across the Dockerfiles, CI
+      # (node-version) and tsup's target together: a node:26 PR on its own
+      # would pass CI, which runs Node 24, while switching production to 26.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mcr.microsoft.com/devcontainers/typescript-node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: opentofu
+    directory: /infra
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: npm
+    directory: /was-web          # the workspace root; covers server and packages/shared
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    ignore:
+      # typescript-eslint supports <6.1; its TypeScript 7 issue (#12518) was
+      # closed as not planned.
+      - dependency-name: typescript
+        versions: [">= 7"]
+      # Node's types follow the runtime's major; see the docker entry.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

@@ -423,17 +423,50 @@ script — see the two sections above.
 
 ---
 
-## Monitoring Recommendations
+## How updates reach us
 
-1. **Subscribe to release notifications:**
-   - [React Blog](https://react.dev/blog)
-   - [Vite Releases](https://github.com/vitejs/vite/releases)
+**Dependabot version updates** (`.github/dependabot.yml`) run monthly with a
+7-day cooldown, across four ecosystems: `github-actions` (repo root), `docker`
+(`/was-web` and `/.devcontainer`), `opentofu` (`/infra`), and `npm`
+(`/was-web`, the workspace root — covers `server` and `packages/shared` too).
+Minor and patch updates are grouped into one PR per ecosystem; majors open
+individually, since they need their own review. `typescript` is pinned below
+7 (typescript-eslint doesn't support it yet — see the TypeScript section
+above), and Node majors are excluded — the `node` and `typescript-node` base
+images and `@types/node` — because the Node major is a deliberate, hand-done
+change (see the table below). **Security updates** are a separate repository
+setting, unaffected by the schedule or cooldown: they open as soon as an
+advisory is published. They can also *fail* rather than open a PR, when a
+transitive pin elsewhere in the tree blocks the fixed version: Dependabot
+reports `security_update_not_possible` and the job goes red on `main`. The
+[esbuild section](#esbuild-overrides-dev-only) above is a worked example, and
+an `overrides` entry is usually the way out.
 
-2. **Periodic checks:**
-   - Monthly: Check for security advisories (`npm audit`)
-   - Quarterly: Review major dependency versions
-   - Annually: Full dependency audit and update cycle
+**The early-warning workflow** (`.github/workflows/early-warning.yml`) runs
+the whole of CI weekly and builds the dev container image via
+`@devcontainers/cli`. npm updates come through Dependabot: `npm ci` installs
+the lockfile exactly, so the weekly run isn't testing new package releases. It
+catches what floats: the `node:24-slim`, `postgres:17` and `caddy:2.11`
+images, the unpinned `pip install ansible ansible-lint`, the runner image, and
+the dev container's `curl | bash`, `brew`, `playwright install-deps` and
+`gh extension` installs. Alongside it, **the image-scan workflow**
+(`.github/workflows/image-scan.yml`) runs a weekly Grype scan of the
+production image, reporting fixable HIGH and CRITICAL vulnerabilities to the
+Security tab.
 
-3. **Use dependabot or similar:**
-   - Consider enabling GitHub Dependabot for automated PRs
-   - Or use `npm outdated`, then `npm update`, for manual reviews
+**What neither tracks** — version pins that live in plain text, not a
+manifest a dependency bot resolves against. Check these by hand whenever
+touching the file that holds them:
+
+| Pin | Where | Current value |
+| --- | --- | --- |
+| `tofu_version` | `.github/workflows/ci.yml`, `.github/workflows/provision.yml` | `1.12` |
+| Node major | `was-web/Dockerfile` (`node:24-slim`), `.devcontainer/Dockerfile` (`typescript-node:24-trixie`), `node-version` in `.github/workflows/ci.yml` and `.github/workflows/early-warning.yml`, `target` in `was-web/server/tsup.config.ts`, `@types/node` in `was-web/package.json` | `24` (Dependabot ignores its majors) — supported until 2028-04-30; move all of them together when the next LTS, 26 (LTS from 2026-10-28), is due |
+| `@devcontainers/cli` version | `.github/workflows/early-warning.yml` | `0.89.0` |
+| actionlint image | `.github/workflows/ci.yml` | `rhysd/actionlint:1.7.12` |
+| `pip install ansible ansible-lint` | `.github/workflows/ci.yml` | unpinned — the latest releases on every run |
+| `npx playwright install-deps` | `.devcontainer/Dockerfile` | unpinned — `npx` fetches the latest Playwright at image build |
+| `ARG RUSTFS_VERSION` | `.devcontainer/Dockerfile` | `1.0.0-rc.6` |
+| CI service images | `.github/workflows/ci.yml` | `postgres:17`, `rustfs/rustfs:1.0.0-rc.6` |
+| `caddy_series` | `ansible/vars/main.yml` | `2.11` |
+| server apt packages | `ansible/playbook.yml` (`unattended-upgrades`) | not a manifest pin at all — Ubuntu packages and PostgreSQL 17 minor releases install themselves daily; see `docs/SERVER_OPERATIONS.md` "Package updates" |
