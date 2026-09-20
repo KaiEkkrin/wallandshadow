@@ -233,6 +233,7 @@ on: pull_request          (always runs)
 jobs:
   changes      always      →  web / server / dockerfile / workflows / ansible / infra booleans
   web          if web      →  npm run build · npm run lint · npm test · npm run test:shared
+                              · npm run test:smoke (loads build/ in Chromium)
   server       if server   →  tsc --noEmit · lint · drizzle-kit push · test
                               (against real PostgreSQL 17 + RustFS service containers)
   dockerfile   if docker   →  hadolint · BuildKit build checks · shellcheck entrypoint
@@ -246,6 +247,17 @@ The deployment jobs are statically validated only: **no image is built or pushed
 by CI**, and no job requires a secret, so the whole workflow runs on fork pull
 requests. `tofu init -backend=false` is what keeps the OpenTofu check free of
 Hetzner credentials.
+
+The **production bundle smoke test** at the end of the `web` job is the only
+check that executes the built application. Everything else in CI reasons about
+the source: a bundler, module-resolution or code-splitting regression compiles,
+lints and unit-tests cleanly, and only fails when a browser runs it — which is
+how PR #398 reached a fully green CI while rendering a blank page (issue #402).
+It serves `build/` as static files and loads three routes in Chromium, failing
+on any uncaught exception, console error, or empty React root. There is
+deliberately no database, object storage or API server behind it: it asks
+whether the bundle runs at all, not whether the app behaves. Behaviour is the
+e2e suite's job, and that still only runs by hand.
 
 Deploys are separate workflows. `deploy-server-test.yml` (push to `main`) and
 `deploy-server-production.yml` (manual) build the image, push it to
