@@ -114,6 +114,28 @@ jobs:
         working-directory: was-web
         run: npm run test:shared
 
+      # Loads the build/ output produced above in a real browser. A bundler or
+      # module-resolution regression compiles, lints and unit-tests cleanly and
+      # only fails when something executes it — see issue #402. Chromium only,
+      # and no database, object storage or API server: this guards against the
+      # bundle not running at all, not against application behaviour.
+      - name: Install Playwright Chromium
+        working-directory: was-web
+        run: npx playwright install --with-deps chromium
+
+      - name: Production bundle smoke test
+        working-directory: was-web
+        run: npm run test:smoke
+
+      - name: Upload smoke test artefacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-test-results
+          path: was-web/smoke/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
   # ── Hono server: type-check, lint, integration tests ────────────────────────
   server:
     name: Server type-check / lint / test

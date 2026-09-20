@@ -44,6 +44,7 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report --host 0.0.0.0 e2e/test-results/html",
+    "test:smoke": "playwright test --config ./smoke/smoke.config.ts",
     "lint": "eslint src packages/shared/src"
   },
   "overrides": {

@@ -166,6 +166,9 @@ npm run test:unit
 # Hono server integration tests (requires PostgreSQL + RustFS running)
 npm run test:server
 
+# Production bundle smoke test (requires `npm run build` first; no servers)
+npm run test:smoke
+
 # End-to-end tests (requires Hono server + Vite dev server running)
 npm run test:e2e
 
@@ -183,6 +186,22 @@ npm run typecheck
 npm run lint
 npm test
 ```
+
+### The smoke test
+
+`npm run test:smoke` is the one check that loads the *built* application in a
+browser. It serves `was-web/build/` as static files — no Hono server, no
+PostgreSQL, no RustFS — and asserts that three routes render without an uncaught
+exception or a console error. It takes about a second and runs in CI at the end
+of the `web` job.
+
+It exists because a bundler or module-resolution regression type-checks, lints
+and unit-tests perfectly happily: the app is only broken once something executes
+it. That is how a blank page once passed every required check (issue #402). Its
+scope stops there — anything that needs a backend belongs in the e2e suite.
+
+Because it reads `build/`, it tests whatever you last built. Run `npm run build`
+first, or you will be testing a stale bundle.
 
 ## Building for production
 
