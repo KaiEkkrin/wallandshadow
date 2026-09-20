@@ -35,7 +35,7 @@ was-web/
 └── app.html                 # React SPA (all app routes)
 ```
 
-Code shared between the web client and the Hono server lives in `packages/shared/` (Yarn workspace `@wallandshadow/shared`). Import from `@wallandshadow/shared` — do not use symlinks.
+Code shared between the web client and the Hono server lives in `packages/shared/` (npm workspace `@wallandshadow/shared`). Import from `@wallandshadow/shared` — do not use symlinks.
 
 ## Development Commands
 
@@ -47,10 +47,10 @@ All commands from `was-web/` directory unless otherwise noted. The devcontainer 
 cd was-web
 
 # Terminal 1: Hono API server
-cd server && yarn dev
+cd server && npm run dev
 
 # Terminal 2: Vite dev server
-yarn dev:vite
+npm run dev:vite
 ```
 
 Running them separately is recommended — you can restart either without restarting the other.
@@ -61,13 +61,13 @@ Open **http://localhost:5000** — the Vite dev server proxies `/api/*` to the H
 
 ```bash
 # Web client
-yarn lint
-yarn build              # output: was-web/build/
+npm run lint
+npm run build              # output: was-web/build/
 
 # Server
 cd server
-yarn lint
-yarn build              # output: was-web/server/dist/
+npm run lint
+npm run build              # output: was-web/server/dist/
 ```
 
 ### Database schema
@@ -76,18 +76,18 @@ Drizzle schema is `was-web/server/src/db/schema.ts`. After changing it:
 
 ```bash
 cd was-web/server
-yarn db:push            # dev database
-yarn db:push:test       # test database
+npm run db:push            # dev database
+npm run db:push:test       # test database
 ```
 
-`yarn db:generate` produces a migration SQL file from schema drift; `yarn db:migrate` runs pending migrations in production.
+`npm run db:generate` produces a migration SQL file from schema drift; `npm run db:migrate` runs pending migrations in production.
 
 ### Testing
 
 ```bash
-yarn test:unit          # Vitest watch mode (client)
-yarn test:server        # Server integration tests against real PostgreSQL + RustFS
-yarn test:e2e           # Playwright (requires Hono + Vite dev server running)
+npm run test:unit          # Vitest watch mode (client)
+npm run test:server        # Server integration tests against real PostgreSQL + RustFS
+npm run test:e2e           # Playwright (requires Hono + Vite dev server running)
 ```
 
 See @docs/DEVELOPMENT.md for developer setup and the day-to-day workflow, and @docs/ZITADEL_OIDC_SETUP.md for OIDC provider configuration.

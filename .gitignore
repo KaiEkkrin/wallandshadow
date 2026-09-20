@@ -12,8 +12,6 @@ ansible/secrets/
 /.usercache/.mozilla
 /.usercache/.node_repl_history
 /.usercache/.pki
-/.usercache/.yarn
-/.usercache/.yarnrc
 
 # Superpowers plugin (ephemeral)
 docs/superpowers/

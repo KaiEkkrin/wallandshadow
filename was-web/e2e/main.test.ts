@@ -6,12 +6,12 @@ import * as Util from './util';
 // Each test runs against 5 browser/device combinations (Chromium and Firefox only)
 //
 // To run a single test on a single browser/device (fastest way to reproduce failures):
-// yarn test:e2e --project chromium-desktop --grep "share adventure and map from home"
+// npm run test:e2e -- --project chromium-desktop --grep "share adventure and map from home"
 //
 // Examples:
-//   yarn test:e2e --project chromium-desktop --grep "view front page"
-//   yarn test:e2e --project firefox-laptop --grep "create account and login"
-//   yarn test:e2e --project chromium-desktop --grep "share adventure and map from home"
+//   npm run test:e2e -- --project chromium-desktop --grep "view front page"
+//   npm run test:e2e -- --project firefox-laptop --grep "create account and login"
+//   npm run test:e2e -- --project chromium-desktop --grep "share adventure and map from home"
 //
 // Available projects: chromium-pixel2, chromium-laptop, chromium-desktop,
 //                     firefox-laptop, firefox-desktop
@@ -19,9 +19,9 @@ import * as Util from './util';
 //       pending development of a WebKit testing strategy
 //
 // To regenerate expected screenshots (e.g., after UI changes):
-// yarn test:e2e --update-snapshots                           # Update all screenshots for all projects
-// yarn test:e2e --project chromium-desktop --update-snapshots # Update screenshots for one project
-// yarn test:e2e --grep "view front page" --update-snapshots   # Update screenshots for one test
+// npm run test:e2e -- --update-snapshots                           # Update all screenshots for all projects
+// npm run test:e2e -- --project chromium-desktop --update-snapshots # Update screenshots for one project
+// npm run test:e2e -- --grep "view front page" --update-snapshots   # Update screenshots for one test
 
 test.describe('Basic tests', () => {
   test.beforeEach(async ({ page }) => {

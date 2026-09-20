@@ -10,7 +10,7 @@ dev container details.
 
 ## Before opening a pull request
 
-Run `yarn lint`, `yarn build`, and the test suites in both `was-web/` and
+Run `npm run lint`, `npm run build`, and the test suites in both `was-web/` and
 `was-web/server/` — they must pass.
 
 Every pull request into `main` runs the `CI` workflow, which must report a

@@ -29,16 +29,16 @@
 # =============================================================================
 
 # ── Stage 1: Install all dependencies ─────────────────────────────────────────
-FROM node:22-slim AS deps
+FROM node:24-slim AS deps
 
 WORKDIR /app
 
 # Copy package manifests for all workspaces
-COPY package.json yarn.lock ./
+COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY server/package.json server/
 
-RUN yarn install --frozen-lockfile
+RUN npm ci
 
 # ── Stage 2: Build the React SPA ─────────────────────────────────────────────
 FROM deps AS build-spa
@@ -60,7 +60,7 @@ COPY public/ public/
 COPY vite-plugins/ vite-plugins/
 COPY packages/shared/src/ packages/shared/src/
 
-RUN yarn build
+RUN npm run build
 
 # ── Stage 3: Build the server (TypeScript → JS via tsup) ─────────────────────
 FROM deps AS build-server
@@ -71,18 +71,18 @@ COPY packages/shared/src/ packages/shared/src/
 
 WORKDIR /app/server
 
-RUN yarn build
+RUN npm run build
 
 # ── Stage 4: Production image ─────────────────────────────────────────────────
-FROM node:22-slim AS production
+FROM node:24-slim AS production
 
 WORKDIR /app
 
-# Copy package manifests and install production dependencies only
-COPY package.json yarn.lock ./
+# The server's production dependencies only; the SPA's are bundled into build/.
+COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY server/package.json server/
-RUN yarn install --frozen-lockfile --production && yarn cache clean
+RUN npm ci --omit=dev --workspace=@wallandshadow/server && npm cache clean --force
 
 # Copy compiled server
 COPY --from=build-server /app/server/dist/ server/dist/
