@@ -72,12 +72,12 @@ jobs:
       volume_id: ${{ steps.output.outputs.volume_id }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
-          tofu_version: "1.9"
+          tofu_version: "1.12"
           # The wrapper echoes each command into stdout, which would corrupt
           # the plan JSON written by `tofu show -json` below.
           tofu_wrapper: false
@@ -137,20 +137,29 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HCLOUD_S3_SECRET_KEY }}
         run: tofu apply tfplan
 
+      # Plain assignments, so `bash -e` stops the step if any output is
+      # missing; inside echo's arguments a failure would be swallowed and
+      # Ansible would get empty values. Plan-only runs don't need outputs (a
+      # brand-new project has no state to read them from).
       - name: Capture outputs
         id: output
+        if: ${{ inputs.apply }}
         working-directory: infra
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.HCLOUD_S3_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HCLOUD_S3_SECRET_KEY }}
         run: |
+          vps_ip=$(tofu output -raw vps_ip)
+          vps_ipv6=$(tofu output -raw vps_ipv6)
+          volume_id=$(tofu output -raw volume_id)
           {
-            echo "vps_ip=$(tofu output -raw vps_ip)"
-            echo "vps_ipv6=$(tofu output -raw vps_ipv6)"
-            echo "volume_id=$(tofu output -raw volume_id)"
+            echo "vps_ip=$vps_ip"
+            echo "vps_ipv6=$vps_ipv6"
+            echo "volume_id=$volume_id"
           } >> "$GITHUB_OUTPUT"
 
       - name: Display VPS IP
+        if: ${{ inputs.apply }}
         run: |
           echo "╔══════════════════════════════════════════════════════════════════╗"
           echo "║  VPS IPv4: ${{ steps.output.outputs.vps_ip }}"
@@ -170,7 +179,7 @@ jobs:
     environment: hetzner
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Ansible
         run: |

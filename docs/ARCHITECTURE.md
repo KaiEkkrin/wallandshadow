@@ -19,7 +19,7 @@ Zitadel OIDC · Caddy · systemd-supervised Docker containers
 | Auth                    | Zitadel OIDC; server is an OIDC Relying Party only                                      | Avoids building token issuance, refresh, OAuth2 flows; provider handles Google federation and future passkeys      |
 | Email/password accounts | Retained for migrated accounts and local dev; no new production signups                 | Existing users keep access; no email infrastructure needed (password reset via admin endpoint only)                |
 | Static serving          | Caddy                                                                                   | Auto-HTTPS via Let's Encrypt; reverse-proxies `/api/*` and `/ws/*` to the Hono server                             |
-| CI                      | GitHub Actions → GitHub Container Registry                                              | Free container registry; images are multi-arch                                                                     |
+| CI                      | GitHub Actions → GitHub Container Registry                                              | Free container registry                                                                     |
 | Deployment              | systemd unit per environment running `docker run`; CI SSHes in to flip image tag and restart | Simple, portable; tens of seconds of downtime on restart is acceptable at current scale                      |
 | Hosting                 | Hetzner Cloud VPS + Hetzner Object Storage                                              | Best EU value; S3-compatible storage; German company, GDPR-native                                                 |
 | Analytics               | GoAccess static HTML report from Caddy access logs, served at `/stats` behind basic auth | No third-party processor, no cookies, no client instrumentation; small enough to run on the same VPS               |
@@ -216,8 +216,9 @@ without losing data — see @docs/SERVER_OPERATIONS.md.
 ### CI Pipeline
 
 `.github/workflows/ci.yml` is the single CI workflow. It runs on **every** pull
-request into `main` with no `paths:` filter, so it always reports — which is what
-lets `CI gate` be a required status check in branch protection.
+request, including stacked pull requests whose base is another branch, with no
+`paths:` filter, so it always reports — which is what lets `CI gate` be a
+required status check in branch protection.
 
 Path filtering happens *inside* the workflow. A leading `changes` job
 (`dorny/paths-filter`) emits one boolean per area; each verification job is
@@ -226,7 +227,7 @@ of them with `if: always()` and fails only on `failure` or `cancelled` — a
 skipped job counts as a pass.
 
 ```
-on: pull_request → main   (always runs)
+on: pull_request          (always runs)
     workflow_call         (force_all: true — used by the deploy workflows)
 
 jobs:
@@ -247,7 +248,7 @@ requests. `tofu init -backend=false` is what keeps the OpenTofu check free of
 Hetzner credentials.
 
 Deploys are separate workflows. `deploy-server-test.yml` (push to `main`) and
-`deploy-server-production.yml` (manual) build the multi-arch image, push it to
+`deploy-server-production.yml` (manual) build the image, push it to
 `ghcr.io/OWNER/wallandshadow:SHA`, and SSH to the VPS to flip the image tag and
 restart the systemd unit. Both call `ci.yml` with `force_all: true` first, so
 every verification runs before anything ships — including on a manual production

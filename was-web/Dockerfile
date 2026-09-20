@@ -102,7 +102,9 @@ COPY --from=build-spa /app/build/ build/
 # A recursive `chown -R node:node /app` here would rewrite every file into an
 # extra image layer, duplicating the whole of node_modules and doubling the
 # image's inode footprint on the deploy host.
-USER node
+# Numeric form (not `node`) so hosts that can't read the image's /etc/passwd
+# can still resolve the user (hadolint DL3066).
+USER 1000:1000
 
 ENV NODE_ENV=production
 ENV STATIC_DIR=/app/build
@@ -110,7 +112,7 @@ ENV STATIC_DIR=/app/build
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=3s \
-  CMD node -e "fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/health').then(r => { if (!r.ok) process.exit(1) })" || exit 1
+  CMD ["node", "-e", "fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 
 WORKDIR /app/server
 ENTRYPOINT ["./docker-entrypoint.sh"]

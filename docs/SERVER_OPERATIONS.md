@@ -299,19 +299,22 @@ Reindex any database whose two versions differ, then record the new version:
 `sudo -u postgres psql -c 'ALTER DATABASE <db> REFRESH COLLATION VERSION'`.
 
 1. **(on the server, if it's reachable)** Run `/usr/local/bin/pg_backup.sh`
-   and check for `Backup complete: …`. Note the user count
-   (`sudo -u postgres psql -d wallandshadow -Atc 'SELECT count(*) FROM users'`).
+   and check for `Backup complete: …`.
 
    **(on your own machine)** Record the certificate serials with the serial
    check from [step 1 of the migration](#1-record-the-current-state).
 2. Plan with **replace_server** on and apply off. Expect `hcloud_server.main`
    and `hcloud_volume_attachment.pgdata` to be replaced, and nothing else. In
    particular, the volume and both Primary IPs must be unchanged.
-3. **(on the server)** Stop everything that uses the volume, and unmount it.
-   The replacement destroys the volume attachment while the old server is
-   still running, then deletes the server without shutting it down, so
-   PostgreSQL and Caddy must have let go of the volume by then. Downtime
-   starts here.
+3. **(on the server)** Note the user count
+   (`sudo -u postgres psql -d wallandshadow -Atc 'SELECT count(*) FROM users'`).
+   Recording it right before the stop keeps sign-ups in between from throwing
+   off the comparison in step 7. If the server isn't reachable over SSH, skip
+   this; step 7 then has no user count to compare against. Then stop
+   everything that uses the volume, and unmount it. The replacement destroys
+   the volume attachment while the old server is still running, then deletes
+   the server without shutting it down, so PostgreSQL and Caddy must have let
+   go of the volume by then. Downtime starts here.
 
    ```bash
    systemctl stop wallandshadow-test wallandshadow-prod caddy postgresql && umount /mnt/pgdata
@@ -368,7 +371,7 @@ Reindex any database whose two versions differ, then record the new version:
    - `findmnt` shows `/mnt/pgdata` on an ext4 device.
    - Four `active` lines.
    - `data_directory` is `/mnt/pgdata/main`.
-   - The user count from step 1.
+   - The user count from step 3.
    - Two `RequiresMountsFor=` lines, each including `/mnt/pgdata`.
    - `{"ok":true}` twice.
 
@@ -428,79 +431,6 @@ reindexing one kind of index. The
    ```
 
    Expect the new version, `active`, and `{"ok":true}` twice.
-
-### Turning on PostgreSQL and Caddy updates (one-time)
-
-Until this change, unattended-upgrades took only Ubuntu's own updates, so
-PostgreSQL and Caddy are still the versions installed when the server was
-built. The first update can jump several releases, so run it by hand while
-you watch, straight after the provision run that turns updates on. Avoid
-doing this between 06:00 and 07:00 server time, when the automatic run could
-start first.
-
-1. **(on the server)** Record what's installed:
-
-   ```bash
-   apt-get update
-   apt-cache policy postgresql-17 caddy
-   ```
-
-   Expect Caddy `Installed: 2.11.2`. Note PostgreSQL's installed and candidate
-   versions, then read its [release notes](https://www.postgresql.org/docs/release/)
-   for every 17.x release after the installed one. Note any step their
-   "Migration to Version 17.N" sections ask for.
-2. **(on the server)** Back up:
-
-   ```bash
-   /usr/local/bin/pg_backup.sh
-   ```
-
-   Expect `Backup complete: …`.
-3. Merge the PR, then run the [provision workflow](#the-provision-workflow):
-   apply off, then on. Expect no OpenTofu changes. In the Ansible log, expect
-   `changed` for `Pin Caddy to release series 2.11` and
-   `Configure unattended-upgrades behaviour`.
-4. **(on the server)** Check what the daily run will do, without doing it:
-
-   ```bash
-   apt-cache policy caddy | sed -n 1,3p
-   unattended-upgrade --dry-run -d 2>&1 | grep -E '^(Allowed origins|Packages that will be upgraded)'
-   ```
-
-   Expect:
-
-   - A Caddy candidate of `2.11.` something.
-   - Allowed origins ending in `site=apt.postgresql.org, site=dl.cloudsmith.io`.
-   - An upgrade list that includes `caddy`, and `postgresql-17` if step 1
-     showed a newer candidate, alongside any pending Ubuntu updates.
-
-   **Stop** if the candidate is outside 2.11: the pin isn't working.
-5. **(on the server)** Run it. PostgreSQL and Caddy restart, so both
-   environments drop connections for a few seconds.
-
-   ```bash
-   unattended-upgrade -v
-   ```
-
-6. **(on the server)** Verify:
-
-   ```bash
-   dpkg-query -W caddy postgresql-17
-   sudo -u postgres psql -Atc 'SHOW server_version'
-   systemctl is-active postgresql@17-main caddy wallandshadow-test wallandshadow-prod
-   curl -fsS https://wallandshadow.com/api/health; echo
-   curl -fsS https://test.wallandshadow.com/api/health; echo
-   ```
-
-   Expect:
-
-   - Caddy on the newest 2.11 release.
-   - `server_version` matching the `postgresql-17` package version, which
-     shows the running cluster restarted onto the new release.
-   - Four `active` lines.
-   - `{"ok":true}` twice.
-
-   Then carry out any post-upgrade steps you noted in step 1.
 
 ## Rotating the deploy SSH key
 
