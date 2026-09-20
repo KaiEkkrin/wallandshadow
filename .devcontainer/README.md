@@ -94,7 +94,7 @@ VS Code equivalent: **F1 → "Dev Containers: Rebuild Container Without Cache"**
 `~/.config` inside the container is a clone of [KaiEkkrin/dot-config](https://github.com/KaiEkkrin/dot-config). It is:
 
 - **Cloned** (HTTPS) the first time `devcontainer up` runs.
-- **Pulled** (`--ff-only`) on every subsequent container start.
+- **Pulled** (`--ff-only`) on every subsequent container start. If the pull can't fast-forward, `post-start.sh` prints git's own error and leaves the clone untouched; it never blocks container start. The usual cause is editing a file here that was also committed from the host, which leaves the two diverged and makes `--ff-only` refuse on every start until you commit, stash or discard the local edit.
 
 To push changes back to the repo, do so from the **host** — the workspace is bind-mounted so `git push` works there without needing SSH keys inside the container. If you later want to push from inside the container, switch the remote:
 
@@ -114,6 +114,8 @@ git -C ~/.config remote set-url origin git@github.com:KaiEkkrin/dot-config.git
 | `lazygit` | Homebrew | `brew upgrade lazygit` |
 | `tree-sitter` | npm (global) | `npm update -g tree-sitter-cli` |
 | `cargo` / `rustup` | rustup | `rustup update` |
+| `gh` (GitHub CLI) | apt, from cli.github.com | `sudo apt-get update && sudo apt-get install --only-upgrade gh` |
+| `gh stack` | gh extension (Dockerfile) | `gh extension upgrade gh-stack` |
 | `brew` itself | — | `brew update && brew upgrade` |
 
 Neovim opens with LazyVim (from dot-config). Mason installs LSPs on first use — neovim will prompt on first open.

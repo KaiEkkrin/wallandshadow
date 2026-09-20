@@ -89,9 +89,17 @@ for bucket in wallandshadow wallandshadow-test; do
 done
 
 echo "📝 Updating dot-config..."
-git -C "$HOME/.config" pull --ff-only origin main 2>/dev/null \
-    && echo "   ✅ dot-config up to date" \
-    || echo "   ℹ️  dot-config pull skipped (offline or local changes)"
+# Show git's own reason when the pull doesn't happen. A failure here is
+# recoverable and must never block container start, but it must not read as a
+# routine skip either: local edits to a file that also changed upstream make
+# --ff-only abort every time, and that went unnoticed for months because the
+# error was discarded.
+if DOTCONFIG_PULL=$(git -C "$HOME/.config" pull --ff-only origin main 2>&1); then
+    echo "   ✅ dot-config up to date"
+else
+    echo "   ⚠️  dot-config not updated — the clone is unchanged:"
+    echo "$DOTCONFIG_PULL" | sed 's/^/       /'
+fi
 
 echo ""
 echo "🔄 Wall & Shadow dev container started!"

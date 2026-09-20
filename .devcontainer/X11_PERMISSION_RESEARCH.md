@@ -1,5 +1,9 @@
 # /tmp Permission Failure in Podman Dev Container
 
+**Update 2026-09**: the dev container no longer uses features (git and gh come from
+the base image and the Dockerfile); the `/tmp` workaround was removed because an
+image built without features has /tmp mode 1777.
+
 ## Symptom
 
 Every attempt to start the dev container fails during VS Code's post-build setup step with:

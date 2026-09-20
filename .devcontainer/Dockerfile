@@ -83,6 +83,10 @@ RUN echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.bashrc \
 # Install Claude Code CLI as node user (native binary installs to ~/.local/bin)
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
+# GitHub CLI extensions. Runs as node, so they land in ~/.local/share/gh/extensions
+# (post-create.sh only replaces the nvim directories under ~/.local/share).
+RUN gh extension install github/gh-stack
+
 ENV EDITOR=nvim
 ENV VISUAL=nvim
 
