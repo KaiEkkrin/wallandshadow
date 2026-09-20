@@ -78,7 +78,7 @@ a time when someone takes this on.
 
 ## Three.js Continuous Updates
 
-**Current:** ^0.183.0 (updated 2026-03-01 from 0.182)
+**Current:** ^0.186.0 (updated 2026-09-13 from 0.183)
 **Approach:** Incremental updates every 3-6 months
 
 Three.js has no formal deprecation schedule but follows a pattern of deprecating in version X and removing in X+10. Regular updates prevent large migration efforts.
@@ -102,13 +102,22 @@ Three.js has no formal deprecation schedule but follows a pattern of deprecating
 
 6. Run visual regression tests (E2E snapshots)
 
-### Known Deprecations to Watch (0.183)
+### r184–r186 changes (0.183 → 0.186, checked 2026-09-13)
 
-- `Clock` deprecated (use `Timer` instead)
-- `PostProcessing` renamed to `RenderPipeline` (backwards-compatible for now)
-- WebGPU now production-ready on all major browsers including Safari iOS
-- `PCFSoftShadowMap` deprecated (use `PCFShadowMap`)
-- Various loaders deprecated (USDZLoader, LottieLoader)
+- `PCFSoftShadowMap` — the deprecation warning added in an earlier release was
+  followed through: r186 removes the remaining `PCFSoftShadowMap` code
+  entirely.
+- `Matrix3.scale()`, `.rotate()`, `.translate()` deprecated (r185).
+- `LottieLoader` and `TTFLoader` deprecated; both loaders' bundled decoder
+  libraries were removed in favour of loading them from a CDN (r185).
+- The CommonJS build is deprecated and minified builds were removed from the
+  npm package (r186) — build-tooling changes, not an API surface change.
+- `Object3D.dispose()` and `Object3D.intersectsFrustum()` added (r186); no
+  action needed, just new API surface.
+
+None of these affected us: the app doesn't call `PCFSoftShadowMap`,
+`Matrix3.scale/rotate/translate`, `LottieLoader`, `TTFLoader`, `USDZLoader` or
+`USDZExporter`, and Vite already consumes the ESM build.
 
 ### References
 
@@ -119,31 +128,49 @@ Three.js has no formal deprecation schedule but follows a pattern of deprecating
 
 ## TypeScript Updates
 
-**Current:** ^5.7.0
+**Current:** `~6.0.3` (done 2026-09-13)
 **Approach:** Update with each minor release
 
 TypeScript has no formal EOL policy. Keep reasonably current to benefit from type improvements and language features.
 
-### Upcoming Changes
+### Blocked on TypeScript 7
 
-- TypeScript 6.0 Beta announced February 11, 2026 — stable expected imminently
-- TypeScript 6.0 will be a "bridge" release to TypeScript 7.0
-- TypeScript 6.0 will deprecate features that 7.0 removes
-- Plan to be on TypeScript 6.x when it releases, then migrate to 7.0
-- Note: TypeScript 7 will use a Go-based compiler ("Project Corsa")
+TypeScript 7.0.2 is npm's `latest`, but this repo is held at `~6.0.3`:
+typescript-eslint 8.70 only supports TypeScript `<6.1.0`, and its tracking
+issue for TS 7 support (typescript-eslint#12518) was closed as not planned —
+there is no version of typescript-eslint to move to yet. Revisit once
+typescript-eslint ships TS 7 support.
+
+### TypeScript 6 changes that bit us
+
+Moving 5.7 → 6.0 surfaced three behaviour changes, fixed as part of that
+move:
+
+- **Side-effect imports are now checked against `package.json` exports.**
+  `import '@fontsource/princess-sofia'` stopped resolving because the
+  package's `exports` map doesn't have a bare entry for a side-effect-only
+  import; it became `import '@fontsource/princess-sofia/index.css'`, naming
+  the actual CSS file.
+- **`moduleResolution: "node"` is deprecated** in favour of `"bundler"` (or
+  `"node16"`/`"nodenext"`); `was-web/unit/tsconfig.json` moved to `"bundler"`.
+- **`types` now defaults to `[]`** instead of auto-including everything in
+  `node_modules/@types`. The server's `tsconfig.json` compiled without
+  Node's globals until it explicitly added `"types": ["node"]`.
 
 ### Update Process
 
-1. Update `was-web/package.json` and `was-web/functions/package.json`
+1. Update `was-web/package.json` and `was-web/server/package.json` (this repo
+   has no `functions/` workspace)
 
-2. Run type checking:
+2. Run:
    ```bash
-   npm run typecheck
+   npm run build
+   npm -w @wallandshadow/server run typecheck
    ```
 
 3. Fix any new type errors
 
-4. Update `typescript-eslint` to compatible version
+4. Update `typescript-eslint` to a compatible version
 
 ### References
 
@@ -161,8 +188,7 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 
 ### Notes
 
-- `toPromise()` is deprecated—use `firstValueFrom()` or `lastValueFrom()` instead
-- Review codebase for `toPromise()` usage and migrate when convenient
+- `toPromise()` is deprecated—use `firstValueFrom()` or `lastValueFrom()` instead. No uses remain in this codebase.
 
 ### References
 
@@ -175,10 +201,11 @@ RxJS 8 is on hold while Observable is being standardised for the web platform. N
 | Priority | Package | Target | Timeline |
 |----------|---------|--------|----------|
 | 1 | React Compiler lint rules | 4 rules re-enabled | ⬜ 33 violations across 24 files — see the ESLint section |
-| — | license-checker-rseidelsohn | 5.x | ✅ Done 2026-09-13 |
-| 3 | Three.js | Latest | ✅ Done to 0.183 (2026-03-01); check again in ~3 months |
-| 4 | TypeScript | 6.x | Wait for stable release (beta as of 2026-03-01) |
-| 5 | drizzle-kit + drizzle-orm | 1.0.0 stable | ⛔ Blocked — see security note below |
+| — | license-checker-rseidelsohn | 5.x | ✅ Done 2026-09-13 (the Node 24 / npm migration) |
+| — | Three.js | Latest | ✅ Done to 0.186 (2026-09-13); check again in ~3 months |
+| — | TypeScript | 6.x | ✅ Done to 6.0 (2026-09-13); held there — see the TypeScript section |
+| 2 | drizzle-kit + drizzle-orm | 1.0.0 stable | ⛔ Blocked — see security note below |
+| — | esbuild advisories | overrides | ✅ Done 2026-09-20 — see the esbuild section |
 | — | React Router | 8.x | ✅ Done 2026-07-25 |
 | — | ESLint | 10.x | ✅ Done 2026-07-25 |
 
@@ -195,11 +222,9 @@ gone. 5.0.1 reads the dependency tree through `@npmcli/arborist` instead of the
 `read-installed-packages > read-package-json > glob > minimatch` chain that reached
 `brace-expansion` on 4.x — already not a security item since 2026-09-12, when
 brace-expansion 2.1.4 backported the CVE-2026-14257 fix to the 2.x line the chain
-resolved to. `npm audit --omit=dev` is clean; a full `npm audit` still reports moderate
-esbuild advisories, all from dev-only tooling: drizzle-kit's `@esbuild-kit` chain (see
-the drizzle-kit section below) and tsup's bundled esbuild.
-
----
+resolved to. Both `npm audit --omit=dev` and a full `npm audit` are clean — the two
+dev-only esbuild advisories that a full audit used to report are resolved by the
+`overrides` described in the [esbuild section](#esbuild-overrides-dev-only) below.
 
 ---
 
@@ -209,23 +234,25 @@ the drizzle-kit section below) and tsup's bundled esbuild.
 **Target:** drizzle-kit `1.0.0` stable + drizzle-orm `1.0.0` stable (paired upgrade)
 **Timeline:** Wait for both packages to reach stable 1.0.0
 
-### Security context: GHSA-67mh-4wv8-2f99
+### Security context: GHSA-67mh-4wv8-2f99 — resolved by an override
 
-esbuild 0.18.20 is still in the tree as a transitive dependency of drizzle-kit, and a
-full `npm audit` reports it (GHSA-67mh-4wv8-2f99 — CORS vulnerability in esbuild's dev
-server, fixed in 0.25.0). drizzle-kit is a devDependency, so `npm audit --omit=dev`
-stays clean, but the upgrade below remains worth doing on its own merits:
+drizzle-kit still carries the archived `@esbuild-kit` chain, which asks for
+esbuild `~0.18.20`:
 
 ```
 drizzle-kit@0.31.10
   └── @esbuild-kit/esm-loader@2.6.5   (archived — merged into tsx)
       └── @esbuild-kit/core-utils@3.3.2 (archived)
-          └── esbuild@~0.18.20
+          └── esbuild@~0.18.20        ← overridden to ^0.28.2
 ```
 
-**Why this is safe to defer**: the vulnerability requires esbuild's `--serve` HTTP server to be running. `@esbuild-kit/core-utils` only uses esbuild as a code transformer — it never starts a dev server. There is no live attack surface in this project.
+That version is covered by GHSA-67mh-4wv8-2f99 (CORS vulnerability in esbuild's dev
+server, fixed in 0.25.0). An `overrides` entry now forces it to the root esbuild —
+see the [esbuild section](#esbuild-overrides-dev-only) — so it is out of the tree and
+`npm audit` is clean. The chain itself only disappears with the upgrade below, which
+remains worth doing on its own merits.
 
-**Why the proper fix must wait**: drizzle-kit 1.0.0-rc.1 (published 2026-04-30) drops `@esbuild-kit/*` entirely, but requires a paired upgrade to drizzle-orm 1.0.0-beta (also pre-release). As of May 2026, the RC is three days old and has a known data-safety regression (`db:push` drops tables without confirmation; `strict: true` is silently ignored). Both packages need to reach stable 1.0.0 before this upgrade is sensible.
+**Why the proper fix must wait**: drizzle-kit 1.0.0-rc.1 (published 2026-04-30) drops `@esbuild-kit/*` entirely, but requires a paired upgrade to drizzle-orm 1.0.0-beta (also pre-release). As of May 2026, the RC is three days old and has a known data-safety regression (`db:push` drops tables without confirmation; `strict: true` is silently ignored). Both packages need to reach stable 1.0.0 before this upgrade is sensible. As of 2026-09-13 both packages' `rc` dist-tag is `1.0.0-rc.4` — still pre-release, so this is still waiting.
 
 ### When drizzle-kit and drizzle-orm 1.0.0 stable ship
 
@@ -238,7 +265,78 @@ drizzle-kit@0.31.10
 3. Review the [drizzle v1 upgrade guide](https://orm.drizzle.team/docs/upgrade-v1) for any schema API changes
 4. Run `npm run db:push` and `npm run db:push:test` to verify schema commands work
 5. Run `npm run test:server` to confirm integration tests pass
-6. Verify `npm audit` no longer reports the esbuild vulnerability
+6. Drop the `@esbuild-kit/core-utils` entry from `overrides` in
+   `was-web/package.json` — the chain it targets is gone — then regenerate the
+   lockfile (see the esbuild section) and confirm `npm audit` is still clean
+
+---
+
+## tsup (server build)
+
+`was-web/server/` builds with tsup (`tsup.config.ts`). tsup's own README flags
+the project as unmaintained. It's kept for now: it's a thin wrapper around
+esbuild and still works. Its declared `^0.27.0` esbuild range is now forced past
+by an `overrides` entry (see the [esbuild section](#esbuild-overrides-dev-only)),
+so it builds against the root esbuild rather than its own copy; the server build
+and the full test suite pass that way. The candidate replacement, tsdown, is
+still pre-1.0. Swap tsup for a plain esbuild build script when convenient —
+the server's build is a single entry point, so the wrapper isn't buying much
+— or revisit if tsdown reaches a stable 1.0 first.
+
+---
+
+## esbuild overrides (dev-only)
+
+**Status:** ✅ in place (2026-09-20)
+
+Two dev-only esbuild advisories reached the tree through tooling that pins an old
+esbuild of its own:
+
+| Advisory | Severity | Vulnerable | Reached via |
+| --- | --- | --- | --- |
+| [GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99) | moderate | `<= 0.24.2` | `drizzle-kit` → `@esbuild-kit/core-utils@3.3.2` → esbuild 0.18.20 |
+| [GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr) | low | `>= 0.27.3, < 0.28.1` | `tsup@8.5.1` → esbuild `^0.27.0` → esbuild 0.27.7 |
+
+Neither had a live attack surface: both are bugs in esbuild's `--serve` development
+server (the second is Windows-only), and tsup and `@esbuild-kit/core-utils` use
+esbuild purely as a bundler/transformer — neither ever starts a server. But they made
+**Dependabot's security-update job fail on `main`**, and would have gone on failing.
+Dependabot reasons about "esbuild" as a single dependency across the whole tree, so its
+attempt to reach 0.28.1 for the tsup alert collided with `@esbuild-kit`'s `~0.18.20`
+pin and reported `security_update_not_possible` — "the latest possible version that
+can be installed is 0.18.20". The unrelated drizzle-kit chain blocked the tsup fix.
+
+Both are forced onto the root esbuild, alongside the pre-existing `vite` entry:
+
+```json
+"overrides": {
+  "vite": { "esbuild": "^0.28.1" },
+  "tsup": { "esbuild": "^0.28.2" },
+  "@esbuild-kit/core-utils": { "esbuild": "^0.28.2" }
+}
+```
+
+The tree now holds exactly two esbuilds: `esbuild@0.28.2` at the root, and
+drizzle-kit's own `esbuild@0.25.12` (not covered by either advisory). `npm audit` is
+clean in full, not just under `--omit=dev`.
+
+**Gotcha when changing these**: npm does **not** re-resolve an existing lockfile when
+only `overrides` change — an incremental `npm install` silently keeps the old tree and
+the overrides appear to do nothing. Regenerating is required:
+
+```bash
+cd was-web
+rm -rf node_modules server/node_modules packages/shared/node_modules package-lock.json
+npm install
+node -e 'const l=require("./package-lock.json"); for (const [p,v] of Object.entries(l.packages)) if (/(^|\/)node_modules\/esbuild$/.test(p)) console.log(v.version, p);'
+```
+
+That regeneration also sweeps every other dependency to its in-range `Wanted`
+version, so expect lockfile churn well beyond esbuild.
+
+Both entries are temporary. Remove the `@esbuild-kit/core-utils` one when drizzle-kit
+1.0 drops that chain, and the `tsup` one if tsup is replaced by a plain esbuild build
+script — see the two sections above.
 
 ---
 
