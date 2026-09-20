@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { readFileSync, writeFileSync, copyFileSync } from 'fs';
 import { execSync } from 'child_process';
-import packageJson from './package.json';
-import { thirdPartyNotices } from './vite-plugins/third-party-notices';
+import packageJson from './package.json' with { type: 'json' };
+import { thirdPartyNotices } from './vite-plugins/third-party-notices.ts';
 
 // Get Git commit hash (first 8 characters)
 const getGitCommitHash = (): string => {
@@ -55,8 +55,8 @@ const copyRobotsTxt = () => ({
   name: 'copy-robots-txt',
   closeBundle() {
     try {
-      const sourcePath = resolve(__dirname, `public/robots.${deployEnvironment}.txt`);
-      const destPath = resolve(__dirname, 'build/robots.txt');
+      const sourcePath = resolve(import.meta.dirname, `public/robots.${deployEnvironment}.txt`);
+      const destPath = resolve(import.meta.dirname, 'build/robots.txt');
 
       copyFileSync(sourcePath, destPath);
 
@@ -73,8 +73,8 @@ const copyLandingPage = () => ({
   name: 'copy-landing-page',
   closeBundle() {
     try {
-      const sourcePath = resolve(__dirname, 'landing-index.html');
-      const destPath = resolve(__dirname, 'build/index.html');
+      const sourcePath = resolve(import.meta.dirname, 'landing-index.html');
+      const destPath = resolve(import.meta.dirname, 'build/index.html');
 
       // Read the landing page HTML
       let html = readFileSync(sourcePath, 'utf-8');
@@ -112,7 +112,7 @@ const processAppHtml = () => ({
   name: 'process-app-html',
   closeBundle() {
     try {
-      const appPath = resolve(__dirname, 'build/app.html');
+      const appPath = resolve(import.meta.dirname, 'build/app.html');
       let html = readFileSync(appPath, 'utf-8');
 
       // Add environment-specific title prefix
@@ -130,7 +130,7 @@ export default defineConfig({
   plugins: [react(), thirdPartyNotices(), copyLandingPage(), processAppHtml(), copyRobotsTxt()],
   resolve: {
     alias: {
-      '@wallandshadow/shared': resolve(__dirname, 'packages/shared/src/index.ts'),
+      '@wallandshadow/shared': resolve(import.meta.dirname, 'packages/shared/src/index.ts'),
     },
   },
   define: {
@@ -144,6 +144,15 @@ export default defineConfig({
         ? (process.env.VITE_HONO_WS_URL || 'http://localhost:3000')
         : ''
     ),
+  },
+  legacy: {
+    // Rolldown resolves a CJS dependency's default import differently from
+    // esbuild when the dependency sets __esModule. fluent-iterable does set it
+    // (correctly), so without this the default import is the namespace object
+    // rather than the function, every `fluent(...)` call throws, and the app
+    // renders blank in both dev and production. Removable once the Rolldown bug
+    // is fixed or fluent-iterable is gone — see docs/Medium_Term_Updates.md.
+    inconsistentCjsInterop: true,
   },
   server: {
     port: 5000,
@@ -175,9 +184,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'build',
-    rollupOptions: {
+    rolldownOptions: {
       input: {
-        app: resolve(__dirname, 'app.html'),
+        app: resolve(import.meta.dirname, 'app.html'),
       },
     },
   },
