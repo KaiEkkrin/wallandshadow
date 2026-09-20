@@ -87,8 +87,13 @@ npm run db:push:test       # test database
 ```bash
 npm run test:unit          # Vitest watch mode (client)
 npm run test:server        # Server integration tests against real PostgreSQL + RustFS
+npm run test:smoke         # Loads the build/ output in Chromium (run npm run build first)
 npm run test:e2e           # Playwright (requires Hono + Vite dev server running)
 ```
+
+`test:smoke` is the only check that executes the built bundle, and it is the
+only browser check that runs in CI. Keep it dependency-free — no database,
+no API server — so it stays fast and can't flake; behaviour belongs in `test:e2e`.
 
 See @docs/DEVELOPMENT.md for developer setup and the day-to-day workflow, and @docs/ZITADEL_OIDC_SETUP.md for OIDC provider configuration.
 
