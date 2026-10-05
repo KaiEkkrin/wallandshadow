@@ -195,9 +195,6 @@ jobs:
               -X PUT "http://127.0.0.1:9000/$bucket"
           done
 
-      - name: Install ImageMagick
-        run: sudo apt-get install -y imagemagick
-
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
