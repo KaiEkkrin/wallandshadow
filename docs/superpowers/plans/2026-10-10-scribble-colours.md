@@ -314,4 +314,4 @@ Use whatever name the provider's state actually has. A new state machine (map sw
 
 - Don't touch the wire protocol, the server, or `@wallandshadow/shared`'s overlay types. Styles are a pure client concern.
 - Never route scribbles through the map change tracker (see `CLAUDE.md`, "Map Changes").
-- `chroma.lch` clips out-of-gamut colours silently. L=38/C=60 is in gamut at most hues, and the clipping is acceptable; don't add gamut mapping.
+- `chroma.lch` clips out-of-gamut colours silently, which shifts the hue — by up to ~33° around blue at L=38/C=60, enough to make two players look alike. *Changed during implementation:* `outlineAt` reduces chroma until the colour is in gamut, keeping the hue exact. Cyan-to-blue outlines end up around C≈24–30.
