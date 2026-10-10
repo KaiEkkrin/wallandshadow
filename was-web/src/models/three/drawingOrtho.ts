@@ -735,6 +735,11 @@ export class DrawingOrtho implements IDrawing {
     this._needsRedraw.setNeedsRedraw();
   }
 
+  setScribbleMarkerTopInset(px: number) {
+    this._scribbleMarkers.setTopInset(px);
+    this._needsRedraw.setNeedsRedraw();
+  }
+
   dispose() {
     if (this._disposed === true) {
       return;

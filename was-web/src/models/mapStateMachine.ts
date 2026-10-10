@@ -1757,6 +1757,12 @@ export class MapStateMachine {
     this.refreshScribbleStyles();
   }
 
+  // Sets how far the navbar covers the top of the map, so scribble markers
+  // keep clear of it.
+  setScribbleMarkerTopInset(px: number) {
+    this._drawing.setScribbleMarkerTopInset(px);
+  }
+
   scribbleStart(cp: THREE.Vector3) {
     this._scribbleController.start({ x: cp.x, y: cp.y });
   }

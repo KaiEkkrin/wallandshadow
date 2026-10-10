@@ -1,43 +1,54 @@
 import { describe, test, expect } from 'vitest';
-import { placeMarker, ScribbleMarkerTracker } from './scribbleMarkers';
+import { placeMarker, ScreenBounds, ScribbleMarkerTracker } from './scribbleMarkers';
 import { ScribbleMarker, ScribbleStyle, SCRIBBLE_MARKER_FADE_MS, SCRIBBLE_MARKER_SMOOTH_MS } from './scribbleTypes';
 
-const HW = 400;
-const HH = 300;
+// An 800x600 screen.
+const B: ScreenBounds = { left: -400, right: 400, bottom: -300, top: 300 };
 
 describe('placeMarker', () => {
   test('a point on screen gets a ring centred on it', () => {
-    expect(placeMarker({ x: 100, y: -50 }, HW, HH)).toEqual({ kind: 'ring', centre: { x: 100, y: -50 } });
+    expect(placeMarker({ x: 100, y: -50 }, B)).toEqual({ kind: 'ring', centre: { x: 100, y: -50 } });
   });
 
   test('a point exactly on the corner is still on screen', () => {
-    expect(placeMarker({ x: HW, y: HH }, HW, HH).kind).toBe('ring');
+    expect(placeMarker({ x: 400, y: 300 }, B).kind).toBe('ring');
   });
 
   test('off the right edge: tip on the right edge, pointing right', () => {
-    expect(placeMarker({ x: 800, y: 0 }, HW, HH)).toEqual({ kind: 'arrow', tip: { x: 400, y: 0 }, dir: { x: 1, y: 0 } });
+    expect(placeMarker({ x: 800, y: 0 }, B)).toEqual({ kind: 'arrow', tip: { x: 400, y: 0 }, dir: { x: 1, y: 0 } });
   });
 
   test('off the bottom edge with a zero x component', () => {
-    expect(placeMarker({ x: 0, y: -900 }, HW, HH)).toEqual({ kind: 'arrow', tip: { x: 0, y: -300 }, dir: { x: 0, y: -1 } });
+    expect(placeMarker({ x: 0, y: -900 }, B)).toEqual({ kind: 'arrow', tip: { x: 0, y: -300 }, dir: { x: 0, y: -1 } });
   });
 
   test('off a corner: the tip lands on whichever edge the ray crosses first', () => {
     // Crosses x = -400 (t = 0.5) before y = 300 (t = 1).
-    const left = placeMarker({ x: -800, y: 300 }, HW, HH);
+    const left = placeMarker({ x: -800, y: 300 }, B);
     expect(left.kind === 'arrow' && left.tip).toEqual({ x: -400, y: 150 });
     // Crosses y = 300 (t = 0.5) before x = 400 (t = 0.8).
-    const top = placeMarker({ x: 500, y: 600 }, HW, HH);
+    const top = placeMarker({ x: 500, y: 600 }, B);
     expect(top.kind === 'arrow' && top.tip).toEqual({ x: 250, y: 300 });
+  });
+
+  test('uneven bounds: a point under the navbar gets an arrow, tipped at its edge', () => {
+    const belowNav: ScreenBounds = { ...B, top: 244 };
+    expect(placeMarker({ x: 0, y: 280 }, belowNav)).toEqual({ kind: 'arrow', tip: { x: 0, y: 244 }, dir: { x: 0, y: 1 } });
+    // Up and to the right: the ray leaves through the lowered top (t = 0.5)
+    // before the right edge (t = 0.8).
+    const m = placeMarker({ x: 500, y: 488 }, belowNav);
+    expect(m.kind === 'arrow' && m.tip).toEqual({ x: 250, y: 244 });
+    // Downwards is unaffected.
+    expect(placeMarker({ x: 0, y: -280 }, belowNav).kind).toBe('ring');
   });
 
   test('the tip is on the boundary and in line with the hot point', () => {
     for (const p of [{ x: 1234, y: 77 }, { x: -50, y: 4000 }, { x: -999, y: -999 }, { x: 401, y: -1 }]) {
-      const m = placeMarker(p, HW, HH);
+      const m = placeMarker(p, B);
       if (m.kind !== 'arrow') {
         throw new Error('expected an arrow');
       }
-      expect(Math.max(Math.abs(m.tip.x) / HW, Math.abs(m.tip.y) / HH)).toBeCloseTo(1);
+      expect(Math.max(Math.abs(m.tip.x) / B.right, Math.abs(m.tip.y) / B.top)).toBeCloseTo(1);
       // Parallel and in the same direction.
       expect(m.tip.x * p.y - m.tip.y * p.x).toBeCloseTo(0);
       expect(m.dir.x * p.x + m.dir.y * p.y).toBeGreaterThan(0);

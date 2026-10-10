@@ -31,6 +31,13 @@ strokes are, and scaled up the same way for the GM.
 5. **No toolbar avoidance.** Arrows may sit under the map controls on the left
    edge, the same as anything else drawn on the map. Revisit if that turns out
    to hide them too often.
+   **But the navbar is avoided** (decided after the in-browser check). The map
+   canvas fills the whole window and the navbar overlays its top 56 px, so an
+   arrow with its tip on the window edge was completely hidden for every hot
+   point above the screen, not just some. `Map.tsx` measures the navbar with a
+   `ResizeObserver` and passes its bottom edge down as a top inset. Arrows are
+   clipped to the area below it, and a hot point under the navbar counts as off
+   screen. There is no bar at the bottom.
 6. **No extras on the arrow**: no initials, names or distances.
 7. **Overlapping arrows just overlap.** Newer markers draw on top.
 8. **Keepalive while held.** Fix the existing staleness problem (below) in the
@@ -127,15 +134,18 @@ does not depend on the server's `releasedAt` clock.
 ### Placement (`placeMarker`)
 
 Input: the hot point in screen pixels relative to the screen centre, y up (the
-same convention as the stroke shader: `ndc * 0.5 * viewport`), and the viewport
-half-size.
+same convention as the stroke shader: `ndc * 0.5 * viewport`), and the visible
+bounds in the same frame: `left = −halfW`, `right = halfW`, `bottom = −halfH`,
+`top = halfH − navbar inset`. The bounds are uneven, but always contain the centre.
 
-- If `|x| ≤ halfW` and `|y| ≤ halfH`, the hot point is on screen: a **ring**
-  centred on it. It may be partly clipped when the hot point is near an edge.
-  That is honest, and simpler than an in-between state.
-- Otherwise, an **arrow**. With `d = (x, y)`:
-  `t = min(halfW / |d.x|, halfH / |d.y|)`, ignoring a zero component;
-  `tip = t · d`; `dir = d / |d|`.
+- If the hot point is within the bounds: a **ring** centred on it. It may be
+  partly clipped when the hot point is near an edge. That is honest, and
+  simpler than an in-between state.
+- Otherwise, an **arrow**. With `d = (x, y)`, `t` is the smallest of
+  `right / d.x` or `left / d.x` (by the sign of `d.x`) and `top / d.y` or
+  `bottom / d.y` (by the sign of `d.y`), ignoring a zero component;
+  `tip = t · d`; `dir = d / |d|`. The direction still comes from the screen
+  centre.
 
 ### Look
 

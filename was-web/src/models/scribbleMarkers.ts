@@ -7,20 +7,29 @@ import {
 
 interface Point2 { x: number; y: number; }
 
+// The visible part of the screen, in CSS pixels from the screen centre, y up.
+// Not necessarily symmetric (the navbar covers the top); must contain the centre.
+export interface ScreenBounds {
+  left: number;
+  right: number;
+  bottom: number;
+  top: number;
+}
+
 export type MarkerPlacement =
   | { kind: 'ring'; centre: Point2 }
   | { kind: 'arrow'; tip: Point2; dir: Point2 };
 
-// Decides how to show a hot point at `px` (CSS pixels from the screen centre)
-// on a screen of the given half-size. On screen: a ring centred on it. Off
-// screen: an arrow whose tip is where the line from the centre to the hot point
-// crosses the screen edge, pointing along that line.
-export function placeMarker(px: Point2, halfWidth: number, halfHeight: number): MarkerPlacement {
-  if (Math.abs(px.x) <= halfWidth && Math.abs(px.y) <= halfHeight) {
+// Decides how to show a hot point at `px` (CSS pixels from the screen centre).
+// Within the bounds: a ring centred on it. Outside: an arrow whose tip is where
+// the line from the screen centre to the hot point leaves the bounds, pointing
+// along that line.
+export function placeMarker(px: Point2, bounds: ScreenBounds): MarkerPlacement {
+  if (px.x >= bounds.left && px.x <= bounds.right && px.y >= bounds.bottom && px.y <= bounds.top) {
     return { kind: 'ring', centre: { x: px.x, y: px.y } };
   }
-  const tx = px.x === 0 ? Infinity : halfWidth / Math.abs(px.x);
-  const ty = px.y === 0 ? Infinity : halfHeight / Math.abs(px.y);
+  const tx = px.x > 0 ? bounds.right / px.x : px.x < 0 ? bounds.left / px.x : Infinity;
+  const ty = px.y > 0 ? bounds.top / px.y : px.y < 0 ? bounds.bottom / px.y : Infinity;
   const t = Math.min(tx, ty);
   const len = Math.hypot(px.x, px.y);
   return {

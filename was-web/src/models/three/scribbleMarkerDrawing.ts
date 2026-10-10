@@ -104,6 +104,7 @@ const markerFragmentShader = `
 export class ScribbleMarkerDrawing {
   private readonly _tracker = new ScribbleMarkerTracker();
   private readonly _viewport = new THREE.Vector2(1, 1);
+  private _topInset = 0;
   private readonly _scratch = new THREE.Vector3();
 
   private readonly _aAnchor = new Float32Array(SCRIBBLE_MARKER_MAX * 2);
@@ -184,17 +185,25 @@ export class ScribbleMarkerDrawing {
     this._viewport.set(Math.max(1, width), Math.max(1, height));
   }
 
+  // How far the navbar covers the top of the screen, in CSS pixels. Arrows sit
+  // below it, and a hot point hidden under it counts as off screen.
+  setTopInset(px: number) {
+    this._topInset = Math.max(0, px);
+  }
+
   // Advances the markers to `now` and lays them out against the camera's
   // current view of the map.
   update(now: number, camera: THREE.Camera) {
     const frames = this._tracker.update(now);
     const halfW = this._viewport.x / 2;
     const halfH = this._viewport.y / 2;
+    // The screen centre must stay inside the bounds, however tall the navbar.
+    const bounds = { left: -halfW, right: halfW, bottom: -halfH, top: Math.max(1, halfH - this._topInset) };
     const count = Math.min(frames.length, SCRIBBLE_MARKER_MAX);
     for (let i = 0; i < count; ++i) {
       const { point, style, alpha } = frames[i];
       const ndc = this._scratch.set(point.x, point.y, 0).project(camera);
-      const placement = placeMarker({ x: ndc.x * halfW, y: ndc.y * halfH }, halfW, halfH);
+      const placement = placeMarker({ x: ndc.x * halfW, y: ndc.y * halfH }, bounds);
       const anchor = placement.kind === 'ring' ? placement.centre : placement.tip;
       const dir = placement.kind === 'ring' ? { x: 1, y: 0 } : placement.dir;
       this._aAnchor[i * 2] = anchor.x;

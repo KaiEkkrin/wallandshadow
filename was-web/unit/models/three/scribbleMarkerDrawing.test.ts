@@ -44,6 +44,18 @@ describe('ScribbleMarkerDrawing', () => {
     d.dispose();
   });
 
+  test('arrows sit below the top inset', () => {
+    const d = new ScribbleMarkerDrawing();
+    d.setViewport(800, 600);
+    d.setTopInset(56);
+    // 280 px up is on screen, but under a 56 px navbar.
+    d.setMarkers([marker('a/1', 0, 280)], 0);
+    d.update(0, makeCamera());
+    expect(attr(d, 'aMode')[0]).toBe(1);
+    expect(attr(d, 'aAnchor')[1]).toBeCloseTo(244);
+    d.dispose();
+  });
+
   test('caps the instance count', () => {
     const d = new ScribbleMarkerDrawing();
     d.setViewport(800, 600);

@@ -99,6 +99,10 @@ export interface IDrawing {
   // coordinates). Pass an empty array to clear; markers fade out briefly.
   setScribbleMarkers(markers: ScribbleMarker[]): void;
 
+  // Sets how far the navbar covers the top of the map, in CSS pixels, so
+  // scribble markers can keep clear of it.
+  setScribbleMarkerTopInset(px: number): void;
+
   // Cleans up and releases all resources.
   dispose(): void;
 }
