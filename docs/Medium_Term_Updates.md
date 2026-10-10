@@ -261,11 +261,23 @@ Verified by probing all four in a browser under Vite 8, and by the e2e suite:
 
 **When this can be removed**: when the Rolldown bug is fixed, or when
 `fluent-iterable` leaves the tree — tracked in
-[#401](https://github.com/KaiEkkrin/wallandshadow/issues/401). Re-test by
-removing the flag, clearing
-`node_modules/.vite`, and running the e2e suite; a unit-test or `vite build`
-pass proves nothing here, because the failure is a runtime interop error that
-compiles perfectly happily.
+[#401](https://github.com/KaiEkkrin/wallandshadow/issues/401).
+
+**Re-tested 2026-10-05 against Rolldown 1.2.12 (Vite 8.3.2): still broken.**
+With the flag removed and `node_modules/.vite` cleared, `/app` renders an empty
+`#root` and the console carries `fluent is not a function`; restoring the flag
+under otherwise identical conditions (same lockfile, same cold cache) renders
+normally. The flag stays. The e2e suite on that tree, flag in place, was
+unchanged at 120 passed / 5 skipped.
+
+Re-test by removing the flag, clearing `node_modules/.vite`, restarting the
+Vite dev server and loading **`/app`**, checking for an empty `#root` and that
+error on the console; then confirm with the e2e suite. Two traps: a unit-test
+or `vite build` pass proves nothing, because the failure is a runtime interop
+error that compiles perfectly happily — and neither does loading the wrong
+route, because `/login` and `/about` render fine without the flag, reaching no
+`fluent(...)` call. Always re-run the same check with the flag restored, so a
+pass means "the bug is gone" rather than "the check missed it".
 
 ### References
 
