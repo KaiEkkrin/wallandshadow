@@ -1,5 +1,6 @@
 import { coordString, edgeString, GridCoord, GridEdge, GridVertex, vertexString, IFeature, IToken, ITokenProperties, BaseTokenDrawing, ITokenFace, ITokenFillEdge, ITokenFillVertex, ICacheLease, IGridGeometry } from '@wallandshadow/shared';
 import { BaseTokenDrawingWithText } from '../../data/tokenTexts';
+import { logError } from '../../services/consoleLogger';
 import { RedrawFlag } from "../redrawFlag";
 
 import { createPaletteColouredAreaObject, createSelectedAreas, createSpriteAreaObject } from "./areas";
@@ -77,19 +78,22 @@ class TokenFeatures<K extends GridCoord, F extends (IFeature<K> & ITokenProperti
     // observable emits `undefined` to signal "this token no longer has a
     // sprite" (e.g. its character's sprite reference was just scrubbed); we
     // tear down any existing sprite feature without replacing it.
-    const sub = this._textureCache.resolve(f).subscribe(e => {
-      const removed = this._spriteFeatures.remove(f.position); // just in case
-      if (removed !== undefined) {
-        removed.texture.release().then(() => { /* nothing to do here */ });
-      }
+    const sub = this._textureCache.resolve(f).subscribe({
+      next: e => {
+        const removed = this._spriteFeatures.remove(f.position); // just in case
+        if (removed !== undefined) {
+          removed.texture.release().then(() => { /* nothing to do here */ });
+        }
 
-      if (e === undefined) {
-        return;
-      }
+        if (e === undefined) {
+          return;
+        }
 
-      if (this._spriteFeatures.add({ ...f, sheetEntry: e, texture: e.texture }) === false) {
-        console.warn(`failed to add sprite feature with texture ${e.url}`);
-      }
+        if (this._spriteFeatures.add({ ...f, sheetEntry: e, texture: e.texture }) === false) {
+          console.warn(`failed to add sprite feature with texture ${e.path}`);
+        }
+      },
+      error: e => logError(`Failed to look up the sprite for token ${f.id}`, e)
     });
 
     // Add the palette feature now:

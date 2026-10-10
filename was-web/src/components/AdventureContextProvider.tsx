@@ -15,7 +15,7 @@ import { shareReplay } from 'rxjs/operators';
 import { v7 as uuidv7 } from 'uuid';
 
 function AdventureContextProvider(props: IContextProviderProps) {
-  const { api, live, resolveImageUrl, user } = useContext(UserContext);
+  const { api, live, user } = useContext(UserContext);
   const { toasts } = useContext(StatusContext);
 
   const navigate = useNavigate();
@@ -87,7 +87,6 @@ function AdventureContextProvider(props: IContextProviderProps) {
     const uid = user?.uid;
     if (
       live === undefined ||
-      resolveImageUrl === undefined ||
       adventure === undefined ||
       uid === undefined
     ) {
@@ -113,12 +112,12 @@ function AdventureContextProvider(props: IContextProviderProps) {
     const playerSub = playerObs.subscribe(setPlayers);
 
     console.debug('creating sprite manager');
-    setSpriteManager(new SpriteManager(live, resolveImageUrl, adventure.id, playerObs));
+    setSpriteManager(new SpriteManager(live, adventure.id, playerObs));
     return () => {
       playerSub.unsubscribe();
       unsub?.();
     }
-  }, [adventure, live, setPlayers, setSpriteManager, resolveImageUrl, user]);
+  }, [adventure, live, setPlayers, setSpriteManager, user]);
 
   const [presence, setPresence] = useState<ReadonlyMap<string, PresenceUserState> | undefined>(undefined);
   // Held in a ref so the second effect can push currentMapId changes without

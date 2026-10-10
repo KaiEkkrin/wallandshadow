@@ -3,7 +3,7 @@ import { Drawn } from "../drawn";
 import { InstanceCountedMesh } from "./instancedFeatureObject";
 import { RedrawFlag } from "../redrawFlag";
 import { IShader } from "./shaderFilter";
-import { TextureCache } from "./textureCache";
+import { TextureCache, TextureLoadState } from "./textureCache";
 
 import { Subscription } from 'rxjs';
 import * as THREE from 'three';
@@ -14,11 +14,13 @@ type MapImage = IMapImage & {
   sub: Subscription; // Subscription to the async operation of resolving and adding the texture
 };
 
-type MeshRecord = {
-  material: THREE.ShaderMaterial;
-  mesh: THREE.Mesh;
-  lease: ICacheLease<THREE.Texture>;
-};
+// Every image gets a mesh as soon as it's added. It shows a placeholder until
+// the texture loads, so an image that is slow to load, or failing to, still
+// visibly occupies its place on the map.
+type MeshRecord = { mesh: THREE.Mesh } & (
+  | { status: 'placeholder' }
+  | { status: 'loaded'; material: THREE.ShaderMaterial; lease: ICacheLease<THREE.Texture> }
+);
 
 // This shader allows us to paint map images with a tint defined by a transform and scale,
 // allowing us to blend a selection image over the top of the drawn ones.  This should help the user
@@ -48,6 +50,59 @@ const mapImageShader: IShader = {
   `
 };
 
+// Placeholders are diagonal stripes in world space, so they keep the same
+// spacing at any image size and move with the map, plus a thin outline at the
+// image's edge. The selection tint is applied as for a loaded image.
+const placeholderShader: IShader = {
+  uniforms: {
+    "colourScale": { value: null },
+    "colourTrans": { value: null },
+    "stripeColour": { value: null },
+    "gapColour": { value: null },
+    "edgeColour": { value: null },
+    "stripeSpacing": { value: null }
+  },
+  vertexShader: `
+    varying vec2 worldXy;
+    varying vec2 texUv;
+    void main() {
+      vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * viewMatrix * worldPosition;
+      worldXy = worldPosition.xy;
+      texUv = uv;
+    }
+  `,
+  fragmentShader: `
+    uniform vec4 colourScale;
+    uniform vec4 colourTrans;
+    uniform vec4 stripeColour;
+    uniform vec4 gapColour;
+    uniform vec4 edgeColour;
+    uniform float stripeSpacing;
+    varying vec2 worldXy;
+    varying vec2 texUv;
+    void main() {
+      vec2 pixelsFromEdge = min(texUv, 1.0 - texUv) / fwidth(texUv);
+      bool isEdge = min(pixelsFromEdge.x, pixelsFromEdge.y) < 2.0;
+      bool isStripe = fract((worldXy.x + worldXy.y) / stripeSpacing) < 0.5;
+      vec4 colour = isEdge ? edgeColour : isStripe ? stripeColour : gapColour;
+      gl_FragColor = colour * colourScale + colourTrans;
+    }
+  `
+};
+
+const loadingColours = {
+  stripe: new THREE.Vector4(0.5, 0.5, 0.5, 0.3),
+  gap: new THREE.Vector4(0.5, 0.5, 0.5, 0.12),
+  edge: new THREE.Vector4(0.5, 0.5, 0.5, 0.7),
+};
+
+const failedColours = {
+  stripe: new THREE.Vector4(0.9, 0.55, 0.1, 0.4),
+  gap: new THREE.Vector4(0.9, 0.55, 0.1, 0.15),
+  edge: new THREE.Vector4(0.9, 0.55, 0.1, 0.85),
+};
+
 const mapImageColourScale = new THREE.Vector4(1, 1, 1, 1);
 const mapImageColourTrans = new THREE.Vector4(0, 0, 0, 0);
 const selectionColourScale = new THREE.Vector4(0.8, 0.8, 0.8, 0.1);
@@ -65,6 +120,26 @@ function createMapImageMaterial(isSelection: boolean, texture: THREE.Texture) {
     side: THREE.DoubleSide,
     transparent: true,
     ...mapImageShader,
+    uniforms: uniforms
+  });
+}
+
+function createPlaceholderMaterial(
+  isSelection: boolean, colours: typeof loadingColours, stripeSpacing: number
+) {
+  const uniforms = THREE.UniformsUtils.clone(placeholderShader.uniforms);
+  uniforms['colourScale'].value = isSelection ? selectionColourScale : mapImageColourScale;
+  uniforms['colourTrans'].value = isSelection ? selectionColourTrans : mapImageColourTrans;
+  uniforms['stripeColour'].value = colours.stripe;
+  uniforms['gapColour'].value = colours.gap;
+  uniforms['edgeColour'].value = colours.edge;
+  uniforms['stripeSpacing'].value = stripeSpacing;
+
+  return new THREE.ShaderMaterial({
+    blending: THREE.NormalBlending,
+    side: THREE.DoubleSide,
+    transparent: true,
+    ...placeholderShader,
     uniforms: uniforms
   });
 }
@@ -119,6 +194,8 @@ export class MapImages extends Drawn implements IIdDictionary<IMapImage> {
   private readonly _values = new Map<string, MapImage>();
   private readonly _meshes = new Map<string, MeshRecord>(); // id -> mesh added to scene
   private readonly _isSelection: boolean;
+  private readonly _loadingMaterial: THREE.ShaderMaterial;
+  private readonly _failedMaterial: THREE.ShaderMaterial;
 
   private _textureCache: TextureCache; // we don't own this either
 
@@ -155,21 +232,50 @@ export class MapImages extends Drawn implements IIdDictionary<IMapImage> {
     this._scene = scene;
     this._isSelection = isSelection;
     this._textureCache = textureCache;
+
+    const stripeSpacing = geometry.faceSize / 4;
+    this._loadingMaterial = createPlaceholderMaterial(isSelection, loadingColours, stripeSpacing);
+    this._failedMaterial = createPlaceholderMaterial(isSelection, failedColours, stripeSpacing);
   }
 
-  private addMesh(f: IMapImage, lease: ICacheLease<THREE.Texture>) {
-    if (this._meshes.get(f.id) !== undefined) {
-      lease.release();
-      return;
-    }
-
-    const material = createMapImageMaterial(this._isSelection, lease.value);
+  private addMesh(f: IMapImage) {
     const geomIndex = f.rotation === '90' ? 1 : f.rotation === '180' ? 2 : f.rotation === '270' ? 3 : 0;
-    const mesh = new THREE.Mesh(this._bufferGeometry[geomIndex], material);
+    const mesh = new THREE.Mesh(this._bufferGeometry[geomIndex], this._loadingMaterial);
     positionMesh(this.geometry, mesh, f);
 
     this._scene.add(mesh);
-    this._meshes.set(f.id, { lease: lease, material: material, mesh: mesh });
+    this._meshes.set(f.id, { status: 'placeholder', mesh: mesh });
+    this.setNeedsRedraw();
+  }
+
+  private applyLoadState(id: string, state: TextureLoadState) {
+    const record = this._meshes.get(id);
+    if (record === undefined) {
+      return; // can't happen: `remove` unsubscribes before deleting the mesh
+    }
+
+    switch (state.status) {
+      case 'loading':
+        record.mesh.material = this._loadingMaterial;
+        break;
+
+      case 'failed':
+        record.mesh.material = this._failedMaterial;
+        break;
+
+      case 'loaded': {
+        const material = createMapImageMaterial(this._isSelection, state.value.value);
+        record.mesh.material = material;
+        this._meshes.set(id, { status: 'loaded', mesh: record.mesh, material: material, lease: state.value });
+        break;
+      }
+
+      default: {
+        const unreachable: never = state;
+        throw Error(`Unknown texture load state ${JSON.stringify(unreachable)}`);
+      }
+    }
+
     this.setNeedsRedraw();
   }
 
@@ -182,9 +288,10 @@ export class MapImages extends Drawn implements IIdDictionary<IMapImage> {
       return false;
     }
 
-    // Resolve the texture.  When we have, add the relevant mesh:
+    // Show a placeholder straight away, and the texture once it loads:
+    this.addMesh(f);
     const sub = this._textureCache.resolveImage(f.image).subscribe(
-      l => this.addMesh(f, l)
+      state => this.applyLoadState(f.id, state)
     );
     this._values.set(f.id, { ...f, sub: sub });
     return true;
@@ -220,12 +327,14 @@ export class MapImages extends Drawn implements IIdDictionary<IMapImage> {
       // If we're still waiting for a texture, stop that
       value.sub.unsubscribe();
 
-      // Remove and clean up any texture we did receive
+      // Remove the mesh, and clean up any texture we did receive
       const r = this._meshes.get(value.id);
       if (r !== undefined) {
         this._scene.remove(r.mesh);
-        r.material.dispose();
-        r.lease.release().then(() => { /* should be okay to let go */ });
+        if (r.status === 'loaded') {
+          r.material.dispose();
+          r.lease.release().then(() => { /* should be okay to let go */ });
+        }
         this._meshes.delete(value.id);
         this.setNeedsRedraw();
       }
@@ -246,6 +355,8 @@ export class MapImages extends Drawn implements IIdDictionary<IMapImage> {
   dispose() {
     this.clear(); // will also cleanup leases, materials etc.
     this._bufferGeometry.map(g => g.dispose());
+    this._loadingMaterial.dispose();
+    this._failedMaterial.dispose();
   }
 }
 

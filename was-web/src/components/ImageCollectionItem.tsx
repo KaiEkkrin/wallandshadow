@@ -1,13 +1,9 @@
-import { useContext, useEffect, useState } from 'react';
 import * as React from 'react';
 
-import { UserContext } from './UserContext';
+import ImagePlaceholder from './ImagePlaceholder';
+import { useRetryingImageUrl } from '../hooks/useRetryingImageUrl';
 
 import { IImage } from '@wallandshadow/shared';
-
-import { from } from 'rxjs';
-
-import { logError } from '../services/consoleLogger';
 
 interface IImageCollectionItemProps {
   image: IImage;
@@ -15,24 +11,13 @@ interface IImageCollectionItemProps {
 }
 
 function ImageCollectionItem({ image, style }: IImageCollectionItemProps) {
-  const { resolveImageUrl } = useContext(UserContext);
-  const [url, setUrl] = useState("");
-
-  useEffect(() => {
-    if (!resolveImageUrl) {
-      return;
-    }
-
-    const sub = from(resolveImageUrl(image.path)).subscribe(
-      u => setUrl(String(u)),
-      e => logError("Failed to get download URL for image " + image.path, e)
-    );
-    return () => sub.unsubscribe();
-  }, [resolveImageUrl, image, setUrl]);
+  const imageState = useRetryingImageUrl(image.path);
 
   return (
     <div style={style}>
-      {url && <img crossOrigin="anonymous" className="App-image-collection-image" src={url} alt={image.name} />}
+      {imageState?.status === 'loaded'
+        ? <img crossOrigin="anonymous" className="App-image-collection-image" src={imageState.value} alt={image.name} />
+        : imageState !== undefined && <ImagePlaceholder status={imageState.status} alt={image.name} style={{ height: '8rem' }} />}
       <p>{image.name}</p>
     </div>
   );

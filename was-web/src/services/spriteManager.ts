@@ -1,7 +1,7 @@
 import { IPlayer, ICharacter, ITokenProperties, getSpritePathFromId, IIdentified, ILiveData, ISprite, ISpritesheet, ISpriteManager, ISpritesheetEntry } from '@wallandshadow/shared';
 
 import { combineLatest, from, Observable, of } from 'rxjs';
-import { concatMap, map, shareReplay, switchMap } from 'rxjs/operators';
+import { concatMap, map, shareReplay } from 'rxjs/operators';
 
 function findCharacterAndSprites(token: ITokenProperties, players: IPlayer[]) {
   if (token.characterId.length > 0) {
@@ -27,12 +27,11 @@ export class SpriteManager implements ISpriteManager {
   private readonly _players: Observable<IPlayer[]>;
   private _unsub: (() => void) | undefined;
 
-  private _published: Observable<{ sheet: ISpritesheet, url: string }[]>;
+  private _published: Observable<{ sheet: ISpritesheet, path: string }[]>;
   private _isDisposed = false;
 
   constructor(
     live: ILiveData,
-    resolveImageUrl: (path: string) => Promise<string>,
     adventureId: string,
     players: Observable<IPlayer[]> // must be a hot observable that will replay the latest
   ) {
@@ -47,15 +46,8 @@ export class SpriteManager implements ISpriteManager {
       );
     });
 
-    // We assume we'll want all download URLs at some point, and resolve them as
-    // they come in:
-    async function createEntry(s: IIdentified<ISpritesheet>) {
-      const url = await resolveImageUrl(getSpritePathFromId(s.id));
-      return { sheet: s.record, url: url };
-    }
-
-    this._published = ssFeed.pipe(switchMap(
-      ss => from(Promise.all(ss.map(createEntry)))
+    this._published = ssFeed.pipe(map(
+      ss => ss.map(s => ({ sheet: s.record, path: getSpritePathFromId(s.id) }))
     ), shareReplay(1));
   }
 

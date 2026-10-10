@@ -58,6 +58,39 @@ test.describe('Image management tests', () => {
     await expectImageLoaded(cardImage);
   });
 
+  test('image shows a placeholder while the object store fails, then recovers', async ({ page }) => {
+    // Make every image download from the object store fail with a gateway
+    // timeout, as during an object storage outage. Uploads go through the API
+    // server, so they still work.
+    const objectStore = `${new URL(process.env.S3_ENDPOINT ?? 'http://localhost:9000').origin}/**`;
+    await page.route(objectStore, route => route.fulfill({ status: 504, body: 'Gateway Timeout' }));
+
+    // Create an adventure and upload an image through the picker
+    await Util.createNewAdventure(page, 'Outage test', 'Testing image retries');
+    await expect(page).toHaveURL(/\/adventure\//);
+    await Util.adventureImageButton(page).click();
+    await expect(page.locator('.modal-title:has-text("Choose image")')).toBeVisible();
+    await page.setInputFiles('#uploadButton', {
+      name: 'test.png',
+      mimeType: 'image/png',
+      buffer: TINY_PNG,
+    });
+
+    // The download fails, so the picker shows the failed placeholder rather
+    // than no image at all
+    const modal = page.locator('.modal');
+    await expect(modal.locator('.App-image-placeholder-failed')).toBeVisible({ timeout: 5000 });
+    await expect(modal.locator('img.App-image-collection-image')).toHaveCount(0);
+
+    // End the outage: the automatic retry (first one after about 2s) loads
+    // the image in place of the placeholder
+    await page.unroute(objectStore);
+    const recovered = modal.locator('img.App-image-collection-image');
+    await expect(recovered).toBeVisible({ timeout: 15000 });
+    await expectImageLoaded(recovered);
+    await expect(modal.locator('.App-image-placeholder')).toHaveCount(0);
+  });
+
   test('remove image from adventure', async ({ page }) => {
     // Create an adventure
     await Util.createNewAdventure(page, 'Remove image test', 'Will remove image');

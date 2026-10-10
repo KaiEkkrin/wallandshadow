@@ -64,7 +64,7 @@ export class SpriteFeatureObject<
     maxInstances: number,
     createGeometry: () => THREE.InstancedBufferGeometry,
     getUvTransform: (feature: F) => THREE.Matrix4 | undefined,
-    url: string
+    path: string
   ) {
     super(toIndex, transformTo, maxInstances);
     this._geometry = createGeometry();
@@ -86,14 +86,18 @@ export class SpriteFeatureObject<
     });
 
     // The texture is loaded lazily.  Flag ourselves for a redraw when it arrives.
-    this._sub = textureCache.resolveUrl(url).subscribe(t => {
+    this._sub = textureCache.resolvePath(path).subscribe(state => {
+      if (state.status !== 'loaded') {
+        return;
+      }
+
       if (this._texture !== undefined) {
         this._texture.release().then(() => { /* nothing to do here */ });
       }
 
-      this._texture = t;
-      console.debug(`received texture ${this._texture?.value} for url ${url}`);
-      this._uniforms['spriteTex'].value = t.value;
+      this._texture = state.value;
+      console.debug(`received texture ${this._texture.value} for ${path}`);
+      this._uniforms['spriteTex'].value = state.value.value;
       redrawFlag.setNeedsRedraw();
     });
   }
