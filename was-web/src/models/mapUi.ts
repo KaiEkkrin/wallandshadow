@@ -202,6 +202,10 @@ export class MapUi {
           newState.mapImageToEdit = this._stateMachine?.getImage(cp);
           newState.mapImageToEditPosition = cp;
           break;
+
+        case EditMode.Scribble:
+          this._stateMachine?.scribbleEnd(cp);
+          break;
       }
     }
 
@@ -228,6 +232,7 @@ export class MapUi {
           break;
         case EditMode.Wall: this._stateMachine?.moveWallHighlightTo(cp, shiftKey, this._state.selectedColour); break;
         case EditMode.Room: this._stateMachine?.moveRoomHighlightTo(cp, shiftKey, this._state.selectedColour); break;
+        case EditMode.Scribble: this._stateMachine?.scribbleMove(cp); break;
         case EditMode.Token:
         case EditMode.CharacterToken:
         case EditMode.Notes:
@@ -262,6 +267,9 @@ export class MapUi {
         break;
       case EditMode.Wall: this._stateMachine?.wallDragStart(cp, shiftKey, this._state.selectedColour); break;
       case EditMode.Room: this._stateMachine?.roomDragStart(cp, shiftKey, this._state.selectedColour); break;
+      case EditMode.Scribble:
+        this._stateMachine?.scribbleStart(cp);
+        break;
     }
 
     this.changeState(newState);

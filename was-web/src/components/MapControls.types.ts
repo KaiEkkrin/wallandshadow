@@ -9,5 +9,6 @@ export enum EditMode {
   PlayerArea = "playerArea",
   Wall = "wall",
   Room = "room",
-  Image = "image"
+  Image = "image",
+  Scribble = "scribble"
 }
