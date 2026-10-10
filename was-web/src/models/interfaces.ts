@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { MapColouring } from "./colouring";
 import { GridCoord, GridEdge, GridVertex, IFeature, IFeatureDictionary, IAreaDictionary, IIdDictionary, IMapControlPointDictionary, IMapImage, LoSPosition, ITokenDrawing, ISpriteManager } from '@wallandshadow/shared';
 import { ITokenTextDrawing } from '../data/tokenTexts';
-import { ScribbleStroke } from './scribbleTypes';
+import { ScribbleMarker, ScribbleStroke } from './scribbleTypes';
 
 // Describes the interface to our drawing subsystem,
 // which could be substituted out, won't exist in auto tests, etc.
@@ -94,6 +94,10 @@ export interface IDrawing {
   // Replaces the full set of ephemeral scribble strokes to render (world
   // coordinates), oldest first. Pass an empty array to clear. Triggers a redraw.
   setScribbles(strokes: ScribbleStroke[]): void;
+
+  // Replaces the set of remote scribblers' hot points to mark (world
+  // coordinates). Pass an empty array to clear; markers fade out briefly.
+  setScribbleMarkers(markers: ScribbleMarker[]): void;
 
   // Cleans up and releases all resources.
   dispose(): void;

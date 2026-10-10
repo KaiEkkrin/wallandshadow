@@ -213,6 +213,7 @@ export class MapStateMachine {
         return { x: v.x, y: v.y };
       },
       setScribbles: strokes => this._drawing.setScribbles(strokes),
+      setMarkers: markers => this._drawing.setScribbleMarkers(markers),
       now: () => Date.now(),
     });
     this._scribbleController.setMap(map.adventureId, map.id);

@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { ILiveData, OutgoingOverlayItem, OverlayItem } from '@wallandshadow/shared';
 import { ScribbleController, SEND_INTERVAL_MS, KEEPALIVE_MS } from './scribbleController';
-import { ScribbleStroke, ScribbleStyle, SCRIBBLE_ACTIVE, SCRIBBLE_FADE_TOTAL_MS } from './scribbleTypes';
+import { ScribbleMarker, ScribbleStroke, ScribbleStyle, SCRIBBLE_ACTIVE, SCRIBBLE_FADE_TOTAL_MS } from './scribbleTypes';
 
 // Minimal fake of the bits of ILiveData the controller uses.
 class FakeLive {
@@ -26,9 +26,19 @@ function styleOf(authorId: string, generation = 0): ScribbleStyle {
   return { fill: { r: tag, g: 0, b: 0 }, outline: { r: 0, g: tag, b: 0 }, widthScale: 1 };
 }
 
+function remote(
+  authorId: string, itemId: string, phase: 'active' | 'released', points: { x: number; y: number }[]
+): OverlayItem {
+  return {
+    authorId, itemId, phase, updatedAt: 1, payload: { kind: 'scribble', points },
+    ...(phase === 'released' ? { releasedAt: 2 } : {}),
+  };
+}
+
 describe('ScribbleController', () => {
   let live: FakeLive;
   let rendered: ScribbleStroke[][];
+  let markers: ScribbleMarker[];
   let nowMs: number;
   let pendingTimers: { fn: () => void; ms: number }[];
   let styleFor: (authorId: string) => ScribbleStyle;
@@ -41,6 +51,7 @@ describe('ScribbleController', () => {
       // Identity transform: viewport coords == world coords for the test.
       toWorld: (cp) => ({ x: cp.x, y: cp.y }),
       setScribbles: (strokes) => rendered.push(strokes),
+      setMarkers: (m) => { markers = m; },
       now: () => nowMs,
       newId: () => 'item-1',
       schedule: (fn, ms) => { pendingTimers.push({ fn, ms }); return () => {}; },
@@ -50,6 +61,7 @@ describe('ScribbleController', () => {
   beforeEach(() => {
     live = new FakeLive();
     rendered = [];
+    markers = [];
     nowMs = 1000;
     pendingTimers = [];
     styleFor = id => styleOf(id);
@@ -292,5 +304,40 @@ describe('ScribbleController', () => {
     nowMs += KEEPALIVE_MS * 2;
     tick();
     expect(live.sent).toHaveLength(0);
+  });
+
+  test('a remote active stroke is marked at its last point', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    live.subs[0].onNext([
+      remote('alice', 'x', 'active', [{ x: 0, y: 0 }, { x: 5, y: 6 }]),
+      remote('bob', 'y', 'released', [{ x: 1, y: 1 }, { x: 2, y: 2 }]),
+    ]);
+    expect(markers).toEqual([{ key: 'alice/x', point: { x: 5, y: 6 }, style: styleOf('alice') }]);
+  });
+
+  test('a one-point remote stroke is marked, though it draws no line', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    live.subs[0].onNext([remote('alice', 'x', 'active', [{ x: 3, y: 4 }])]);
+    expect(markers.map(m => m.point)).toEqual([{ x: 3, y: 4 }]);
+    expect(rendered[rendered.length - 1]).toHaveLength(0);
+  });
+
+  test('the local stroke is never marked', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    c.start({ x: 0, y: 0 });
+    c.move({ x: 50, y: 0 });
+    expect(markers).toEqual([]);
+  });
+
+  test('switching maps clears the markers', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    live.subs[0].onNext([remote('alice', 'x', 'active', [{ x: 0, y: 0 }])]);
+    expect(markers).toHaveLength(1);
+    c.setMap('adv', 'map-2');
+    expect(markers).toEqual([]);
   });
 });

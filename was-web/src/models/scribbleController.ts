@@ -1,5 +1,6 @@
 import { ILiveData, OverlayItem, PixelCoord, MAX_SCRIBBLE_POINTS } from '@wallandshadow/shared';
 import {
+  ScribbleMarker,
   ScribbleStroke,
   ScribbleStyle,
   SCRIBBLE_ACTIVE,
@@ -29,6 +30,8 @@ export interface ScribbleControllerParams {
   toWorld: (cp: Point2) => Point2;
   // Pushes the current full stroke set to the renderer.
   setScribbles: (strokes: ScribbleStroke[]) => void;
+  // Pushes the remote scribblers' current hot points to the renderer.
+  setMarkers: (markers: ScribbleMarker[]) => void;
   // Clock, injectable for tests.
   now: () => number;
   // Item id factory, injectable for tests.
@@ -63,6 +66,7 @@ export class ScribbleController {
   private readonly _styleFor: () => (authorId: string) => ScribbleStyle;
   private readonly _toWorld: (cp: Point2) => Point2;
   private readonly _setScribbles: (strokes: ScribbleStroke[]) => void;
+  private readonly _setMarkers: (markers: ScribbleMarker[]) => void;
   private readonly _now: () => number;
   private readonly _newId: () => string;
   private readonly _schedule: (fn: () => void, ms: number) => () => void;
@@ -82,6 +86,7 @@ export class ScribbleController {
     this._styleFor = params.styleFor;
     this._toWorld = params.toWorld;
     this._setScribbles = params.setScribbles;
+    this._setMarkers = params.setMarkers;
     this._now = params.now;
     this._newId = params.newId ?? (() => crypto.randomUUID());
     this._schedule = params.schedule ?? ((fn, ms) => {
@@ -239,6 +244,8 @@ export class ScribbleController {
   private pushRender() {
     const styleFor = this._styleFor();
     const strokes: ScribbleStroke[] = [];
+    // One per remote stroke in progress; the local author's cursor marks their own.
+    const markers: ScribbleMarker[] = [];
     const add = (points: PixelCoord[], authorId: string, releaseTime: number) => {
       if (points.length >= 2) {
         strokes.push({ points, style: styleFor(authorId), releaseTime });
@@ -253,6 +260,13 @@ export class ScribbleController {
         continue;
       }
       add(it.payload.points, it.authorId, it.releasedAt ?? SCRIBBLE_ACTIVE);
+      if (it.phase === 'active' && it.payload.points.length > 0) {
+        markers.push({
+          key: `${it.authorId}/${it.itemId}`,
+          point: it.payload.points[it.payload.points.length - 1],
+          style: styleFor(it.authorId),
+        });
+      }
     }
     for (const r of [...this._localReleased].sort((a, b) => a.releasedAt - b.releasedAt)) {
       add(r.points, this._uid, r.releasedAt);
@@ -262,5 +276,6 @@ export class ScribbleController {
     }
 
     this._setScribbles(strokes);
+    this._setMarkers(markers);
   }
 }
