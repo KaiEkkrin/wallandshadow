@@ -79,10 +79,18 @@ FROM node:24-slim AS production
 WORKDIR /app
 
 # The server's production dependencies only; the SPA's are bundled into build/.
+# The package managers that ship with the base image (npm, npx, corepack, yarn)
+# are then removed in the same layer: the container only ever runs `node`, and
+# npm's bundled dependencies lag behind their advisories, so leaving it in
+# would keep surfacing image-scan findings for code that never runs.
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY server/package.json server/
-RUN npm ci --omit=dev --workspace=@wallandshadow/server && npm cache clean --force
+RUN npm ci --omit=dev --workspace=@wallandshadow/server \
+    && npm cache clean --force \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+        /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+        /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
 # Copy compiled server
 COPY --from=build-server /app/server/dist/ server/dist/
