@@ -242,7 +242,7 @@ describe('soft-delete: image download access', () => {
     expect(slashed.status).toBe(200);
 
     // Both presigned URLs must reference the same canonical S3 key. Compare
-    // the URL pathname (signature varies per call so don't compare wholesale).
+    // the URL pathname, which is what identifies the key.
     const canonicalPath = new URL(((await canonical.json()) as { url: string }).url).pathname;
     const slashedPath = new URL(((await slashed.json()) as { url: string }).url).pathname;
     expect(slashedPath).toBe(canonicalPath);
