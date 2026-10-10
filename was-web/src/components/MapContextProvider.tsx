@@ -24,7 +24,7 @@ function MapContextProvider(props: IContextProviderProps) {
   const { api, live, resolveImageUrl, user } = useContext(UserContext);
   const { profile } = useContext(ProfileContext);
   const { toasts } = useContext(StatusContext);
-  const { spriteManager } = useContext(AdventureContext);
+  const { spriteManager, players } = useContext(AdventureContext);
 
   const location = useLocation();
 
@@ -163,6 +163,12 @@ function MapContextProvider(props: IContextProviderProps) {
     api, live, lcm, location,
     profile, setMapContext, spriteManager, toasts
   ]);
+
+  // Scribble outline colours derive from the adventure's players.
+  const stateMachine = mapContext.stateMachine;
+  useEffect(() => {
+    stateMachine?.setScribblePlayers(players.map(p => p.playerId));
+  }, [stateMachine, players]);
 
   return (
     <MapContext.Provider value={mapContext}>
