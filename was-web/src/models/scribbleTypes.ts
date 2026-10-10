@@ -41,3 +41,28 @@ export const SCRIBBLE_GM_WIDTH_SCALE = 1.5;
 // Hard ceiling on rendered polyline segments across all strokes/authors
 // combined. Each segment is drawn twice (fill and outline).
 export const SCRIBBLE_MAX_SEGMENTS = 20000;
+
+// A remote scribbler's hot point (the newest point of their stroke in
+// progress), in world coordinates. Keyed by authorId/itemId.
+export interface ScribbleMarker {
+  key: string;
+  point: { x: number; y: number };
+  style: ScribbleStyle;
+}
+
+// Hot-point markers: a hollow ring over the hot point when it is on screen, or
+// an arrow at the screen edge pointing towards it when it is not. Sizes are
+// CSS pixels; the arrow scales with the author's widthScale, and the ring's
+// band uses the stroke half-widths above.
+export const SCRIBBLE_MARKER_RING_RADIUS_PX = 12;
+export const SCRIBBLE_MARKER_ARROW_LENGTH_PX = 22;
+export const SCRIBBLE_MARKER_ARROW_HALF_WIDTH_PX = 9;
+// Every marker pulses in phase: up to GROW larger and DIM fainter at the peak.
+export const SCRIBBLE_MARKER_PULSE_MS = 1000;
+export const SCRIBBLE_MARKER_PULSE_GROW = 0.25;
+export const SCRIBBLE_MARKER_PULSE_DIM = 0.35;
+// Remote points arrive at most every 80 ms; markers ease towards the latest
+// one with this time constant, and fade out over FADE when their stroke ends.
+export const SCRIBBLE_MARKER_SMOOTH_MS = 60;
+export const SCRIBBLE_MARKER_FADE_MS = 250;
+export const SCRIBBLE_MARKER_MAX = 64;

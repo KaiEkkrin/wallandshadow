@@ -5,7 +5,8 @@ import { IDrawing } from '../interfaces';
 import { RedrawFlag } from '../redrawFlag';
 
 import { ScribbleDrawing } from './scribbleDrawing';
-import { ScribbleStroke, SCRIBBLE_MAX_SEGMENTS } from '../scribbleTypes';
+import { ScribbleMarkerDrawing } from './scribbleMarkerDrawing';
+import { ScribbleMarker, ScribbleStroke, SCRIBBLE_MAX_SEGMENTS } from '../scribbleTypes';
 
 import { Areas, createPaletteColouredAreaObject, createAreas, createSelectionColouredAreaObject } from './areas';
 import { Grid } from './grid';
@@ -105,6 +106,7 @@ export class DrawingOrtho implements IDrawing {
 
   private readonly _outlinedRectangle: OutlinedRectangle;
   private readonly _scribbles: ScribbleDrawing;
+  private readonly _scribbleMarkers: ScribbleMarkerDrawing;
 
   private readonly _gridNeedsRedraw: RedrawFlag;
   private readonly _needsRedraw: RedrawFlag;
@@ -169,6 +171,8 @@ export class DrawingOrtho implements IDrawing {
     this._overlayScene = new THREE.Scene();
     this._scribbles = new ScribbleDrawing(SCRIBBLE_MAX_SEGMENTS);
     this._scribbles.setViewport(renderWidth, renderHeight);
+    this._scribbleMarkers = new ScribbleMarkerDrawing();
+    this._scribbleMarkers.setViewport(renderWidth, renderHeight);
 
     this._canvasClearColour = new THREE.Color(0.01, 0.01, 0.01);
     this._renderer.autoClear = false;
@@ -430,11 +434,17 @@ export class DrawingOrtho implements IDrawing {
     const needsRedraw = this._needsRedraw.needsRedraw();
     const gridNeedsRedraw = this._gridNeedsRedraw.needsRedraw();
     const scribblesActive = this._scribbles.hasContent;
+    const markersActive = this._scribbleMarkers.hasContent;
     if (gridNeedsRedraw) {
       this._grid.render(this._renderer, this._camera);
     }
 
-    if (gridNeedsRedraw || needsRedraw || scribblesActive) {
+    if (gridNeedsRedraw || needsRedraw || scribblesActive || markersActive) {
+      // Advance the markers even in debug mode, so their release fades finish
+      // and the render loop below can stop.
+      const now = Date.now();
+      this._scribbleMarkers.update(now, this._camera);
+
       // In debug mode, just render the debug texture fullscreen
       if (this._debugShowFaceCoord || this._debugShowVertexCoord) {
         this._renderer.setRenderTarget(null);
@@ -480,8 +490,9 @@ export class DrawingOrtho implements IDrawing {
           this._renderer.render(this._fixedHighlightScene, this._fixedCamera);
         }
         this._renderer.render(this._overlayScene, this._overlayCamera);
-        this._scribbles.updateNow(Date.now());
+        this._scribbles.updateNow(now);
         this._scribbles.render(this._renderer, this._camera);
+        this._scribbleMarkers.render(this._renderer, this._camera);
       }
     }
 
@@ -489,7 +500,8 @@ export class DrawingOrtho implements IDrawing {
     // animates. The loop stops once the caller (ScribbleController) pushes an
     // empty set via setScribbles([]) — it does so when all strokes have expired
     // (peer removals arrive over the wire; local strokes are pruned on a timer).
-    if (scribblesActive) {
+    // Hot-point markers likewise keep it running until their release fades end.
+    if (scribblesActive || markersActive) {
       this._needsRedraw.setNeedsRedraw();
     }
 
@@ -564,6 +576,7 @@ export class DrawingOrtho implements IDrawing {
     this._outlineSelectionDrag.resize(width, height);
     this._outlineSelectionDragRed.resize(width, height);
     this._scribbles.setViewport(width, height);
+    this._scribbleMarkers.setViewport(width, height);
 
     this._camera.left = translation.x + width / -scaling.x;
     this._camera.right = translation.x + width / scaling.x;
@@ -717,6 +730,16 @@ export class DrawingOrtho implements IDrawing {
     this._needsRedraw.setNeedsRedraw();
   }
 
+  setScribbleMarkers(markers: ScribbleMarker[]) {
+    this._scribbleMarkers.setMarkers(markers, Date.now());
+    this._needsRedraw.setNeedsRedraw();
+  }
+
+  setScribbleMarkerTopInset(px: number) {
+    this._scribbleMarkers.setTopInset(px);
+    this._needsRedraw.setNeedsRedraw();
+  }
+
   dispose() {
     if (this._disposed === true) {
       return;
@@ -752,6 +775,7 @@ export class DrawingOrtho implements IDrawing {
 
     this._outlinedRectangle.dispose();
     this._scribbles.dispose();
+    this._scribbleMarkers.dispose();
 
     this._textureCache.dispose();
     this._textMaterial.dispose();

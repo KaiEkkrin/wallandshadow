@@ -213,6 +213,7 @@ export class MapStateMachine {
         return { x: v.x, y: v.y };
       },
       setScribbles: strokes => this._drawing.setScribbles(strokes),
+      setMarkers: markers => this._drawing.setScribbleMarkers(markers),
       now: () => Date.now(),
     });
     this._scribbleController.setMap(map.adventureId, map.id);
@@ -1754,6 +1755,12 @@ export class MapStateMachine {
   setScribblePlayers(playerIds: readonly string[]) {
     this._scribblePlayerIds = playerIds;
     this.refreshScribbleStyles();
+  }
+
+  // Sets how far the navbar covers the top of the map, so scribble markers
+  // keep clear of it.
+  setScribbleMarkerTopInset(px: number) {
+    this._drawing.setScribbleMarkerTopInset(px);
   }
 
   scribbleStart(cp: THREE.Vector3) {

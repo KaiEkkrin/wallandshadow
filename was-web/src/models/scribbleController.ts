@@ -1,5 +1,6 @@
 import { ILiveData, OverlayItem, PixelCoord, MAX_SCRIBBLE_POINTS } from '@wallandshadow/shared';
 import {
+  ScribbleMarker,
   ScribbleStroke,
   ScribbleStyle,
   SCRIBBLE_ACTIVE,
@@ -10,7 +11,11 @@ import {
 // number of points/segments and avoid flooding the wire.
 const SAMPLE_PX = 3;
 // Minimum gap between fire-and-forget "active" frames while drawing.
-const SEND_INTERVAL_MS = 80;
+export const SEND_INTERVAL_MS = 80;
+// While a stroke is held, resend it at least this often even if nothing has
+// changed, so the server's staleness timeout (ACTIVE_STALE_MS, 5 s) never
+// drops a stroke whose author is simply holding still.
+export const KEEPALIVE_MS = 2000;
 
 interface Point2 { x: number; y: number; }
 
@@ -25,6 +30,8 @@ export interface ScribbleControllerParams {
   toWorld: (cp: Point2) => Point2;
   // Pushes the current full stroke set to the renderer.
   setScribbles: (strokes: ScribbleStroke[]) => void;
+  // Pushes the remote scribblers' current hot points to the renderer.
+  setMarkers: (markers: ScribbleMarker[]) => void;
   // Clock, injectable for tests.
   now: () => number;
   // Item id factory, injectable for tests.
@@ -38,6 +45,8 @@ interface LocalStroke {
   points: PixelCoord[];
   lastSampled: Point2;     // viewport coords of the last accepted sample
   lastSentAt: number;
+  sentCount: number;       // points in the last frame sent
+  cancelTick: () => void;
 }
 
 interface ReleasedStroke {
@@ -57,6 +66,7 @@ export class ScribbleController {
   private readonly _styleFor: () => (authorId: string) => ScribbleStyle;
   private readonly _toWorld: (cp: Point2) => Point2;
   private readonly _setScribbles: (strokes: ScribbleStroke[]) => void;
+  private readonly _setMarkers: (markers: ScribbleMarker[]) => void;
   private readonly _now: () => number;
   private readonly _newId: () => string;
   private readonly _schedule: (fn: () => void, ms: number) => () => void;
@@ -76,6 +86,7 @@ export class ScribbleController {
     this._styleFor = params.styleFor;
     this._toWorld = params.toWorld;
     this._setScribbles = params.setScribbles;
+    this._setMarkers = params.setMarkers;
     this._now = params.now;
     this._newId = params.newId ?? (() => crypto.randomUUID());
     this._schedule = params.schedule ?? ((fn, ms) => {
@@ -90,6 +101,7 @@ export class ScribbleController {
     this._unsub = undefined;
     // A drag in progress on the old map is abandoned; the server's staleness
     // TTL clears its last 'active' frame for peers.
+    this._local?.cancelTick();
     this._local = undefined;
     for (const r of this._localReleased) {
       r.cancel();
@@ -114,8 +126,12 @@ export class ScribbleController {
       itemId: this._newId(),
       points: [{ x: world.x, y: world.y }],
       lastSampled: { x: cp.x, y: cp.y },
+      // The first tick, SEND_INTERVAL_MS from now, sends this one-point stroke.
       lastSentAt: this._now(),
+      sentCount: 0,
+      cancelTick: () => {},
     };
+    this.scheduleTick(this._local);
     this.pushRender();
   }
 
@@ -137,10 +153,8 @@ export class ScribbleController {
     local.lastSampled = { x: cp.x, y: cp.y };
     this.pushRender();
 
-    const t = this._now();
-    if (t - local.lastSentAt >= SEND_INTERVAL_MS) {
-      this.send(local.itemId, local.points, 'active');
-      local.lastSentAt = t;
+    if (this._now() - local.lastSentAt >= SEND_INTERVAL_MS) {
+      this.sendActive(local);
     }
   }
 
@@ -149,6 +163,7 @@ export class ScribbleController {
     if (local === undefined) {
       return;
     }
+    local.cancelTick();
     // Append the final point only if it clears the sampling threshold from the
     // last accepted sample (same rule as move), so a barely-moved release does
     // not add a redundant point.
@@ -186,7 +201,33 @@ export class ScribbleController {
       r.cancel();
     }
     this._localReleased = [];
+    this._local?.cancelTick();
     this._local = undefined;
+  }
+
+  private scheduleTick(local: LocalStroke) {
+    local.cancelTick = this._schedule(() => this.tick(local), SEND_INTERVAL_MS);
+  }
+
+  // Runs every SEND_INTERVAL_MS while a stroke is held: flushes points the
+  // send throttle held back, and resends a still stroke as a keepalive.
+  private tick(local: LocalStroke) {
+    // A tick that outlived its stroke (released, or the map changed) does nothing.
+    if (this._local !== local) {
+      return;
+    }
+    const elapsed = this._now() - local.lastSentAt;
+    const unsent = local.sentCount < local.points.length;
+    if ((unsent && elapsed >= SEND_INTERVAL_MS) || elapsed >= KEEPALIVE_MS) {
+      this.sendActive(local);
+    }
+    this.scheduleTick(local);
+  }
+
+  private sendActive(local: LocalStroke) {
+    this.send(local.itemId, local.points, 'active');
+    local.lastSentAt = this._now();
+    local.sentCount = local.points.length;
   }
 
   private send(itemId: string, points: PixelCoord[], phase: 'active' | 'released') {
@@ -203,6 +244,8 @@ export class ScribbleController {
   private pushRender() {
     const styleFor = this._styleFor();
     const strokes: ScribbleStroke[] = [];
+    // One per remote stroke in progress; the local author's cursor marks their own.
+    const markers: ScribbleMarker[] = [];
     const add = (points: PixelCoord[], authorId: string, releaseTime: number) => {
       if (points.length >= 2) {
         strokes.push({ points, style: styleFor(authorId), releaseTime });
@@ -217,6 +260,13 @@ export class ScribbleController {
         continue;
       }
       add(it.payload.points, it.authorId, it.releasedAt ?? SCRIBBLE_ACTIVE);
+      if (it.phase === 'active' && it.payload.points.length > 0) {
+        markers.push({
+          key: `${it.authorId}/${it.itemId}`,
+          point: it.payload.points[it.payload.points.length - 1],
+          style: styleFor(it.authorId),
+        });
+      }
     }
     for (const r of [...this._localReleased].sort((a, b) => a.releasedAt - b.releasedAt)) {
       add(r.points, this._uid, r.releasedAt);
@@ -226,5 +276,6 @@ export class ScribbleController {
     }
 
     this._setScribbles(strokes);
+    this._setMarkers(markers);
   }
 }

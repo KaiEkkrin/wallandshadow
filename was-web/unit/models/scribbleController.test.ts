@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { ILiveData, OutgoingOverlayItem, OverlayItem } from '@wallandshadow/shared';
-import { ScribbleController } from './scribbleController';
-import { ScribbleStroke, ScribbleStyle, SCRIBBLE_ACTIVE } from './scribbleTypes';
+import { ScribbleController, SEND_INTERVAL_MS, KEEPALIVE_MS } from './scribbleController';
+import { ScribbleMarker, ScribbleStroke, ScribbleStyle, SCRIBBLE_ACTIVE, SCRIBBLE_FADE_TOTAL_MS } from './scribbleTypes';
 
 // Minimal fake of the bits of ILiveData the controller uses.
 class FakeLive {
@@ -26,9 +26,19 @@ function styleOf(authorId: string, generation = 0): ScribbleStyle {
   return { fill: { r: tag, g: 0, b: 0 }, outline: { r: 0, g: tag, b: 0 }, widthScale: 1 };
 }
 
+function remote(
+  authorId: string, itemId: string, phase: 'active' | 'released', points: { x: number; y: number }[]
+): OverlayItem {
+  return {
+    authorId, itemId, phase, updatedAt: 1, payload: { kind: 'scribble', points },
+    ...(phase === 'released' ? { releasedAt: 2 } : {}),
+  };
+}
+
 describe('ScribbleController', () => {
   let live: FakeLive;
   let rendered: ScribbleStroke[][];
+  let markers: ScribbleMarker[];
   let nowMs: number;
   let pendingTimers: { fn: () => void; ms: number }[];
   let styleFor: (authorId: string) => ScribbleStyle;
@@ -41,6 +51,7 @@ describe('ScribbleController', () => {
       // Identity transform: viewport coords == world coords for the test.
       toWorld: (cp) => ({ x: cp.x, y: cp.y }),
       setScribbles: (strokes) => rendered.push(strokes),
+      setMarkers: (m) => { markers = m; },
       now: () => nowMs,
       newId: () => 'item-1',
       schedule: (fn, ms) => { pendingTimers.push({ fn, ms }); return () => {}; },
@@ -50,10 +61,24 @@ describe('ScribbleController', () => {
   beforeEach(() => {
     live = new FakeLive();
     rendered = [];
+    markers = [];
     nowMs = 1000;
     pendingTimers = [];
     styleFor = id => styleOf(id);
   });
+
+  // Fires the pending send ticks (and only those), as their timer would.
+  function tick() {
+    const due = pendingTimers.filter(t => t.ms === SEND_INTERVAL_MS);
+    pendingTimers = pendingTimers.filter(t => t.ms !== SEND_INTERVAL_MS);
+    for (const t of due) {
+      t.fn();
+    }
+  }
+
+  function activeFrames() {
+    return live.sent.filter(s => s.item.phase === 'active');
+  }
 
   test('setMap subscribes for that map', () => {
     const c = makeController();
@@ -207,8 +232,112 @@ describe('ScribbleController', () => {
     expect(rendered[rendered.length - 1].length).toBeGreaterThan(0);
 
     // ...until the prune timer fires, after which it is gone.
-    expect(pendingTimers).toHaveLength(1);
-    pendingTimers[0].fn();
+    const prune = pendingTimers.filter(t => t.ms === SCRIBBLE_FADE_TOTAL_MS);
+    expect(prune).toHaveLength(1);
+    prune[0].fn();
     expect(rendered[rendered.length - 1]).toHaveLength(0);
+  });
+
+  test('the first tick sends the held stroke, even before the pointer moves', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    c.start({ x: 10, y: 20 });
+    nowMs += SEND_INTERVAL_MS;
+    tick();
+    expect(activeFrames()).toHaveLength(1);
+    const payload = activeFrames()[0].item.payload;
+    expect(payload.kind === 'scribble' && payload.points).toEqual([{ x: 10, y: 20 }]);
+  });
+
+  test('a tick flushes points that the send throttle held back', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    c.start({ x: 0, y: 0 });
+    nowMs += 100;
+    c.move({ x: 50, y: 0 });   // sent: 100 ms since start
+    nowMs += 10;
+    c.move({ x: 100, y: 0 });  // held back: 10 ms since the last send
+    expect(activeFrames()).toHaveLength(1);
+
+    nowMs += SEND_INTERVAL_MS;
+    tick();
+    expect(activeFrames()).toHaveLength(2);
+    const payload = activeFrames()[1].item.payload;
+    expect(payload.kind === 'scribble' && payload.points.length).toBe(3);
+  });
+
+  test('a held, still stroke is resent as a keepalive', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    c.start({ x: 0, y: 0 });
+    nowMs += 100;
+    c.move({ x: 50, y: 0 });
+    expect(activeFrames()).toHaveLength(1);
+
+    nowMs += KEEPALIVE_MS / 2;
+    tick();
+    expect(activeFrames()).toHaveLength(1);  // nothing new, and not due yet
+    nowMs += KEEPALIVE_MS / 2;
+    tick();
+    expect(activeFrames()).toHaveLength(2);
+  });
+
+  test('ticks stop at release, and a late tick sends nothing', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    c.start({ x: 0, y: 0 });
+    c.move({ x: 50, y: 0 });
+    c.end({ x: 100, y: 0 });
+    const sent = live.sent.length;
+
+    nowMs += KEEPALIVE_MS * 2;
+    tick();
+    expect(live.sent).toHaveLength(sent);
+    expect(pendingTimers.filter(t => t.ms === SEND_INTERVAL_MS)).toHaveLength(0);
+  });
+
+  test('switching maps abandons the held stroke and its ticks', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    c.start({ x: 0, y: 0 });
+    c.setMap('adv', 'map-2');
+    nowMs += KEEPALIVE_MS * 2;
+    tick();
+    expect(live.sent).toHaveLength(0);
+  });
+
+  test('a remote active stroke is marked at its last point', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    live.subs[0].onNext([
+      remote('alice', 'x', 'active', [{ x: 0, y: 0 }, { x: 5, y: 6 }]),
+      remote('bob', 'y', 'released', [{ x: 1, y: 1 }, { x: 2, y: 2 }]),
+    ]);
+    expect(markers).toEqual([{ key: 'alice/x', point: { x: 5, y: 6 }, style: styleOf('alice') }]);
+  });
+
+  test('a one-point remote stroke is marked, though it draws no line', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    live.subs[0].onNext([remote('alice', 'x', 'active', [{ x: 3, y: 4 }])]);
+    expect(markers.map(m => m.point)).toEqual([{ x: 3, y: 4 }]);
+    expect(rendered[rendered.length - 1]).toHaveLength(0);
+  });
+
+  test('the local stroke is never marked', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    c.start({ x: 0, y: 0 });
+    c.move({ x: 50, y: 0 });
+    expect(markers).toEqual([]);
+  });
+
+  test('switching maps clears the markers', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    live.subs[0].onNext([remote('alice', 'x', 'active', [{ x: 0, y: 0 }])]);
+    expect(markers).toHaveLength(1);
+    c.setMap('adv', 'map-2');
+    expect(markers).toEqual([]);
   });
 });

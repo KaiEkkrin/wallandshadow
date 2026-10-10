@@ -10,7 +10,9 @@ code (see "Where the code lives" at the end).
 **Status.** The backplane is built and carries two tenants. Presence is wired
 end to end, UI included. Of the two live-overlay kinds, **scribbles** are now
 wired end to end as well — a pencil edit mode, pointer capture, and the fading
-renderer, with per-author colour. **Rulers** remain a *data layer only*: the server registry, the
+renderer, with per-author colour. While someone else is drawing, their hot
+point is marked: a ring on screen, or an arrow at the screen edge pointing
+towards it when it is off screen. **Rulers** remain a *data layer only*: the server registry, the
 wire contract, and the `ILiveData` client surface carry them, but no ruler UI
 exists yet.
 
@@ -160,7 +162,9 @@ Each overlay item carries a `phase` (`active` while being drawn, `released`
 once let go) and an expiry timer that **every update re-arms**:
 
 - While `active`, the timer is a *staleness* guard (a few seconds) — it cleans
-  up after an author whose client died mid-drag.
+  up after an author whose client died mid-drag. A live scribbler's client
+  resends its stroke at least every 2 s while the button is held, so holding
+  still never trips it; it only catches clients that have actually gone.
 - On `released`, the timer becomes a *fade* deadline (per kind: short for
   rulers, longer for scribbles).
 - A re-grab — a fresh `active` update on the same item after a release —
@@ -246,7 +250,10 @@ Everything from the wire is treated as untrusted at the server boundary:
 - Scribble UI (so far the only live-overlay kind with one):
   `was-web/src/models/scribbleController.ts` captures strokes and merges local
   with remote, `was-web/src/models/scribbleStyles.ts` derives each author's
-  colours, `was-web/src/models/three/scribbleDrawing.ts` renders them, and
+  colours, `was-web/src/models/three/scribbleDrawing.ts` renders them,
+  `was-web/src/models/scribbleMarkers.ts` smooths, fades and places the
+  hot-point markers, `was-web/src/models/three/scribbleMarkerDrawing.ts`
+  draws them as rings and edge arrows, and
   `EditMode.Scribble` routes pointer events through `was-web/src/models/mapUi.ts`
   into the map state machine.
 - Shared subscription machinery both paths use:

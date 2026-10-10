@@ -50,6 +50,7 @@ function Map() {
   const statusContext = useContext(StatusContext);
 
   const drawingRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLDivElement>(null);
 
   const [uiState, setUiState] = useState(createDefaultUiState());
 
@@ -122,6 +123,20 @@ function Map() {
   useEffect(() => {
     stateMachine?.setMount(drawingRef?.current ?? undefined);
   }, [drawingRef, stateMachine]);
+
+  // The navbar overlays the top of the map; tell the drawing how much it
+  // covers, so scribble markers stay visible below it.
+  useEffect(() => {
+    const nav = navRef.current;
+    if (nav === null || stateMachine === undefined) {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      stateMachine.setScribbleMarkerTopInset(nav.getBoundingClientRect().bottom);
+    });
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, [stateMachine]);
 
   // Hide scroll bars whilst viewing the map.
   useEffect(() => {
@@ -434,7 +449,7 @@ function Map() {
   return (
     <RequireLoggedIn>
       <div className={mapContainerClassName}>
-        <div className="Map-nav">
+        <div className="Map-nav" ref={navRef}>
           <Navigation>{title}</Navigation>
         </div>
         <div className="Map-overlay">
