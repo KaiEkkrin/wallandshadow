@@ -57,7 +57,7 @@ describe('buildScribbleStyles', () => {
     const gm = withOwner('o');
     expect(gm.widthScale).toBe(SCRIBBLE_GM_WIDTH_SCALE);
     const [l, c] = lchOf(gm.outline);
-    expect(l).toBeLessThan(15);
+    expect(l).toBeGreaterThan(90);
     expect(c).toBeLessThan(1);
   });
 

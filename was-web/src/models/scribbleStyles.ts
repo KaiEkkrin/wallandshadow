@@ -47,7 +47,9 @@ function outlineAt(h: number): Rgb {
 
 const MID_GREY_FILL = lch(60, 0, 0);
 const UNKNOWN_OUTLINE = lch(OUTLINE_L, 0, 0);
-const GM_OUTLINE = lch(10, 0, 0);
+// Near-white: the default map background is near-black, against which a
+// dark outline disappears.
+const GM_OUTLINE = lch(95, 0, 0);
 
 function tokenFill(t: ITokenProperties): Rgb {
   return standardColours[t.colour]?.light ?? MID_GREY_FILL;

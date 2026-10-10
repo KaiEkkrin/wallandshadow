@@ -14,7 +14,7 @@
 
 1. **Player order:** sort player ids (UUIDv7, so roughly account-creation order) as strings. No server change.
 2. **Outline lightness:** outlines are dark and saturated — LCH L=38, C=60 — so lightness, not just hue, separates them from the token palette (L=60, C=50).
-3. **GM:** excluded from the wheel. Colourless (near-black) outline and a 1.5× thicker line.
+3. **GM:** excluded from the wheel. Colourless outline and a 1.5× thicker line. *(Changed after the visual check: near-white, not near-black — see Task 7.)*
 4. Choosing your own scribble colour is out of scope.
 
 ## Design details
@@ -37,7 +37,7 @@ The GM follows the same fill rule. The GM is rarely in a token's `players` list,
 - Wheel members = all player ids from `AdventureContext.players` (blocked players included, so blocking someone does not recolour everyone), minus `ownerId`, de-duplicated, sorted ascending.
 - Player at index *k* of *N* gets hue `SCRIBBLE_HUE_OFFSET_DEG + k * 360 / N`, outline `chroma.lch(38, 60, hue)`.
 - `SCRIBBLE_HUE_OFFSET_DEG = 0`. The token palette's hues are 27.9°, 83.7°, 139.5°, 195.3°, 284.7°, 340.5° — unevenly spaced — and for N=6 an offset of 0° maximises the minimum hue gap (15.3°). 30° would be the worst choice, about 2° from the reds. The lightness difference does most of the separating work; the offset is a bonus.
-- GM outline: `chroma.lch(10, 0, 0)` (near-black).
+- GM outline: `chroma.lch(95, 0, 0)` (near-white). The plan first said `lch(10, 0, 0)` (near-black), but that measured ~27 grey on the default ~25-grey map background and vanished.
 - An author who is neither the GM nor in the player list (the list has not loaded yet, or is stale): mid-grey outline (LCH L=38, C=0) at player width. They pick up their colour as soon as the list arrives.
 
 ### Widths (CSS pixels, constant on screen)
@@ -125,7 +125,7 @@ export interface ScribbleStroke {
 
 - [ ] **Step 1: Write the failing tests first.** Cover:
   - Wheel order: players `['c','a','b']`, owner `'o'` → `a`, `b`, `c` get hues 0°, 120°, 240° (assert via `chroma(rgb).lch()` hue within 1°, L ≈ 38).
-  - The owner is excluded from the wheel even when present in the player list, and gets the near-black outline and `widthScale` 1.5.
+  - The owner is excluded from the wheel even when present in the player list, and gets the near-white outline and `widthScale` 1.5.
   - Duplicate player ids are counted once.
   - Fill precedence: a non-character token created first and a character token created later → the character token's colour. No character token → first non-character token by `id`. No tokens → mid-grey.
   - Token order is by `id`, not by array order (pass the same tokens shuffled; same result).
@@ -163,7 +163,7 @@ function lch(l: number, c: number, h: number): Rgb {
 
 const MID_GREY_FILL = lch(60, 0, 0);
 const UNKNOWN_OUTLINE = lch(OUTLINE_L, 0, 0);
-const GM_OUTLINE = lch(10, 0, 0);
+const GM_OUTLINE = lch(95, 0, 0);
 
 export function buildScribbleStyles(inputs: ScribbleStyleInputs): (authorId: string) => ScribbleStyle {
   // ... sort tokens by id once; build Map<uid, fill> walking the sorted tokens
@@ -301,13 +301,13 @@ Use whatever name the provider's state actually has. A new state machine (map sw
 - [ ] `npm run build`, `npm run lint`, `npm test`, `npm run test:shared`, `npm run test:smoke` (after the build).
 - [ ] `npm run test:e2e` with both dev servers running. No screenshot should change: scribbles aren't in any baseline. If one does change, find out why before updating it.
 - [ ] **Manual (dev server, three browser profiles: GM + two players):**
-  - [ ] Each player's outline hue differs; the GM's is near-black and visibly thicker.
+  - [ ] Each player's outline hue differs; the GM's is near-white and visibly thicker.
   - [ ] Give a player a character token. Their fill matches its colour. Change the token's colour, and their next and existing strokes recolour.
   - [ ] A player with no tokens draws with a mid-grey fill.
   - [ ] Draw a tight zig-zag and a self-crossing loop: corners are round, and the crossing doesn't look darker mid-fade.
   - [ ] Two players' strokes crossing: the newer one is on top throughout the fade.
   - [ ] Fade: hold ~3 s, then both colours fade together to nothing. No white or grey halo.
-  - [ ] Check the near-black GM outline on the darkest map background in use. If it disappears, raise the GM outline lightness with the user rather than guessing.
+  - [x] Check the GM outline on the default dark map background. Near-black disappeared there, so with the user's agreement it became near-white. Check it over a light map image too.
 - [ ] Tick the two remaining checkboxes on PR #366 once the user has done their manual check.
 
 ## Notes for the implementer
