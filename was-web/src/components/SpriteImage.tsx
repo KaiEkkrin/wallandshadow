@@ -2,6 +2,7 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import * as React from 'react';
 
 import { AdventureContext } from './AdventureContext';
+import { useRetryingImageUrl } from '../hooks/useRetryingImageUrl';
 
 import { ITokenProperties, fromSpriteGeometryString, ISprite, ISpritesheetEntry } from '@wallandshadow/shared';
 import { logError } from '../services/consoleLogger';
@@ -59,6 +60,8 @@ function SpriteImage(
     return undefined;
   }, [setEntry, sprite, spriteManager, token]);
 
+  const sheetState = useRetryingImageUrl(entry?.path);
+
   const alt = useMemo(
     () => entryAltText ? `${entryAltText} (${altName})` : altName,
     [altName, entryAltText]
@@ -95,12 +98,19 @@ function SpriteImage(
     borderRadius: '50%',
   }), [border, borderColour, layout, size]);
 
+  // Until the sheet loads, the frame itself shows the placeholder stripes
+  const wrapperClassName = [
+    className,
+    sheetState?.status === 'loading' || sheetState?.status === 'failed' ? 'App-image-placeholder' : undefined,
+    sheetState?.status === 'failed' ? 'App-image-placeholder-failed' : undefined
+  ].filter(c => c !== undefined).join(' ');
+
   return (
-    <div className={className} style={wrapperStyle} onClick={onClick} title={alt}>
-      {entry && layout && (
+    <div className={wrapperClassName} style={wrapperStyle} onClick={onClick} title={alt}>
+      {layout && sheetState?.status === 'loaded' && (
         <img
           crossOrigin="anonymous"
-          src={entry.url}
+          src={sheetState.value}
           alt={alt}
           style={{
             position: 'absolute',

@@ -65,7 +65,7 @@ export function createSpriteEdgeObject(
 ) {
   const edgeGeometry = createTokenFillEdgeGeometry(gridGeometry, alpha, z);
   return (maxInstances: number) => new MultipleFeatureObject<GridEdge, IFeature<GridEdge> & ITokenProperties & ISpriteProperties>(
-    (url: string, maxInstances: number) => new SpriteFeatureObject(
+    (path: string, maxInstances: number) => new SpriteFeatureObject(
       redrawFlag,
       textureCache,
       edgeString,
@@ -73,9 +73,9 @@ export function createSpriteEdgeObject(
       maxInstances,
       edgeGeometry,
       f => uvTransform.getFillEdgeTransform(f),
-      url
+      path
     ),
-    f => f.sheetEntry.url,
+    f => f.sheetEntry.path,
     maxInstances
   );
 }

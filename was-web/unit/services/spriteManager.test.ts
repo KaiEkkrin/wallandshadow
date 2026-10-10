@@ -75,15 +75,13 @@ function makePlayer(uid: string, characters: ICharacter[]): IPlayer {
   };
 }
 
-const resolveUrl = async (path: string) => `https://example.test/${path}`;
-
 describe('SpriteManager.lookupToken', () => {
   test('emits the matching spritesheet entry when the character has a sprite', async () => {
     const { live, emit } = makeLive();
     const players$ = new BehaviorSubject<IPlayer[]>([
       makePlayer('uid-1', [makeCharacter('char-1', ['images/uid-1/a'])]),
     ]);
-    const sm = new SpriteManager(live, resolveUrl, 'adv-1', players$);
+    const sm = new SpriteManager(live, 'adv-1', players$);
 
     const token = makeToken({ characterId: 'char-1' });
     const next = firstValueFrom(sm.lookupToken(token).pipe(take(1)));
@@ -92,6 +90,7 @@ describe('SpriteManager.lookupToken', () => {
 
     expect(entry).toBeDefined();
     expect((entry as ISpritesheetEntry & { character: ICharacter }).position).toBe(0);
+    expect((entry as ISpritesheetEntry & { character: ICharacter }).path).toBe('sprites/sheet-1.png');
     expect((entry as ISpritesheetEntry & { character: ICharacter }).character?.id).toBe('char-1');
     sm.dispose();
   });
@@ -101,7 +100,7 @@ describe('SpriteManager.lookupToken', () => {
     const players$ = new BehaviorSubject<IPlayer[]>([
       makePlayer('uid-1', [makeCharacter('char-1', ['images/uid-1/a'])]),
     ]);
-    const sm = new SpriteManager(live, resolveUrl, 'adv-1', players$);
+    const sm = new SpriteManager(live, 'adv-1', players$);
 
     const token = makeToken({ characterId: 'char-1' });
 
@@ -124,7 +123,7 @@ describe('SpriteManager.lookupToken', () => {
     const players$ = new BehaviorSubject<IPlayer[]>([
       makePlayer('uid-1', [makeCharacter('char-1', ['images/uid-1/missing'])]),
     ]);
-    const sm = new SpriteManager(live, resolveUrl, 'adv-1', players$);
+    const sm = new SpriteManager(live, 'adv-1', players$);
 
     const token = makeToken({ characterId: 'char-1' });
     const next = firstValueFrom(sm.lookupToken(token).pipe(take(1)));
@@ -137,7 +136,7 @@ describe('SpriteManager.lookupToken', () => {
   test('emits undefined when the token has no characterId and no own sprites', async () => {
     const { live, emit } = makeLive();
     const players$ = new BehaviorSubject<IPlayer[]>([]);
-    const sm = new SpriteManager(live, resolveUrl, 'adv-1', players$);
+    const sm = new SpriteManager(live, 'adv-1', players$);
 
     const next = firstValueFrom(sm.lookupToken(makeToken()).pipe(take(1)));
     emit([]);
@@ -150,7 +149,7 @@ describe('SpriteManager.lookupToken', () => {
     const players$ = new BehaviorSubject<IPlayer[]>([
       makePlayer('uid-1', [makeCharacter('char-1', [])]),
     ]);
-    const sm = new SpriteManager(live, resolveUrl, 'adv-1', players$);
+    const sm = new SpriteManager(live, 'adv-1', players$);
 
     const token = makeToken({
       characterId: 'char-1',

@@ -70,7 +70,7 @@ export function createSpriteVertexObject(
 ) {
   const vertexGeometry = createTokenFillVertexGeometry(gridGeometry, alpha, z);
   return (maxInstances: number) => new MultipleFeatureObject<GridVertex, IFeature<GridVertex> & ITokenProperties & ISpriteProperties>(
-    (url: string, maxInstances: number) => new SpriteFeatureObject(
+    (path: string, maxInstances: number) => new SpriteFeatureObject(
       redrawFlag,
       textureCache,
       vertexString,
@@ -78,9 +78,9 @@ export function createSpriteVertexObject(
       maxInstances,
       vertexGeometry,
       f => uvTransform.getFillVertexTransform(f),
-      url
+      path
     ),
-    f => f.sheetEntry.url,
+    f => f.sheetEntry.path,
     maxInstances
   );
 }
