@@ -10,7 +10,11 @@ import {
 // number of points/segments and avoid flooding the wire.
 const SAMPLE_PX = 3;
 // Minimum gap between fire-and-forget "active" frames while drawing.
-const SEND_INTERVAL_MS = 80;
+export const SEND_INTERVAL_MS = 80;
+// While a stroke is held, resend it at least this often even if nothing has
+// changed, so the server's staleness timeout (ACTIVE_STALE_MS, 5 s) never
+// drops a stroke whose author is simply holding still.
+export const KEEPALIVE_MS = 2000;
 
 interface Point2 { x: number; y: number; }
 
@@ -38,6 +42,8 @@ interface LocalStroke {
   points: PixelCoord[];
   lastSampled: Point2;     // viewport coords of the last accepted sample
   lastSentAt: number;
+  sentCount: number;       // points in the last frame sent
+  cancelTick: () => void;
 }
 
 interface ReleasedStroke {
@@ -90,6 +96,7 @@ export class ScribbleController {
     this._unsub = undefined;
     // A drag in progress on the old map is abandoned; the server's staleness
     // TTL clears its last 'active' frame for peers.
+    this._local?.cancelTick();
     this._local = undefined;
     for (const r of this._localReleased) {
       r.cancel();
@@ -114,8 +121,12 @@ export class ScribbleController {
       itemId: this._newId(),
       points: [{ x: world.x, y: world.y }],
       lastSampled: { x: cp.x, y: cp.y },
+      // The first tick, SEND_INTERVAL_MS from now, sends this one-point stroke.
       lastSentAt: this._now(),
+      sentCount: 0,
+      cancelTick: () => {},
     };
+    this.scheduleTick(this._local);
     this.pushRender();
   }
 
@@ -137,10 +148,8 @@ export class ScribbleController {
     local.lastSampled = { x: cp.x, y: cp.y };
     this.pushRender();
 
-    const t = this._now();
-    if (t - local.lastSentAt >= SEND_INTERVAL_MS) {
-      this.send(local.itemId, local.points, 'active');
-      local.lastSentAt = t;
+    if (this._now() - local.lastSentAt >= SEND_INTERVAL_MS) {
+      this.sendActive(local);
     }
   }
 
@@ -149,6 +158,7 @@ export class ScribbleController {
     if (local === undefined) {
       return;
     }
+    local.cancelTick();
     // Append the final point only if it clears the sampling threshold from the
     // last accepted sample (same rule as move), so a barely-moved release does
     // not add a redundant point.
@@ -186,7 +196,33 @@ export class ScribbleController {
       r.cancel();
     }
     this._localReleased = [];
+    this._local?.cancelTick();
     this._local = undefined;
+  }
+
+  private scheduleTick(local: LocalStroke) {
+    local.cancelTick = this._schedule(() => this.tick(local), SEND_INTERVAL_MS);
+  }
+
+  // Runs every SEND_INTERVAL_MS while a stroke is held: flushes points the
+  // send throttle held back, and resends a still stroke as a keepalive.
+  private tick(local: LocalStroke) {
+    // A tick that outlived its stroke (released, or the map changed) does nothing.
+    if (this._local !== local) {
+      return;
+    }
+    const elapsed = this._now() - local.lastSentAt;
+    const unsent = local.sentCount < local.points.length;
+    if ((unsent && elapsed >= SEND_INTERVAL_MS) || elapsed >= KEEPALIVE_MS) {
+      this.sendActive(local);
+    }
+    this.scheduleTick(local);
+  }
+
+  private sendActive(local: LocalStroke) {
+    this.send(local.itemId, local.points, 'active');
+    local.lastSentAt = this._now();
+    local.sentCount = local.points.length;
   }
 
   private send(itemId: string, points: PixelCoord[], phase: 'active' | 'released') {
