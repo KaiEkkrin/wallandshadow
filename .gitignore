@@ -13,9 +13,6 @@ ansible/secrets/
 /.usercache/.node_repl_history
 /.usercache/.pki
 
-# Superpowers plugin (ephemeral)
-docs/superpowers/
-
 # misc stuff
 .claude/settings.local.json
 *.log
