@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { MapColouring } from "./colouring";
 import { GridCoord, GridEdge, GridVertex, IFeature, IFeatureDictionary, IAreaDictionary, IIdDictionary, IMapControlPointDictionary, IMapImage, LoSPosition, ITokenDrawing, ISpriteManager } from '@wallandshadow/shared';
 import { ITokenTextDrawing } from '../data/tokenTexts';
-import { ScribbleSegment } from './scribbleTypes';
+import { ScribbleStroke } from './scribbleTypes';
 
 // Describes the interface to our drawing subsystem,
 // which could be substituted out, won't exist in auto tests, etc.
@@ -91,9 +91,9 @@ export interface IDrawing {
   // Swaps to a different sprite manager.
   setSpriteManager(spriteManager: ISpriteManager): void;
 
-  // Replaces the full set of ephemeral scribble segments to render (world
-  // coordinates). Pass an empty array to clear. Triggers a redraw.
-  setScribbles(segments: ScribbleSegment[]): void;
+  // Replaces the full set of ephemeral scribble strokes to render (world
+  // coordinates), oldest first. Pass an empty array to clear. Triggers a redraw.
+  setScribbles(strokes: ScribbleStroke[]): void;
 
   // Cleans up and releases all resources.
   dispose(): void;

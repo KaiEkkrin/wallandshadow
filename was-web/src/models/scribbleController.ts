@@ -1,6 +1,7 @@
 import { ILiveData, OverlayItem, PixelCoord, MAX_SCRIBBLE_POINTS } from '@wallandshadow/shared';
 import {
-  ScribbleSegment,
+  ScribbleStroke,
+  ScribbleStyle,
   SCRIBBLE_ACTIVE,
   SCRIBBLE_FADE_TOTAL_MS,
 } from './scribbleTypes';
@@ -11,16 +12,19 @@ const SAMPLE_PX = 3;
 // Minimum gap between fire-and-forget "active" frames while drawing.
 const SEND_INTERVAL_MS = 80;
 
-const WHITE = { r: 1, g: 1, b: 1 } as const;
-
 interface Point2 { x: number; y: number; }
 
 export interface ScribbleControllerParams {
   live: ILiveData;
+  // The local user, who authors the local strokes.
+  uid: string;
+  // Returns the current authorId -> style lookup. A getter, so the owner can
+  // swap the lookup and call refreshStyles() without rebuilding the controller.
+  styleFor: () => (authorId: string) => ScribbleStyle;
   // Converts a viewport point (x,y) into world coordinates.
   toWorld: (cp: Point2) => Point2;
-  // Pushes the current full segment set to the renderer.
-  setScribbles: (segments: ScribbleSegment[]) => void;
+  // Pushes the current full stroke set to the renderer.
+  setScribbles: (strokes: ScribbleStroke[]) => void;
   // Clock, injectable for tests.
   now: () => number;
   // Item id factory, injectable for tests.
@@ -49,8 +53,10 @@ interface ReleasedStroke {
 // never touches the persistent map-change tracker.
 export class ScribbleController {
   private readonly _live: ILiveData;
+  private readonly _uid: string;
+  private readonly _styleFor: () => (authorId: string) => ScribbleStyle;
   private readonly _toWorld: (cp: Point2) => Point2;
-  private readonly _setScribbles: (segments: ScribbleSegment[]) => void;
+  private readonly _setScribbles: (strokes: ScribbleStroke[]) => void;
   private readonly _now: () => number;
   private readonly _newId: () => string;
   private readonly _schedule: (fn: () => void, ms: number) => () => void;
@@ -66,6 +72,8 @@ export class ScribbleController {
 
   constructor(params: ScribbleControllerParams) {
     this._live = params.live;
+    this._uid = params.uid;
+    this._styleFor = params.styleFor;
     this._toWorld = params.toWorld;
     this._setScribbles = params.setScribbles;
     this._now = params.now;
@@ -165,6 +173,12 @@ export class ScribbleController {
     this.pushRender();
   }
 
+  // Re-renders the current strokes with the current styles, e.g. after the
+  // players or tokens that styles derive from have changed.
+  refreshStyles() {
+    this.pushRender();
+  }
+
   dispose() {
     this._unsub?.();
     this._unsub = undefined;
@@ -187,7 +201,13 @@ export class ScribbleController {
   }
 
   private pushRender() {
-    const segments: ScribbleSegment[] = [];
+    const styleFor = this._styleFor();
+    const strokes: ScribbleStroke[] = [];
+    const add = (points: PixelCoord[], authorId: string, releaseTime: number) => {
+      if (points.length >= 2) {
+        strokes.push({ points, style: styleFor(authorId), releaseTime });
+      }
+    };
 
     // Remote strokes first (oldest update first), then locally-released, then
     // the in-progress local stroke on top. Painter's order = newer on top.
@@ -196,28 +216,15 @@ export class ScribbleController {
       if (it.payload.kind !== 'scribble') {
         continue;
       }
-      appendSegments(segments, it.payload.points, it.releasedAt ?? SCRIBBLE_ACTIVE);
+      add(it.payload.points, it.authorId, it.releasedAt ?? SCRIBBLE_ACTIVE);
     }
     for (const r of [...this._localReleased].sort((a, b) => a.releasedAt - b.releasedAt)) {
-      appendSegments(segments, r.points, r.releasedAt);
+      add(r.points, this._uid, r.releasedAt);
     }
     if (this._local !== undefined) {
-      appendSegments(segments, this._local.points, SCRIBBLE_ACTIVE);
+      add(this._local.points, this._uid, SCRIBBLE_ACTIVE);
     }
 
-    this._setScribbles(segments);
-  }
-}
-
-function appendSegments(out: ScribbleSegment[], points: PixelCoord[], releaseTime: number) {
-  for (let i = 0; i + 1 < points.length; ++i) {
-    out.push({
-      startX: points[i].x,
-      startY: points[i].y,
-      endX: points[i + 1].x,
-      endY: points[i + 1].y,
-      colour: WHITE,
-      releaseTime,
-    });
+    this._setScribbles(strokes);
   }
 }

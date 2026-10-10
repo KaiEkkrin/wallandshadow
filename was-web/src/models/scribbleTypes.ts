@@ -41,14 +41,3 @@ export const SCRIBBLE_GM_WIDTH_SCALE = 1.5;
 // Hard ceiling on rendered polyline segments across all strokes/authors
 // combined. Each segment is drawn twice (fill and outline).
 export const SCRIBBLE_MAX_SEGMENTS = 20000;
-
-// Superseded by ScribbleStroke; removed once the renderer and controller move over.
-export interface ScribbleSegment {
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-  colour: Rgb;
-  releaseTime: number;
-}
-export const SCRIBBLE_HALF_WIDTH_PX = 1.75;

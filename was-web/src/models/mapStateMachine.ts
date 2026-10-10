@@ -11,6 +11,8 @@ import { WallHighlighter, WallRectangleHighlighter, RoomHighlighter } from './wa
 
 import { IAnnotation, IPositionedAnnotation, Change, createTokenRemove, createTokenAdd, createNoteRemove, createNoteAdd, createTokenMove, createImageAdd, createImageRemove, netObjectCount, trackChanges, GridCoord, coordString, coordsEqual, coordSub, coordAdd, GridVertex, vertexAdd, FeatureDictionary, flipToken, IToken, ITokenDictionary, ITokenProperties, TokenSize, defaultToken, IAdventureIdentified, Anchor, anchorsEqual, anchorString, IMapImage, IMapImageProperties, LoSPosition, IMap, IUserPolicy, getTokenLoSPosition, ITokenGeometry, Tokens, ISpriteManager, IGridGeometry, ILiveData } from '@wallandshadow/shared';
 import { ScribbleController } from './scribbleController';
+import { buildScribbleStyles } from './scribbleStyles';
+import { ScribbleStyle } from './scribbleTypes';
 import { TokensWithObservableText } from '../data/tokenTexts';
 import { chooseLoSSourceTokens } from './groupVision';
 import { MapColourVisualisationMode } from './displayMode';
@@ -149,6 +151,8 @@ export class MapStateMachine {
   private _inImageMoveDrag = false;
 
   private readonly _scribbleController: ScribbleController;
+  private _scribblePlayerIds: readonly string[] = [];
+  private _scribbleStyles: (authorId: string) => ScribbleStyle;
 
   private _isDisposed = false;
 
@@ -197,14 +201,18 @@ export class MapStateMachine {
     // these calls are always synchronous and single-threaded.)
     const scribbleScratchM = new THREE.Matrix4();
     const scribbleScratchV = new THREE.Vector3();
+    // No tokens exist yet; the styles are rebuilt as tokens and players arrive.
+    this._scribbleStyles = buildScribbleStyles({ ownerId: map.record.owner, playerIds: [], tokens: [] });
     this._scribbleController = new ScribbleController({
       live,
+      uid,
+      styleFor: () => this._scribbleStyles,
       toWorld: cp => {
         const m = getClientToWorld(scribbleScratchM, this._drawing);
         const v = scribbleScratchV.set(cp.x, cp.y, 0).applyMatrix4(m);
         return { x: v.x, y: v.y };
       },
-      setScribbles: segs => this._drawing.setScribbles(segs),
+      setScribbles: strokes => this._drawing.setScribbles(strokes),
       now: () => Date.now(),
     });
     this._scribbleController.setMap(map.adventureId, map.id);
@@ -428,6 +436,7 @@ export class MapStateMachine {
         this.withStateChange(state => {
           if (haveTokensChanged) {
             this.cleanUpSelection();
+            this.refreshScribbleStyles();
           }
 
           this.buildLoS();
@@ -439,6 +448,19 @@ export class MapStateMachine {
         });
       }
     );
+  }
+
+  private rebuildScribbleStyles() {
+    this._scribbleStyles = buildScribbleStyles({
+      ownerId: this._map.record.owner,
+      playerIds: this._scribblePlayerIds,
+      tokens: fluent(this._tokens).concat(this._outlineTokens),
+    });
+  }
+
+  private refreshScribbleStyles() {
+    this.rebuildScribbleStyles();
+    this._scribbleController.refreshStyles();
   }
 
   private *enumerateAnnotations() {
@@ -1143,6 +1165,7 @@ export class MapStateMachine {
 
     // Switch ourselves to the new map
     this._map = map;
+    this.rebuildScribbleStyles();
     this._scribbleController.setMap(map.adventureId, map.id);
     this._userPolicy = userPolicy;
     this._changeTracker = this.createChangeTracker();
@@ -1725,6 +1748,12 @@ export class MapStateMachine {
       return { ...state, zoom: newZoom };
     });
     this.resize();
+  }
+
+  // Sets the adventure's players, from whom scribble outline colours derive.
+  setScribblePlayers(playerIds: readonly string[]) {
+    this._scribblePlayerIds = playerIds;
+    this.refreshScribbleStyles();
   }
 
   scribbleStart(cp: THREE.Vector3) {

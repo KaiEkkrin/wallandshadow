@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { ILiveData, OutgoingOverlayItem, OverlayItem } from '@wallandshadow/shared';
 import { ScribbleController } from './scribbleController';
-import { ScribbleSegment, SCRIBBLE_ACTIVE } from './scribbleTypes';
+import { ScribbleStroke, ScribbleStyle, SCRIBBLE_ACTIVE } from './scribbleTypes';
 
 // Minimal fake of the bits of ILiveData the controller uses.
 class FakeLive {
@@ -20,18 +20,27 @@ class FakeLive {
   asLive(): ILiveData { return this as unknown as ILiveData; }
 }
 
+// A style that records which author it was resolved for.
+function styleOf(authorId: string, generation = 0): ScribbleStyle {
+  const tag = authorId.length / 10 + generation;
+  return { fill: { r: tag, g: 0, b: 0 }, outline: { r: 0, g: tag, b: 0 }, widthScale: 1 };
+}
+
 describe('ScribbleController', () => {
   let live: FakeLive;
-  let rendered: ScribbleSegment[][];
+  let rendered: ScribbleStroke[][];
   let nowMs: number;
   let pendingTimers: { fn: () => void; ms: number }[];
+  let styleFor: (authorId: string) => ScribbleStyle;
 
   function makeController() {
     return new ScribbleController({
       live: live.asLive(),
+      uid: 'me',
+      styleFor: () => styleFor,
       // Identity transform: viewport coords == world coords for the test.
       toWorld: (cp) => ({ x: cp.x, y: cp.y }),
-      setScribbles: (segs) => rendered.push(segs),
+      setScribbles: (strokes) => rendered.push(strokes),
       now: () => nowMs,
       newId: () => 'item-1',
       schedule: (fn, ms) => { pendingTimers.push({ fn, ms }); return () => {}; },
@@ -43,6 +52,7 @@ describe('ScribbleController', () => {
     rendered = [];
     nowMs = 1000;
     pendingTimers = [];
+    styleFor = id => styleOf(id);
   });
 
   test('setMap subscribes for that map', () => {
@@ -103,11 +113,20 @@ describe('ScribbleController', () => {
     c.start({ x: 0, y: 0 });
     c.move({ x: 50, y: 0 });
     const last = rendered[rendered.length - 1];
-    expect(last.length).toBeGreaterThanOrEqual(1);
+    expect(last).toHaveLength(1);
+    expect(last[0].points).toEqual([{ x: 0, y: 0 }, { x: 50, y: 0 }]);
     expect(last[0].releaseTime).toBe(SCRIBBLE_ACTIVE);
+    expect(last[0].style).toEqual(styleOf('me'));
   });
 
-  test('remote scribbles are merged into the rendered segments', () => {
+  test('a single-point local stroke is not rendered', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    c.start({ x: 0, y: 0 });
+    expect(rendered[rendered.length - 1]).toHaveLength(0);
+  });
+
+  test('remote scribbles are merged into the rendered strokes', () => {
     const c = makeController();
     c.setMap('adv', 'map-1');
     const remote: OverlayItem = {
@@ -118,6 +137,36 @@ describe('ScribbleController', () => {
     const last = rendered[rendered.length - 1];
     expect(last).toHaveLength(1);
     expect(last[0].releaseTime).toBe(800);
+    expect(last[0].style).toEqual(styleOf('other'));
+  });
+
+  test('remote strokes draw under local ones, oldest first', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    const item = (itemId: string, updatedAt: number, x: number): OverlayItem => ({
+      itemId, authorId: 'other', updatedAt, phase: 'active',
+      payload: { kind: 'scribble', points: [{ x, y: 0 }, { x: x + 1, y: 0 }] },
+    });
+    live.subs[0].onNext([item('newer', 900, 20), item('older', 500, 10)]);
+    c.start({ x: 0, y: 0 });
+    c.move({ x: 50, y: 0 });
+    const last = rendered[rendered.length - 1];
+    expect(last.map(s => s.points[0].x)).toEqual([10, 20, 0]);
+  });
+
+  test('refreshStyles re-renders the same strokes with the current styles', () => {
+    const c = makeController();
+    c.setMap('adv', 'map-1');
+    c.start({ x: 0, y: 0 });
+    c.move({ x: 50, y: 0 });
+    const before = rendered[rendered.length - 1];
+
+    styleFor = id => styleOf(id, 1);
+    c.refreshStyles();
+    const after = rendered[rendered.length - 1];
+    expect(after).toHaveLength(1);
+    expect(after[0].points).toEqual(before[0].points);
+    expect(after[0].style).toEqual(styleOf('me', 1));
   });
 
   test('non-scribble overlay items are ignored', () => {

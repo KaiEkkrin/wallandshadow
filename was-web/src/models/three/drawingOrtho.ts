@@ -5,7 +5,7 @@ import { IDrawing } from '../interfaces';
 import { RedrawFlag } from '../redrawFlag';
 
 import { ScribbleDrawing } from './scribbleDrawing';
-import { ScribbleSegment, SCRIBBLE_MAX_SEGMENTS } from '../scribbleTypes';
+import { ScribbleStroke, SCRIBBLE_MAX_SEGMENTS } from '../scribbleTypes';
 
 import { Areas, createPaletteColouredAreaObject, createAreas, createSelectionColouredAreaObject } from './areas';
 import { Grid } from './grid';
@@ -41,7 +41,6 @@ const highlightZ = 0.1;
 const vertexHighlightZ = 0.2;
 const textZ = -0.23; // in front of the token sprite but below the LoS
 const invalidSelectionZ = 0.6;
-const scribbleZ = 0.7; // above everything; depthTest is off so this only keeps it in clip range
 const outlineTokenZ = -0.24; // needs to be above regular token sprites to be clearly visible
 const outlineZOffset = 0.01;
 
@@ -168,7 +167,7 @@ export class DrawingOrtho implements IDrawing {
     this._filterScene = new THREE.Scene();
     this._fixedHighlightScene = new THREE.Scene();
     this._overlayScene = new THREE.Scene();
-    this._scribbles = new ScribbleDrawing(SCRIBBLE_MAX_SEGMENTS, scribbleZ);
+    this._scribbles = new ScribbleDrawing(SCRIBBLE_MAX_SEGMENTS);
     this._scribbles.setViewport(renderWidth, renderHeight);
 
     this._canvasClearColour = new THREE.Color(0.01, 0.01, 0.01);
@@ -713,8 +712,8 @@ export class DrawingOrtho implements IDrawing {
     return this._debugShowFaceCoord || this._debugShowVertexCoord;
   }
 
-  setScribbles(segments: ScribbleSegment[]) {
-    this._scribbles.setSegments(segments);
+  setScribbles(strokes: ScribbleStroke[]) {
+    this._scribbles.setStrokes(strokes);
     this._needsRedraw.setNeedsRedraw();
   }
 
