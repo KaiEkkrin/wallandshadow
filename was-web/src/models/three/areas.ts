@@ -62,7 +62,7 @@ export function createSpriteAreaObject(
 ) {
   const areaGeometry = createSingleAreaGeometry(gridGeometry, alpha, areaZ);
   return (maxInstances: number) => new MultipleFeatureObject<GridCoord, IToken & ISpriteProperties>(
-    (url: string, maxInstances: number) => new SpriteFeatureObject(
+    (path: string, maxInstances: number) => new SpriteFeatureObject(
       redrawFlag,
       textureCache,
       coordString,
@@ -70,9 +70,9 @@ export function createSpriteAreaObject(
       maxInstances,
       areaGeometry,
       f => uvTransform.getFaceTransform(f),
-      url
+      path
     ),
-    f => f.sheetEntry.url,
+    f => f.sheetEntry.path,
     maxInstances
   );
 }

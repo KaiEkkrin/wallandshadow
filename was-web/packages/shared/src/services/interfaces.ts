@@ -45,7 +45,9 @@ export interface ICacheLease<T> {
 export interface ISpritesheetEntry {
   sheet: ISpritesheet,
   position: number,
-  url: string
+  // The sheet's storage path. Consumers resolve it to a signed download URL
+  // when they load it, so a retry never reuses an expired URL.
+  path: string
 }
 
 // Looks up sprites for us with caching.
@@ -57,7 +59,7 @@ export interface ISpriteManager {
   // draw the sprite.)
   lookupCharacter(token: ITokenProperties): Observable<ICharacter | undefined>;
 
-  // Looks up a sprite, returning a feed of its latest entries and download URLs.
+  // Looks up a sprite, returning a feed of its latest entries.
   lookupSprite(sprite: ISprite): Observable<ISpritesheetEntry>;
 
   // Looks up a token's character and sprite, which could either be the token's character, or
