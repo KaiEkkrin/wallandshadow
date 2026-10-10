@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { afterEach, describe, test, expect, vi } from 'vitest';
 import {
   ChangeCategory,
   ChangeType,
@@ -11,7 +11,7 @@ import { createApp } from '../app.js';
 import { db } from '../db/connection.js';
 import { images, spritesheets } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { storage } from '../services/storage.js';
+import { DOWNLOAD_URL_WINDOW_MS, downloadUrlSigningDate, storage } from '../services/storage.js';
 import {
   registerHigherUser,
   apiGet,
@@ -88,6 +88,69 @@ function spriteTokenAdd(uid: string, source: string): TokenAdd {
 function spriteCharacter(source: string): ICharacter {
   return { id: 'char-with-sprite', name: 'Alice', text: 'AL', sprites: [{ source, geometry: '1x1' }] };
 }
+
+// ─── Download URL tests ────────────────────────────────────────────────────────
+
+describe('download URLs', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('the signing date is the start of the 6-hour window, aligned to the epoch', () => {
+    const windowStart = Date.UTC(2026, 9, 10, 6, 0, 0);
+    expect(downloadUrlSigningDate(windowStart).getTime()).toBe(windowStart);
+    expect(downloadUrlSigningDate(windowStart + DOWNLOAD_URL_WINDOW_MS - 1).getTime()).toBe(windowStart);
+    expect(downloadUrlSigningDate(windowStart + DOWNLOAD_URL_WINDOW_MS).getTime())
+      .toBe(windowStart + DOWNLOAD_URL_WINDOW_MS);
+  });
+
+  test('requests within the same window get the same URL', async () => {
+    const { token } = await registerHigherUser(app);
+    const image = await uploadImage(token);
+
+    const getUrl = async () => {
+      const res = await apiGet(app, `/api/images/download?path=${encodeURIComponent(image.path)}`, token);
+      expect(res.status).toBe(200);
+      return ((await res.json()) as { url: string }).url;
+    };
+
+    // Pin the clock mid-window so the two requests can't straddle a boundary
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(downloadUrlSigningDate(Date.now()).getTime() + DOWNLOAD_URL_WINDOW_MS / 2);
+    expect(await getUrl()).toBe(await getUrl());
+  });
+
+  test('a new window gets a new URL', async () => {
+    const { token } = await registerHigherUser(app);
+    const image = await uploadImage(token);
+    const ref = storage.ref(image.path);
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const windowStart = downloadUrlSigningDate(Date.now()).getTime();
+    vi.setSystemTime(windowStart + DOWNLOAD_URL_WINDOW_MS - 1);
+    const before = await ref.getDownloadURL();
+    vi.setSystemTime(windowStart + DOWNLOAD_URL_WINDOW_MS);
+    const after = await ref.getDownloadURL();
+
+    expect(after).not.toBe(before);
+    expect(new URL(after).pathname).toBe(new URL(before).pathname);
+  });
+
+  test('the URL downloads the object with a private Cache-Control header for the window', async () => {
+    const { token } = await registerHigherUser(app);
+    const image = await uploadImage(token);
+    const url = await storage.ref(image.path).getDownloadURL();
+
+    // Valid until the end of the next window, so at least one window from now
+    const params = new URL(url).searchParams;
+    expect(Number(params.get('X-Amz-Expires'))).toBe((2 * DOWNLOAD_URL_WINDOW_MS) / 1000);
+
+    const res = await fetch(url);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe(`private, max-age=${DOWNLOAD_URL_WINDOW_MS / 1000}`);
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(TINY_PNG);
+  });
+});
 
 // ─── Image upload tests ────────────────────────────────────────────────────────
 

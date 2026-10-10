@@ -28,6 +28,25 @@ function createS3Client(): S3Client {
 const s3 = createS3Client();
 const bucket = process.env.S3_BUCKET ?? 'wallandshadow';
 
+// Signed download URLs are stable for a window: every request for an object
+// within the same window gets an identical URL, valid until the end of the
+// following window, with a Cache-Control header so that the browser serves
+// repeat loads from its cache -- after a page reload, and through an object
+// storage outage, too. A per-request URL would defeat the browser's cache,
+// which is keyed by URL.
+//
+// This relies on an object's content never changing once written: images and
+// spritesheets are always written to new uuidv7 keys and never overwritten.
+// Anything that replaces an object's content must write it to a new key, or
+// browsers will go on showing the old content for up to a window.
+export const DOWNLOAD_URL_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+// The start of the window containing `nowMs`. Windows are aligned to the Unix
+// epoch, so every server instance agrees on them.
+export function downloadUrlSigningDate(nowMs: number): Date {
+  return new Date(Math.floor(nowMs / DOWNLOAD_URL_WINDOW_MS) * DOWNLOAD_URL_WINDOW_MS);
+}
+
 // S3 DeleteObjects accepts at most 1000 keys per call.
 const DELETE_OBJECTS_BATCH_SIZE = 1000;
 
@@ -129,7 +148,15 @@ class StorageReference implements IStorageReference {
   }
 
   async getDownloadURL(): Promise<string> {
-    return getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: this.path }), { expiresIn: 3600 });
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: this.path,
+      ResponseCacheControl: `private, max-age=${DOWNLOAD_URL_WINDOW_MS / 1000}`,
+    });
+    return getSignedUrl(s3, command, {
+      signingDate: downloadUrlSigningDate(Date.now()),
+      expiresIn: (2 * DOWNLOAD_URL_WINDOW_MS) / 1000,
+    });
   }
 
   async put(file: Blob, metadata: { contentType?: string }): Promise<void> {
