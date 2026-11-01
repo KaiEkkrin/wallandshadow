@@ -28,7 +28,7 @@ ENV PATH="/usr/lib/postgresql/17/bin:${PATH}"
 # binary, no dependencies). It replaced MinIO, which no longer distributes binaries.
 # Buckets are created with curl's built-in SigV4 signing (post-start.sh), so no
 # separate S3 CLI is needed.
-ARG RUSTFS_VERSION=1.0.0-rc.6
+ARG RUSTFS_VERSION=1.0.4
 RUN case "$(dpkg --print-architecture)" in \
         amd64) RUSTFS_ARCH=x86_64 ;; \
         arm64) RUSTFS_ARCH=aarch64 ;; \

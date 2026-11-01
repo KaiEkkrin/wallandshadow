@@ -20,11 +20,11 @@ Wall & Shadow should work well in any modern browser that supports [WebGL 2](htt
 
 ## Tech Stack
 
-- **React 19** + TypeScript + Vite
+- **React** + TypeScript + Vite
 - **Three.js** for WebGL map rendering
-- **Bootstrap 5** with react-bootstrap
+- **Bootstrap** with react-bootstrap
 - **Hono** + TypeScript API server (`was-web/server/`)
-- **PostgreSQL 17** + Drizzle ORM
+- **PostgreSQL** + Drizzle ORM
 - **RustFS** (dev) / Hetzner Object Storage (prod) for images and spritesheets
 - **Zitadel** OIDC for authentication
 - **Caddy** + systemd-supervised Docker containers on a Hetzner VPS

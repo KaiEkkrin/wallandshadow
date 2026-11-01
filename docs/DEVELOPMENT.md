@@ -37,12 +37,10 @@ The easiest way to get started is with the VS Code dev container.
 
 7. Open **http://localhost:5000** — register a new account or sign in via Zitadel OIDC.
 
-If you have an existing checkout from before the npm migration, rebuild the dev
-container for Node 24 after pulling: `devcontainer up --workspace-folder . --remove-existing-container`
+After pulling a change to the dev container's Node major, rebuild it:
+`devcontainer up --workspace-folder . --remove-existing-container`
 (or **Dev Containers: Rebuild Container** in VS Code). Its post-create step runs
-`npm ci`, which also clears the Yarn-era `node_modules`. Don't run `npm ci` in the
-old Node 22 container first: it warns `EBADENGINE`, because
-`license-checker-rseidelsohn` 5 needs Node >= 24.
+`npm ci`.
 
 See [.devcontainer/README.md](../.devcontainer/README.md) for comprehensive dev
 container documentation — the terminal-only (`devcontainer` CLI) workflow, GPU

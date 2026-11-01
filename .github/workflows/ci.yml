@@ -175,7 +175,7 @@ jobs:
             -p 9000:9000 \
             -e RUSTFS_ACCESS_KEY=wasdev \
             -e RUSTFS_SECRET_KEY=wasdevpass \
-            rustfs/rustfs:1.0.0-rc.6
+            rustfs/rustfs:1.0.4
           for i in $(seq 1 30); do
             if curl -sf -o /dev/null http://127.0.0.1:9000/health; then
               echo "RustFS is ready"
