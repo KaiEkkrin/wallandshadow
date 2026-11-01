@@ -3,7 +3,7 @@
 Wall & Shadow runs on a self-hosted stack on Hetzner Cloud. This document describes the
 current architecture and the key decisions behind it.
 
-**Stack**: Hono + Node.js (TypeScript) · PostgreSQL 17 · Hetzner Object Storage (S3) ·
+**Stack**: Hono + Node.js (TypeScript) · PostgreSQL · Hetzner Object Storage (S3) ·
 Zitadel OIDC · Caddy · systemd-supervised Docker containers
 
 ---
@@ -235,7 +235,7 @@ jobs:
   web          if web      →  npm run build · npm run lint · npm test · npm run test:shared
                               · npm run test:smoke (loads build/ in Chromium)
   server       if server   →  tsc --noEmit · lint · drizzle-kit push · test
-                              (against real PostgreSQL 17 + RustFS service containers)
+                              (against real PostgreSQL + RustFS service containers)
   dockerfile   if docker   →  hadolint · BuildKit build checks · shellcheck entrypoint
   workflows    if wf       →  actionlint (with shellcheck on inline run: blocks)
   ansible      if ansible  →  ansible-playbook --syntax-check · ansible-lint · shellcheck

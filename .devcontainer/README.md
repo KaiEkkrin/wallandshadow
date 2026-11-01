@@ -1,6 +1,6 @@
 # Wall & Shadow Dev Container
 
-Complete development environment for Wall & Shadow with Node.js 24, PostgreSQL 17, RustFS, and optional GPU support for Playwright/WebGL tests. Also includes a full terminal toolchain: neovim (LazyVim), zellij, ripgrep, fd, fzf, lazygit, Rust, and tree-sitter. Editor config is synced from [KaiEkkrin/dot-config](https://github.com/KaiEkkrin/dot-config) on first launch.
+Complete development environment for Wall & Shadow with Node.js, PostgreSQL, RustFS, and optional GPU support for Playwright/WebGL tests. Also includes a full terminal toolchain: neovim (LazyVim), zellij, ripgrep, fd, fzf, lazygit, Rust, and tree-sitter. Editor config is synced from [KaiEkkrin/dot-config](https://github.com/KaiEkkrin/dot-config) on first launch.
 
 PostgreSQL and RustFS start automatically when the container starts — no external Compose setup needed.
 
@@ -417,6 +417,6 @@ OR via Remote Explorer:
 - [VS Code Dev Containers Documentation](https://code.visualstudio.com/docs/devcontainers/containers)
 - [Podman Documentation](https://docs.podman.io/)
 - [Podman Rootless Tutorial](https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md)
-- [Node.js 24 Documentation](https://nodejs.org/docs/latest-v24.x/api/)
+- [Node.js Documentation](https://nodejs.org/docs/latest/api/)
 - [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 - [AMD ROCm on Linux](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/)

@@ -282,7 +282,7 @@ Rebuild when upgrading to a new Ubuntu LTS (change `server_image` in
 this procedure. Expect 10–15 minutes of downtime.
 
 The Ubuntu LTS upgrade is untested: this path has only been exercised on
-`ubuntu-24.04`. The old server is gone before Ansible has run on the new
+the current `server_image`. The old server is gone before Ansible has run on the new
 image, and known risks on a newer release include the playbook's `apt_key`
 tasks (newer apt drops `apt-key`), pgdg (the PostgreSQL apt repository)
 support for the new codename, and PostgreSQL collation-version changes.
@@ -389,12 +389,12 @@ timer: 06:00 server time plus up to an hour's random delay) and reboots at
 
 - Ubuntu's own updates, security fixes included. Docker is Ubuntu's
   `docker.io` package, so it's covered too.
-- PostgreSQL 17 minor releases, from the PostgreSQL repository. These are bug
-  and security fixes that never change the data format. PostgreSQL 18 is a
-  separate package (`postgresql-18`) that nothing installs; moving to it is a
-  manual upgrade.
-- Caddy patch releases within `caddy_series` in `ansible/vars/main.yml`
-  (currently 2.11). An apt pin, `/etc/apt/preferences.d/caddy`, keeps it off
+- PostgreSQL minor releases of the installed major, from the PostgreSQL
+  repository. These are bug and security fixes that never change the data
+  format. The next major is a separate package that nothing installs; moving
+  to it is a manual upgrade.
+- Caddy patch releases within `caddy_series` in `ansible/vars/main.yml`.
+  An apt pin, `/etc/apt/preferences.d/caddy`, keeps it off
   newer series, because Caddy's minor releases can change behaviour.
 
 A PostgreSQL or Caddy update restarts that service: a few seconds of dropped
@@ -404,7 +404,7 @@ was installed.
 Now and then a PostgreSQL release asks for a step after upgrading, usually
 reindexing one kind of index. The
 [release notes](https://www.postgresql.org/docs/release/) list it under
-"Migration to Version 17.N".
+"Migration to Version".
 
 ### Moving Caddy to a new minor series
 
