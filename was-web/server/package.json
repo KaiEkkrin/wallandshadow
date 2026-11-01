@@ -18,20 +18,20 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1041.0",
-    "@aws-sdk/s3-request-presigner": "^3.1041.0",
-    "@hono/node-server": "^2.0.10",
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/s3-request-presigner": "^3.1156.0",
+    "@hono/node-server": "^2.1.5",
     "@wallandshadow/shared": "*",
     "bcrypt": "^6.0.0",
     "dayjs": "^1.8.36",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "^0.45.4",
     "hono": "^4.13.5",
     "hono-rate-limiter": "^0.5.3",
-    "jose": "^6.0.0",
+    "jose": "^6.2.13",
     "pg": "^8.13.0",
     "sharp": "^0.35.4",
-    "unstorage": "^1.17.5",
-    "uuid": "^14.0.0",
+    "unstorage": "^1.17.6",
+    "uuid": "^14.0.3",
     "ws": "^8.21.0"
   },
   "devDependencies": {
@@ -42,6 +42,6 @@
     "tsup": "^8.3.0",
     "tsx": "^4.23.1",
     "typescript": "~6.0.3",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.5"
   }
 }
